@@ -45,6 +45,7 @@ frontend/dist-ssr/
 .env.production
 .env.*
 !.env.example
+!frontend/.env.production
 
 # Vercel / build caches
 .vercel/
