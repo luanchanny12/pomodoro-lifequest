@@ -199,6 +199,7 @@ Lịch mặc định: **08:00** và **21:30** (GMT+7). Có thể đổi trong ta
 | Restart làm gửi trùng tin nhắn | Lưu `last_morning_sent_date` / `last_evening_sent_date` trong DB thay vì RAM |
 | Ping keep-alive chỉ dùng POST | Endpoint nhận cả `GET` và `POST` |
 | Kết nối DB idle bị Supabase đóng | `pool_pre_ping=True`, `pool_recycle=300` |
+| Mỗi lần restart xoá sạch lịch sử/thống kê | Chỉ xoá seed khi đặt `RESET_SEED_DATA_ON_START=true` (mặc định tắt) |
 
 ---
 

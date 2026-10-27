@@ -85,13 +85,16 @@ async def lifespan(app: FastAPI):
             )
             db.commit()
 
-        # Clean up old seed data so new users start fresh
-        for table in ["roadmap_lessons", "current_positions", "brain_memory", "roadmap_items", "predictions", "weekly_reports", "user_statistics", "v1_learning_history", "life_score_history"]:
-            try:
-                db.execute(text(f"DELETE FROM {table}"))
-            except Exception:
-                db.rollback()
-        db.commit()
+        # Clean up old seed data so new users start fresh.
+        # CHỈ chạy khi bật rõ ràng RESET_SEED_DATA_ON_START=true, tránh xoá dữ liệu
+        # người dùng mỗi lần Render restart/deploy.
+        if os.getenv("RESET_SEED_DATA_ON_START", "false").strip().lower() in ("1", "true", "yes"):
+            for table in ["roadmap_lessons", "current_positions", "brain_memory", "roadmap_items", "predictions", "weekly_reports", "user_statistics", "v1_learning_history", "life_score_history"]:
+                try:
+                    db.execute(text(f"DELETE FROM {table}"))
+                except Exception:
+                    db.rollback()
+            db.commit()
     finally:
         db.close()
 
