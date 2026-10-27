@@ -187,4 +187,4 @@ def root():
 @app.get("/api/health")
 def health():
     """Endpoint nhẹ để Render / uptime monitor kiểm tra dịch vụ."""
-    return {"status": "ok"}
+    return {"status": "ok", "version": "3.1.0-auth-race"}
