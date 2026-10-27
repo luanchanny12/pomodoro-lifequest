@@ -27,6 +27,8 @@ import {
   Compass,
   LayoutGrid,
   Bell,
+  User as UserIcon,
+  LogOut,
 } from 'lucide-react'
 import {
   BarChart,
@@ -66,6 +68,9 @@ import { TimeCapsuleModal } from '@/components/pomodoro/TimeCapsuleModal'
 import { EisenhowerMatrixView } from '@/components/pomodoro/EisenhowerMatrixView'
 import { AIFloatingBuddy } from '@/components/pomodoro/AIFloatingBuddy'
 import { NotificationSettingsModal } from '@/components/pomodoro/NotificationSettingsModal'
+import { AuthModal } from '@/components/auth/AuthModal'
+import { CosmicRaceTrackModal } from '@/components/race/CosmicRaceTrackModal'
+import { authService, UserProfile } from '@/services/authService'
 import { notificationManager } from '@/utils/notificationManager'
 
 type TimerMode = 'pomodoro' | 'shortBreak' | 'longBreak'
@@ -139,6 +144,9 @@ export default function PomodoroApp() {
   const [isRewardShopOpen, setIsRewardShopOpen] = useState<boolean>(false)
   const [isTimeCapsuleOpen, setIsTimeCapsuleOpen] = useState<boolean>(false)
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState<boolean>(false)
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false)
+  const [isRaceModalOpen, setIsRaceModalOpen] = useState<boolean>(false)
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authService.getCurrentUser())
   const [goalToEdit, setGoalToEdit] = useState<StudyGoal | null>(null)
 
   // Data
@@ -190,6 +198,20 @@ export default function PomodoroApp() {
     }, 30 * 1000)
     return () => clearInterval(reminderInterval)
   }, [])
+
+  // Check auth session
+  useEffect(() => {
+    if (authService.getToken()) {
+      authService.getMe().then(setCurrentUser).catch(() => {})
+    }
+  }, [])
+
+  const handleLogout = () => {
+    authService.logout()
+    setCurrentUser(null)
+    toast.info('Đã đăng xuất tài khoản')
+    loadData()
+  }
 
   // Save settings
   const handleSaveSettings = (newSettings: PomodoroSettings) => {
@@ -548,6 +570,50 @@ export default function PomodoroApp() {
             <span className="hidden sm:inline">Ghi nhận giờ học</span>
             <span className="sm:hidden">+ Giờ</span>
           </button>
+
+          {/* Cosmic Race Track Button */}
+          <button
+            onClick={() => setIsRaceModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl backdrop-blur-md transition active:scale-95 shadow-md border border-cyan-400/40"
+            title="Đường Đua Bạn Bè & Bảng Vàng Pomodoro"
+          >
+            <Trophy className="w-4 h-4 text-amber-300 animate-pulse" />
+            <span className="hidden md:inline">Đường Đua</span>
+          </button>
+
+          {/* User Profile / Auth Pill */}
+          {currentUser ? (
+            <div className="flex items-center gap-1 bg-white/10 border border-white/20 rounded-xl px-2 py-1 backdrop-blur-md">
+              <button
+                onClick={() => setIsRaceModalOpen(true)}
+                className="flex items-center gap-1.5 text-xs text-white hover:text-cyan-300 font-bold transition"
+                title={`Đang đăng nhập: ${currentUser.display_name} (@${currentUser.username})`}
+              >
+                <span className="text-sm">
+                  {currentUser.racer_avatar === 'cyber_car' ? '🏎️' :
+                   currentUser.racer_avatar === 'quantum_saucer' ? '🛸' :
+                   currentUser.racer_avatar === 'lightning' ? '⚡' :
+                   currentUser.racer_avatar === 'lightcycle' ? '🏍️' : '🚀'}
+                </span>
+                <span className="max-w-[75px] truncate hidden sm:inline">{currentUser.display_name}</span>
+              </button>
+              <button
+                onClick={handleLogout}
+                className="p-1 text-white/50 hover:text-rose-400 transition ml-0.5"
+                title="Đăng xuất"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-amber-400 hover:bg-amber-300 text-black rounded-xl transition active:scale-95 shadow-md"
+            >
+              <UserIcon className="w-3.5 h-3.5" />
+              <span>Đăng nhập</span>
+            </button>
+          )}
 
           {/* Notification settings button */}
           <button
@@ -1416,6 +1482,22 @@ export default function PomodoroApp() {
       <NotificationSettingsModal
         isOpen={isNotificationModalOpen}
         onClose={() => setIsNotificationModalOpen(false)}
+      />
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={(u) => {
+          setCurrentUser(u)
+          loadData()
+        }}
+      />
+
+      <CosmicRaceTrackModal
+        isOpen={isRaceModalOpen}
+        onClose={() => setIsRaceModalOpen(false)}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
+        currentUser={currentUser}
       />
 
       {/* ── AI FLOATING BUDDY COMPANION ── */}

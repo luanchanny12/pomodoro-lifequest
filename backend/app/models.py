@@ -107,6 +107,7 @@ class StudyHour(Base):
 class Player(Base):
     __tablename__ = "players"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
     level = Column(Integer, default=1)
     exp = Column(Integer, default=0)
     coins = Column(Integer, default=0)
@@ -317,6 +318,7 @@ class PlanSetupSession(Base):
 class StudyGoal(Base):
     __tablename__ = "study_goals"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
     title = Column(String, nullable=False)
     celestial_name = Column(String, nullable=True)  # Tên chiêm tinh: Polaris, Sirius, Vega...
     target_hours = Column(Float, default=100.0)
@@ -335,6 +337,7 @@ class StudyGoal(Base):
 class StudySessionLog(Base):
     __tablename__ = "study_session_logs"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
     goal_id = Column(Integer, ForeignKey("study_goals.id"), nullable=True)
     duration_minutes = Column(Integer, default=25)
     duration_hours = Column(Float, default=0.42)
@@ -401,6 +404,7 @@ class ConstellationAchievement(Base):
 class DailyMatrixTask(Base):
     __tablename__ = "daily_matrix_tasks"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     date = Column(Date, nullable=False, default=date.today, index=True)
@@ -419,6 +423,7 @@ class DailyMatrixTask(Base):
 class NotificationSetting(Base):
     __tablename__ = "notification_settings"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
     web_notifications_enabled = Column(Boolean, default=True)
     pomodoro_end_enabled = Column(Boolean, default=True)
     break_end_enabled = Column(Boolean, default=True)

@@ -13,12 +13,16 @@ from app.routers import (
     goals, roadmaps, courses, tasks, sprints, daily_logs, study_hours,
     gamification, vocabulary, ipa, exports, backlog, ai, ai_v2, ai_v3,
     knowledge, learning, daily_coach, schedule, focus_hub, notifications,
-    calendar_sync
+    calendar_sync, auth, race_track
 )
+import app.models
+import app.models_auth
+Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import app.models
+    import app.models_auth
     Base.metadata.create_all(bind=engine)
     from app.models import Player, Level
     from app.models_v2 import Base as BaseV2
@@ -38,6 +42,11 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE notification_settings ADD COLUMN app_public_url VARCHAR",
             "ALTER TABLE notification_settings ADD COLUMN last_morning_sent_date VARCHAR",
             "ALTER TABLE notification_settings ADD COLUMN last_evening_sent_date VARCHAR",
+            "ALTER TABLE players ADD COLUMN user_id INTEGER",
+            "ALTER TABLE study_goals ADD COLUMN user_id INTEGER",
+            "ALTER TABLE study_session_logs ADD COLUMN user_id INTEGER",
+            "ALTER TABLE daily_matrix_tasks ADD COLUMN user_id INTEGER",
+            "ALTER TABLE notification_settings ADD COLUMN user_id INTEGER",
         ]:
             try:
                 db.execute(text(stmt))
@@ -141,6 +150,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(race_track.router)
 app.include_router(focus_hub.router)
 app.include_router(notifications.router)
 app.include_router(calendar_sync.router)

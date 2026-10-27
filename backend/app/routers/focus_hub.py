@@ -44,6 +44,8 @@ from app.schemas import (
     MonthlyMatrixSummaryResponse,
     AIBuddyPromptResponse,
 )
+from app.models_auth import User
+from app.routers.auth import get_current_user_optional
 
 router = APIRouter(prefix="/api/focus", tags=["Pomodoro Focus & Goals"])
 
@@ -107,9 +109,12 @@ def _format_session_response(s: StudySessionLog) -> StudySessionLogResponse:
 @router.get("/goals", response_model=List[StudyGoalResponse])
 def get_goals(
     is_completed: Optional[bool] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
 ):
     query = db.query(StudyGoal)
+    if user:
+        query = query.filter((StudyGoal.user_id == user.id) | (StudyGoal.user_id == None))
     if is_completed is not None:
         query = query.filter(StudyGoal.is_completed == is_completed)
     goals = query.order_by(StudyGoal.is_completed.asc(), StudyGoal.updated_at.desc()).all()
@@ -117,7 +122,11 @@ def get_goals(
 
 
 @router.post("/goals", response_model=StudyGoalResponse, status_code=201)
-def create_goal(data: StudyGoalCreate, db: Session = Depends(get_db)):
+def create_goal(
+    data: StudyGoalCreate,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     is_done = data.current_hours >= data.target_hours if data.target_hours > 0 else False
     now = datetime.datetime.utcnow()
 
@@ -126,6 +135,7 @@ def create_goal(data: StudyGoalCreate, db: Session = Depends(get_db)):
     celestial = data.celestial_name or DEFAULT_CELESTIALS[existing_count % len(DEFAULT_CELESTIALS)]
 
     goal = StudyGoal(
+        user_id=user.id if user else None,
         title=data.title.strip(),
         celestial_name=celestial,
         target_hours=max(0.1, round(data.target_hours, 2)),
@@ -190,8 +200,11 @@ def get_sessions(
     date_to: Optional[datetime.date] = Query(None),
     limit: int = Query(100, le=500),
     db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
 ):
     query = db.query(StudySessionLog)
+    if user:
+        query = query.filter((StudySessionLog.user_id == user.id) | (StudySessionLog.user_id == None))
     if goal_id:
         query = query.filter(StudySessionLog.goal_id == goal_id)
     if date_from:
@@ -204,7 +217,11 @@ def get_sessions(
 
 
 @router.post("/sessions", response_model=StudySessionLogResponse, status_code=201)
-def create_session(data: StudySessionLogCreate, db: Session = Depends(get_db)):
+def create_session(
+    data: StudySessionLogCreate,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     if data.duration_minutes <= 0:
         raise HTTPException(status_code=400, detail="Thời lượng học phải lớn hơn 0 phút")
 
@@ -213,6 +230,7 @@ def create_session(data: StudySessionLogCreate, db: Session = Depends(get_db)):
     now = datetime.datetime.utcnow()
 
     session_log = StudySessionLog(
+        user_id=user.id if user else None,
         goal_id=data.goal_id,
         duration_minutes=data.duration_minutes,
         duration_hours=duration_hours,
@@ -940,11 +958,14 @@ def check_constellation_unlock(db: Session = Depends(get_db)):
 def get_matrix_tasks(
     task_date: Optional[datetime.date] = Query(None, alias="date"),
     db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
 ):
     target_date = task_date or datetime.date.today()
+    query = db.query(DailyMatrixTask).filter(DailyMatrixTask.date == target_date)
+    if user:
+        query = query.filter((DailyMatrixTask.user_id == user.id) | (DailyMatrixTask.user_id == None))
     tasks = (
-        db.query(DailyMatrixTask)
-        .filter(DailyMatrixTask.date == target_date)
+        query
         .order_by(DailyMatrixTask.quadrant.asc(), DailyMatrixTask.order_index.asc(), DailyMatrixTask.id.asc())
         .all()
     )
@@ -975,10 +996,15 @@ def get_matrix_tasks(
 
 
 @router.post("/matrix", response_model=DailyMatrixTaskResponse, status_code=201)
-def create_matrix_task(data: DailyMatrixTaskCreate, db: Session = Depends(get_db)):
+def create_matrix_task(
+    data: DailyMatrixTaskCreate,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     task_date = data.date or datetime.date.today()
     quadrant = max(1, min(4, data.quadrant))
     task = DailyMatrixTask(
+        user_id=user.id if user else None,
         title=data.title,
         description=data.description,
         date=task_date,
