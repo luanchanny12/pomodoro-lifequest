@@ -81,7 +81,8 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
     details = []
 
     # Check Morning
-    if force or _is_due(now_vn, morning_time, setting.last_morning_sent_date, today_str):
+    morning_due = _is_due(now_vn, morning_time, setting.last_morning_sent_date, today_str)
+    if force or morning_due:
         msg = (
             "🌅 <b>[Pomodoro Goal Focus] Chào Buổi Sáng!</b>\n\n"
             "✨ Ngày mới đã bắt đầu! Đã đến lúc xem lại:\n"
@@ -91,8 +92,10 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
         )
         try:
             send_telegram_msg(setting.telegram_bot_token.strip(), setting.telegram_chat_id.strip(), msg)
-            setting.last_morning_sent_date = today_str
-            db.commit()
+            # Chỉ đánh dấu đã gửi khi đúng cửa sổ lịch; bấm test (force) không làm mất tin trong ngày.
+            if morning_due:
+                setting.last_morning_sent_date = today_str
+                db.commit()
             sent_any = True
             details.append("Đã gửi thông báo buổi sáng")
         except Exception as e:
@@ -100,7 +103,8 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
             details.append(f"Lỗi gửi sáng: {str(e)}")
 
     # Check Evening
-    if force or _is_due(now_vn, evening_time, setting.last_evening_sent_date, today_str):
+    evening_due = _is_due(now_vn, evening_time, setting.last_evening_sent_date, today_str)
+    if force or evening_due:
         msg = (
             "🌙 <b>[Pomodoro Goal Focus] Chào Buổi Tối!</b>\n\n"
             "🎯 Bạn đã hoàn thành các mục tiêu hôm nay chưa?\n"
@@ -109,8 +113,9 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
         )
         try:
             send_telegram_msg(setting.telegram_bot_token.strip(), setting.telegram_chat_id.strip(), msg)
-            setting.last_evening_sent_date = today_str
-            db.commit()
+            if evening_due:
+                setting.last_evening_sent_date = today_str
+                db.commit()
             sent_any = True
             details.append("Đã gửi thông báo buổi tối")
         except Exception as e:
