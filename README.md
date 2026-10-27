@@ -1,5 +1,7 @@
 # 🍅 POMODORO GOAL - ỨNG DỤNG QUẢN LÝ GIỜ HỌC MỤC TIÊU (LOCAL)
 
+> ☁️ **Triển khai cloud 24/7 (Render + Vercel + Supabase + Telegram):** xem [DEPLOY.md](./DEPLOY.md)
+
 Ứng dụng Pomodoro Timer tối giản, thanh lịch lấy cảm hứng từ giao diện **pomodorotimer.online/vi**, kết hợp công cụ theo dõi tích lũy số giờ học để đạt mục tiêu (ví dụ: *1000 giờ học tiếng Anh*, *300 giờ lập trình*).
 
 ---
