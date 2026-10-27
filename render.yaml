@@ -1,0 +1,25 @@
+# Render Blueprint - deploy backend 24/7
+# Cách dùng: Render Dashboard -> New + -> Blueprint -> chọn repo này.
+# (Nếu tạo Web Service thủ công, chỉ cần đặt Root Directory = backend)
+services:
+  - type: web
+    name: pomodoro-backend-api
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      # Ghim Python 3.10 vì pandas/pydantic trong requirements chưa có wheel cho 3.13
+      - key: PYTHON_VERSION
+        value: 3.10.12
+      # Dán connection string PostgreSQL (Supabase / Neon / Render Postgres) vào khi tạo service.
+      # Bỏ trống = dùng SQLite (dữ liệu sẽ MẤT mỗi lần Render restart/deploy).
+      - key: DATABASE_URL
+        sync: false
+      # Tùy chọn: nếu dùng các tính năng AI
+      - key: GEMINI_API_KEY
+        sync: false

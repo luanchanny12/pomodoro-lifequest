@@ -1,0 +1,147 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 230 20% 4%;
+    --foreground: 210 40% 98%;
+    --card: 230 20% 6%;
+    --card-foreground: 210 40% 98%;
+    --popover: 230 20% 6%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 187 100% 50%;
+    --primary-foreground: 230 20% 4%;
+    --secondary: 248 100% 69%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 230 15% 12%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 162 100% 50%;
+    --accent-foreground: 230 20% 4%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 230 15% 15%;
+    --input: 230 15% 15%;
+    --ring: 187 100% 50%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-[#0E121A] text-foreground overflow-x-hidden;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    text-rendering: optimizeSpeed;
+  }
+  ::selection { background: rgba(0,229,255,0.2); color: #00E5FF; }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] shadow-lg;
+    contain: paint;
+  }
+  .glass-strong {
+    @apply bg-white/[0.06] backdrop-blur-2xl border border-white/[0.08] shadow-xl;
+    contain: paint;
+  }
+  .glass-card {
+    @apply glass rounded-2xl hover:border-white/[0.12] transition-all duration-300;
+  }
+  .glass-card-hover {
+    @apply glass-card hover:shadow-glow hover:translate-y-[-2px] cursor-pointer;
+  }
+  .glow-border {
+    @apply relative;
+  }
+  .glow-border::before {
+    content: '';
+    @apply absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-300;
+    background: linear-gradient(135deg, rgba(0,229,255,0.2), rgba(108,99,255,0.2));
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    padding: 1px;
+  }
+  .glow-border:hover::before {
+    @apply opacity-100;
+  }
+  .cyber-glow {
+    box-shadow: 0 0 15px rgba(0,229,255,0.1), 0 0 30px rgba(0,229,255,0.05);
+  }
+  .cyber-glow-strong {
+    box-shadow: 0 0 20px rgba(0,229,255,0.2), 0 0 40px rgba(0,229,255,0.1), 0 0 60px rgba(0,229,255,0.05);
+  }
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#00E5FF] via-[#6C63FF] to-[#00FFC8];
+  }
+  .text-gradient-primary {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#00E5FF] to-[#00FFC8];
+  }
+  .scan-line {
+    @apply fixed inset-0 pointer-events-none z-[60];
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,229,255,0.012) 2px,
+      rgba(0,229,255,0.012) 4px
+    );
+    /* Promote to its own GPU layer */
+    will-change: transform;
+    contain: strict;
+  }
+  .digital-grid {
+    @apply fixed inset-0 pointer-events-none z-[1] opacity-[0.025];
+    background-image:
+      linear-gradient(rgba(0,229,255,0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.08) 1px, transparent 1px);
+    background-size: 60px 60px;
+    will-change: transform;
+    contain: strict;
+  }
+  .cyber-input {
+    @apply bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm
+           text-foreground placeholder:text-muted-foreground
+           focus:outline-none focus:border-[#00E5FF]/50 focus:ring-1 focus:ring-[#00E5FF]/20
+           transition-all duration-300;
+  }
+  .cyber-button {
+    @apply relative overflow-hidden rounded-xl px-5 py-2.5 text-sm font-semibold
+           bg-gradient-to-r from-[#00E5FF] to-[#00FFC8] text-[#05070D]
+           hover:shadow-glow transition-all duration-300
+           active:scale-[0.97];
+  }
+  .cyber-button-secondary {
+    @apply cyber-button bg-gradient-to-r from-[#6C63FF] to-[#00E5FF];
+  }
+  .cyber-button-outline {
+    @apply relative overflow-hidden rounded-xl px-5 py-2.5 text-sm font-semibold
+           border border-white/[0.1] text-foreground
+           hover:border-[#00E5FF]/30 hover:bg-white/[0.03]
+           transition-all duration-300;
+  }
+  .hologram {
+    @apply relative;
+    animation: hologram-flicker 3s ease-in-out infinite;
+  }
+  .hologram::after {
+    content: '';
+    @apply absolute inset-0 rounded-[inherit];
+    background: linear-gradient(135deg, rgba(0,229,255,0.05), transparent);
+    pointer-events: none;
+  }
+}
+
+@layer utilities {
+  .scrollbar-cyber::-webkit-scrollbar { width: 4px; height: 4px; }
+  .scrollbar-cyber::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-cyber::-webkit-scrollbar-thumb {
+    background: rgba(0,229,255,0.2);
+    border-radius: 2px;
+  }
+  .scrollbar-cyber::-webkit-scrollbar-thumb:hover { background: rgba(0,229,255,0.4); }
+}

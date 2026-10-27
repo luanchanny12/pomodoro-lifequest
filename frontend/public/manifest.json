@@ -1,0 +1,13 @@
+{
+  "name": "Pomodoro Goal Focus Hub",
+  "short_name": "FocusHub",
+  "description": "Pomodoro Timer, Thiên Hà Tri Thức & Ma Trận 4 Ô Quản Lý Thời Gian",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#12151D",
+  "theme_color": "#BA4949",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "64x64 32x32 24x24 16x16", "type": "image/x-icon" },
+    { "src": "/vite.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

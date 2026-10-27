@@ -1,0 +1,36 @@
+name: Keep Render Backend Alive 24/7
+
+on:
+  schedule:
+    # GitHub Actions không đảm bảo đúng giờ, thường trễ 5-15 phút.
+    # Nên dùng thêm cron-job.org (5 phút/lần) để chắc chắn server không ngủ.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
+jobs:
+  ping-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Render Backend Trigger Endpoint
+        env:
+          # Đặt secret RENDER_BACKEND_URL = https://pomodoro-backend-api.onrender.com
+          BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL || 'https://pomodoro-backend-api.onrender.com' }}
+        run: |
+          URL="${BACKEND_URL%/}"
+          echo "Pinging: $URL/api/notifications/telegram-trigger-check"
+          # Render Free cần ~50s để thức dậy sau khi ngủ, nên timeout phải lớn.
+          HTTP_CODE=$(curl -sS -o /tmp/ping_body.txt -w '%{http_code}' \
+            --max-time 120 --retry 3 --retry-delay 10 --retry-all-errors \
+            -X POST "$URL/api/notifications/telegram-trigger-check?force=false" || true)
+          echo "HTTP status: $HTTP_CODE"
+          cat /tmp/ping_body.txt || true
+          # 502/503 trong lúc cold start không làm fail workflow để tránh spam email.
+          case "$HTTP_CODE" in
+            2*) echo "Backend is awake ✅" ;;
+            *) echo "WARN: backend chưa phản hồi đúng (cold start?) - lần ping sau sẽ thử lại." ;;
+          esac
