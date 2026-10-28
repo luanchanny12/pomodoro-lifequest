@@ -1,16 +1,14 @@
 import axios from 'axios'
 
-// Tự động phát hiện Backend URL:
-// 1. Ưu tiên biến môi trường VITE_API_URL
-// 2. Nếu đang chạy trên Vercel (*.vercel.app), tự động kết nối trực tiếp đến Render Backend
-// 3. Nếu chạy cục bộ (localhost), dùng '/api' để proxy qua Vite dev server
+// Backend URL:
+// 1. Ưu tiên biến môi trường VITE_API_URL (set trên Vercel: https://<render-url>/api)
+// 2. Nếu không có, dùng '/api' (relative) — hoạt động khi deploy trên Vercel với vercel.json proxy
 const getBaseUrl = (): string => {
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL
+  const envUrl = import.meta.env.VITE_API_URL
+  if (envUrl) {
+    return envUrl
   }
-  if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
-    return 'https://pomodoro-lifequest.onrender.com/api'
-  }
+  // Fallback: dùng relative '/api' (vercel.json sẽ proxy đến backend)
   return '/api'
 }
 

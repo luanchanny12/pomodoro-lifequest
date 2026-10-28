@@ -150,48 +150,57 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     valid_avatars = {"rocket", "cyber_car", "quantum_saucer", "lightning", "lightcycle"}
     chosen_avatar = data.racer_avatar if data.racer_avatar in valid_avatars else "rocket"
 
-    user = User(
-        username=clean_username,
-        display_name=clean_display,
-        password_hash=pwd_hash,
-        salt=salt,
-        racer_avatar=chosen_avatar,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    try:
+        user = User(
+            username=clean_username,
+            display_name=clean_display,
+            password_hash=pwd_hash,
+            salt=salt,
+            racer_avatar=chosen_avatar,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
-    # Khởi tạo Player profile riêng cho user
-    player = Player(user_id=user.id, level=1, exp=0, coins=0, streak=0)
-    db.add(player)
+        # Khởi tạo Player profile riêng cho user
+        player = Player(user_id=user.id, level=1, exp=0, coins=0, streak=0)
+        db.add(player)
 
-    # Khởi tạo StudyGoal mặc định cho user
-    default_goal = StudyGoal(
-        user_id=user.id,
-        title="1000 Giờ Học Tiếng Anh",
-        celestial_name="Sirius",
-        target_hours=1000.0,
-        current_hours=0.0,
-        color="#E24A4A",
-        category="Tiếng Anh",
-        notes="Mục tiêu chinh phục 1000 giờ học tập & tập trung Pomodoro.",
-    )
-    db.add(default_goal)
+        # Khởi tạo StudyGoal mặc định cho user
+        default_goal = StudyGoal(
+            user_id=user.id,
+            title="1000 Giờ Học Tiếng Anh",
+            celestial_name="Sirius",
+            target_hours=1000.0,
+            current_hours=0.0,
+            color="#E24A4A",
+            category="Tiếng Anh",
+            notes="Mục tiêu chinh phục 1000 giờ học tập & tập trung Pomodoro.",
+        )
+        db.add(default_goal)
 
-    # Khởi tạo cài đặt thông báo riêng cho user
-    setting = NotificationSetting(
-        user_id=user.id,
-        web_notifications_enabled=True,
-        pomodoro_end_enabled=True,
-        break_end_enabled=True,
-        inactivity_reminder_minutes=60,
-        morning_reminder_time="08:00",
-        evening_reminder_time="21:30",
-        telegram_enabled=False,
-    )
-    db.add(setting)
+        # Khởi tạo cài đặt thông báo riêng cho user
+        setting = NotificationSetting(
+            user_id=user.id,
+            web_notifications_enabled=True,
+            pomodoro_end_enabled=True,
+            break_end_enabled=True,
+            inactivity_reminder_minutes=60,
+            morning_reminder_time="08:00",
+            evening_reminder_time="21:30",
+            telegram_enabled=False,
+        )
+        db.add(setting)
 
-    db.commit()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        import logging
+        logging.error(f"Register failed for user {clean_username}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Không thể tạo tài khoản. Vui lòng thử lại sau hoặc liên hệ quản trị viên."
+        )
 
     token = create_access_token(user.id, user.username)
     return AuthResponse(
