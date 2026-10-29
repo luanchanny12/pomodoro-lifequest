@@ -112,9 +112,10 @@ def get_goals(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    query = db.query(StudyGoal)
     if user:
-        query = query.filter((StudyGoal.user_id == user.id) | (StudyGoal.user_id == None))
+        query = db.query(StudyGoal).filter(StudyGoal.user_id == user.id)
+    else:
+        query = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None))
     if is_completed is not None:
         query = query.filter(StudyGoal.is_completed == is_completed)
     goals = query.order_by(StudyGoal.is_completed.asc(), StudyGoal.updated_at.desc()).all()
@@ -202,9 +203,10 @@ def get_sessions(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    query = db.query(StudySessionLog)
     if user:
-        query = query.filter((StudySessionLog.user_id == user.id) | (StudySessionLog.user_id == None))
+        query = db.query(StudySessionLog).filter(StudySessionLog.user_id == user.id)
+    else:
+        query = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None))
     if goal_id:
         query = query.filter(StudySessionLog.goal_id == goal_id)
     if date_from:
@@ -348,20 +350,27 @@ def delete_session(session_id: int, db: Session = Depends(get_db)):
 # -------------------------------------------------------------
 
 @router.get("/stats", response_model=FocusStatsResponse)
-def get_focus_stats(db: Session = Depends(get_db)):
+def get_focus_stats(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     today = datetime.date.today()
     week_start = today - datetime.timedelta(days=today.weekday())
 
-    all_sessions = db.query(StudySessionLog).all()
+    if user:
+        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == user.id).all()
+        completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id == user.id, StudyGoal.is_completed == True).count()
+        active_goals = db.query(StudyGoal).filter(StudyGoal.user_id == user.id, StudyGoal.is_completed == False).count()
+    else:
+        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).all()
+        completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None), StudyGoal.is_completed == True).count()
+        active_goals = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None), StudyGoal.is_completed == False).count()
 
     total_hours = round(sum(s.duration_hours for s in all_sessions), 2)
     today_hours = round(sum(s.duration_hours for s in all_sessions if s.session_date == today), 2)
     week_hours = round(sum(s.duration_hours for s in all_sessions if s.session_date >= week_start), 2)
     total_sessions = len(all_sessions)
     pomodoro_sessions = sum(1 for s in all_sessions if s.source == "pomodoro")
-
-    completed_goals = db.query(StudyGoal).filter(StudyGoal.is_completed == True).count()
-    active_goals = db.query(StudyGoal).filter(StudyGoal.is_completed == False).count()
 
     # Last 7 days breakdown
     last_7_days: List[DailyFocusStat] = []
@@ -394,12 +403,16 @@ def get_focus_stats(db: Session = Depends(get_db)):
 # REWARDS & PEARLS ENDPOINTS (DOPAMINE BAZAAR)
 # -------------------------------------------------------------
 
-def _calculate_pearls(db: Session) -> PearlsBalanceResponse:
-    all_sessions = db.query(StudySessionLog).all()
+def _calculate_pearls(db: Session, user_id: Optional[int] = None) -> PearlsBalanceResponse:
+    if user_id:
+        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == user_id).all()
+        redemptions = db.query(RewardRedemption).all()
+    else:
+        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).all()
+        redemptions = db.query(RewardRedemption).all()
     total_hours = sum(s.duration_hours for s in all_sessions)
     total_earned = round(total_hours, 2)
 
-    redemptions = db.query(RewardRedemption).all()
     total_spent = round(sum(r.pearls_spent for r in redemptions), 2)
     available = max(0.0, round(total_earned - total_spent, 2))
 
@@ -459,10 +472,13 @@ def _seed_default_rewards(db: Session):
 
 
 @router.get("/rewards")
-def get_rewards(db: Session = Depends(get_db)):
+def get_rewards(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     _seed_default_rewards(db)
     items = db.query(RewardItem).order_by(RewardItem.is_custom.asc(), RewardItem.pearl_cost.asc()).all()
-    balance = _calculate_pearls(db)
+    balance = _calculate_pearls(db, user_id=user.id if user else None)
     return {
         "items": [RewardItemResponse.model_validate(it) for it in items],
         "balance": balance,
@@ -1278,23 +1294,48 @@ def get_monthly_matrix_summary(
 
 
 @router.get("/ai-buddy/prompt", response_model=AIBuddyPromptResponse)
-def get_ai_buddy_prompt(db: Session = Depends(get_db)):
+def get_ai_buddy_prompt(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     today = datetime.date.today()
     current_hour = datetime.datetime.now().hour
 
-    goals = db.query(StudyGoal).filter(StudyGoal.is_completed == False).all()
-    today_tasks = db.query(DailyMatrixTask).filter(DailyMatrixTask.date == today).all()
+    if not user:
+        return AIBuddyPromptResponse(
+            message="Chào bạn! Hãy đăng nhập để lưu trữ mục tiêu cá nhân, ma trận 4 ô và cùng đua Top với bạn bè nhé! 🚀",
+            action_type="open_login",
+            action_label="Đăng nhập ngay 🔑",
+            action_target="auth",
+            mood="friendly",
+        )
+
+    name = user.display_name or f"@{user.username}"
+    goals = db.query(StudyGoal).filter(StudyGoal.user_id == user.id, StudyGoal.is_completed == False).all()
+    today_tasks = db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id == user.id, DailyMatrixTask.date == today).all()
+    today_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == user.id, StudySessionLog.session_date == today).all()
+    today_hours = round(sum(s.duration_hours for s in today_sessions), 1)
 
     q1_pending = [t for t in today_tasks if t.quadrant == 1 and not t.is_completed]
     q2_pending = [t for t in today_tasks if t.quadrant == 2 and not t.is_completed]
 
+    # Rule 0: User has no goals yet
+    if not goals:
+        return AIBuddyPromptResponse(
+            message=f"Chào {name}! Bạn chưa có mục tiêu học tập nào trong vũ trụ. Hãy tạo mục tiêu đầu tiên để bắt đầu hành trình nào! 🎯",
+            action_type="open_goal_modal",
+            action_label="Tạo mục tiêu ngay ✨",
+            action_target="goals",
+            mood="friendly",
+        )
+
     # Rule 1: Late evening (after 20:00 / 8 PM) -> Reminder to plan for tomorrow
     if current_hour >= 20 or current_hour < 5:
         tomorrow = today + datetime.timedelta(days=1)
-        tomorrow_tasks = db.query(DailyMatrixTask).filter(DailyMatrixTask.date == tomorrow).count()
+        tomorrow_tasks = db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id == user.id, DailyMatrixTask.date == tomorrow).count()
         if tomorrow_tasks == 0:
             return AIBuddyPromptResponse(
-                message="Tối rồi bạn ơi! 🌙 Hãy dành 3 phút lên trước Ma Trận 4 Ô cho ngày mai để sáng dậy có lộ trình rõ ràng, làm việc cực mượt nha!",
+                message=f"Tối rồi {name} ơi! 🌙 Hãy dành 3 phút lên trước Ma Trận 4 Ô cho ngày mai để sáng dậy có lộ trình rõ ràng, làm việc cực mượt nha!",
                 action_type="plan_tomorrow",
                 action_label="Lên lịch ngày mai 🌙",
                 action_target="matrix",
@@ -1305,7 +1346,7 @@ def get_ai_buddy_prompt(db: Session = Depends(get_db)):
     if q1_pending:
         task_name = q1_pending[0].title
         return AIBuddyPromptResponse(
-            message=f"Bạn ơi, trong Ô 1 đang có việc khẩn cấp: '{task_name}'. Xử lý dứt điểm trước để tâm trí thảnh thơi nhé! 🚀",
+            message=f"Chào {name}, trong Ô 1 bạn đang có việc khẩn cấp: '{task_name}'. Xử lý dứt điểm trước để tâm trí thảnh thơi nhé! 🚀",
             action_type="open_matrix",
             action_label="Xem việc Ô 1 ngay",
             action_target="matrix",
@@ -1315,30 +1356,41 @@ def get_ai_buddy_prompt(db: Session = Depends(get_db)):
     # Rule 3: There are important Q2 tasks related to big goals
     if q2_pending:
         task = q2_pending[0]
-        goal = db.query(StudyGoal).filter(StudyGoal.id == task.goal_id).first() if task.goal_id else None
+        goal = db.query(StudyGoal).filter(StudyGoal.id == task.goal_id, StudyGoal.user_id == user.id).first() if task.goal_id else None
         if goal:
             return AIBuddyPromptResponse(
-                message=f"Chào bạn! Hôm nay có nhiệm vụ '{task.title}' thuộc mục tiêu '{goal.title}' trong Ô 2 kìa. Khởi động 25 phút Pomodoro nhẹ nhàng nhé? ✨",
+                message=f"Chào {name}! Hôm nay có nhiệm vụ '{task.title}' thuộc mục tiêu '{goal.title}' trong Ô 2 kìa. Khởi động 25 phút Pomodoro nhẹ nhàng nhé? ✨",
                 action_type="start_pomodoro",
-                action_label=f"Học ngay 25p Pomodoro",
+                action_label="Học ngay 25p Pomodoro",
                 action_target="pomodoro",
                 suggested_goal_id=goal.id,
                 mood="friendly",
             )
         else:
             return AIBuddyPromptResponse(
-                message=f"Trong Ô 2 hôm nay bạn có việc quan trọng: '{task.title}'. Tập trung 1 phiên Pomodoro giải quyết nó nào! 🎯",
+                message=f"Chào {name}! Trong Ô 2 hôm nay bạn có việc quan trọng: '{task.title}'. Tập trung 1 phiên Pomodoro giải quyết nó nào! 🎯",
                 action_type="open_matrix",
                 action_label="Mở Ma Trận 4 Ô",
                 action_target="matrix",
                 mood="friendly",
             )
 
-    # Rule 4: Suggest focusing on a big goal
+    # Rule 4: If completed sessions today
+    if today_hours > 0:
+        return AIBuddyPromptResponse(
+            message=f"Phong độ tuyệt vời {name} ơi! 🔥 Hôm nay bạn đã cày được {today_hours}h Pomodoro. Tiếp tục giữ vững đà tập trung nhé!",
+            action_type="start_pomodoro",
+            action_label="Làm thêm 1 hiệp Pomodoro 🍅",
+            action_target="pomodoro",
+            suggested_goal_id=goals[0].id if goals else None,
+            mood="friendly",
+        )
+
+    # Rule 5: Suggest focusing on a big goal
     if goals:
         least_goal = sorted(goals, key=lambda g: g.current_hours)[0]
         return AIBuddyPromptResponse(
-            message=f"Bạn ơi, mục tiêu lớn '{least_goal.title}' đang đợi bạn bứt phá nè! Cùng làm một hiệp Pomodoro 25 phút để tích lũy ngọc nhé! 🎧💎",
+            message=f"Chào {name}! Mục tiêu lớn '{least_goal.title}' đang đợi bạn bứt phá nè! Cùng làm một hiệp Pomodoro 25 phút để tích lũy ngọc nhé! 🎧💎",
             action_type="start_pomodoro",
             action_label=f"Bắt đầu: {least_goal.title[:15]}...",
             action_target="pomodoro",
@@ -1346,9 +1398,9 @@ def get_ai_buddy_prompt(db: Session = Depends(get_db)):
             mood="friendly",
         )
 
-    # Rule 5: Generic friendly encouragement
+    # Rule 6: Generic friendly encouragement
     return AIBuddyPromptResponse(
-        message="Hôm nay bạn thấy thế nào? Hãy đặt ra 1 mục tiêu lớn hoặc lên lịch 4 ô để biến ngày hôm nay thành một ngày đầy thành tựu nhé! 🌟",
+        message=f"Chào {name}! Sẵn sàng cho một phiên Pomodoro bứt phá mục tiêu hôm nay chưa nào? 🌟",
         action_type="open_matrix",
         action_label="Mở Ma Trận 4 Ô",
         action_target="matrix",

@@ -108,6 +108,74 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
     avg_rating_raw = db.query(func.avg(UserFeedback.rating)).scalar()
     feedback_avg_rating = round(float(avg_rating_raw), 1) if avg_rating_raw is not None else 5.0
 
+    # --- Timeframe Analytics: Day, Week, Month ---
+    week_start = today - datetime.timedelta(days=6)
+    month_start = today - datetime.timedelta(days=29)
+
+    today_dt_start = datetime.datetime.combine(today, datetime.time.min)
+    week_dt_start = datetime.datetime.combine(week_start, datetime.time.min)
+    month_dt_start = datetime.datetime.combine(month_start, datetime.time.min)
+
+    # 1. Day (Hôm nay)
+    today_new_users = db.query(User).filter(User.created_at >= today_dt_start).count()
+    today_feedbacks = db.query(UserFeedback).filter(UserFeedback.created_at >= today_dt_start).count()
+    today_unique_guests = db.query(func.count(func.distinct(VisitorLog.visitor_id))).filter(
+        VisitorLog.visit_date == today, VisitorLog.is_member == False
+    ).scalar() or 0
+    today_unique_members = db.query(func.count(func.distinct(VisitorLog.user_id))).filter(
+        VisitorLog.visit_date == today, VisitorLog.is_member == True
+    ).scalar() or 0
+
+    # 2. Week (7 ngày qua)
+    week_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= week_start).count()
+    week_guest_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= week_start, VisitorLog.is_member == False).count()
+    week_member_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= week_start, VisitorLog.is_member == True).count()
+    week_unique_guests = db.query(func.count(func.distinct(VisitorLog.visitor_id))).filter(
+        VisitorLog.visit_date >= week_start, VisitorLog.is_member == False
+    ).scalar() or 0
+    week_unique_members = db.query(func.count(func.distinct(VisitorLog.user_id))).filter(
+        VisitorLog.visit_date >= week_start, VisitorLog.is_member == True
+    ).scalar() or 0
+    week_study_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).filter(
+        StudySessionLog.session_date >= week_start
+    ).scalar() or 0.0
+    week_sessions = db.query(StudySessionLog).filter(StudySessionLog.session_date >= week_start).count()
+    week_new_users = db.query(User).filter(User.created_at >= week_dt_start).count()
+    week_feedbacks = db.query(UserFeedback).filter(UserFeedback.created_at >= week_dt_start).count()
+
+    week_session_users = db.query(StudySessionLog.user_id).filter(
+        StudySessionLog.session_date >= week_start, StudySessionLog.user_id.isnot(None)
+    ).distinct().all()
+    week_matrix_users = db.query(DailyMatrixTask.user_id).filter(
+        DailyMatrixTask.date >= week_start, DailyMatrixTask.user_id.isnot(None)
+    ).distinct().all()
+    active_week_set = {u[0] for u in week_session_users} | {u[0] for u in week_matrix_users}
+
+    # 3. Month (30 ngày qua)
+    month_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= month_start).count()
+    month_guest_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= month_start, VisitorLog.is_member == False).count()
+    month_member_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= month_start, VisitorLog.is_member == True).count()
+    month_unique_guests = db.query(func.count(func.distinct(VisitorLog.visitor_id))).filter(
+        VisitorLog.visit_date >= month_start, VisitorLog.is_member == False
+    ).scalar() or 0
+    month_unique_members = db.query(func.count(func.distinct(VisitorLog.user_id))).filter(
+        VisitorLog.visit_date >= month_start, VisitorLog.is_member == True
+    ).scalar() or 0
+    month_study_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).filter(
+        StudySessionLog.session_date >= month_start
+    ).scalar() or 0.0
+    month_sessions = db.query(StudySessionLog).filter(StudySessionLog.session_date >= month_start).count()
+    month_new_users = db.query(User).filter(User.created_at >= month_dt_start).count()
+    month_feedbacks = db.query(UserFeedback).filter(UserFeedback.created_at >= month_dt_start).count()
+
+    month_session_users = db.query(StudySessionLog.user_id).filter(
+        StudySessionLog.session_date >= month_start, StudySessionLog.user_id.isnot(None)
+    ).distinct().all()
+    month_matrix_users = db.query(DailyMatrixTask.user_id).filter(
+        DailyMatrixTask.date >= month_start, DailyMatrixTask.user_id.isnot(None)
+    ).distinct().all()
+    active_month_set = {u[0] for u in month_session_users} | {u[0] for u in month_matrix_users}
+
     # 7-day Traffic Trend
     traffic_trend_7days = []
     for i in range(6, -1, -1):
@@ -121,6 +189,79 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
             "member": d_members,
             "total": d_guests + d_members,
         })
+
+    # 30-day Traffic Trend
+    traffic_trend_30days = []
+    for i in range(29, -1, -1):
+        d = today - datetime.timedelta(days=i)
+        d_str = d.strftime("%d/%m")
+        d_guests = db.query(VisitorLog).filter(VisitorLog.visit_date == d, VisitorLog.is_member == False).count()
+        d_members = db.query(VisitorLog).filter(VisitorLog.visit_date == d, VisitorLog.is_member == True).count()
+        traffic_trend_30days.append({
+            "date": d_str,
+            "guest": d_guests,
+            "member": d_members,
+            "total": d_guests + d_members,
+        })
+
+    timeframes = {
+        "day": {
+            "label": "Hôm nay",
+            "visits": today_visits,
+            "guest_visits": today_guest_visits,
+            "member_visits": today_member_visits,
+            "unique_guests": today_unique_guests,
+            "unique_members": today_unique_members,
+            "study_hours": round(float(today_study_hours), 2),
+            "study_sessions": today_sessions,
+            "new_users": today_new_users,
+            "active_users": len(active_today_set),
+            "feedbacks": today_feedbacks,
+        },
+        "week": {
+            "label": "7 ngày (Tuần)",
+            "visits": week_visits,
+            "guest_visits": week_guest_visits,
+            "member_visits": week_member_visits,
+            "unique_guests": week_unique_guests,
+            "unique_members": week_unique_members,
+            "study_hours": round(float(week_study_hours), 2),
+            "study_sessions": week_sessions,
+            "new_users": week_new_users,
+            "active_users": len(active_week_set),
+            "feedbacks": week_feedbacks,
+            "trend": traffic_trend_7days,
+        },
+        "month": {
+            "label": "30 ngày (Tháng)",
+            "visits": month_visits,
+            "guest_visits": month_guest_visits,
+            "member_visits": month_member_visits,
+            "unique_guests": month_unique_guests,
+            "unique_members": month_unique_members,
+            "study_hours": round(float(month_study_hours), 2),
+            "study_sessions": month_sessions,
+            "new_users": month_new_users,
+            "active_users": len(active_month_set),
+            "feedbacks": month_feedbacks,
+            "trend": traffic_trend_30days,
+        },
+        "all": {
+            "label": "Toàn thời gian",
+            "visits": total_visits,
+            "guest_visits": guest_visits,
+            "member_visits": member_visits,
+            "unique_guests": unique_guests,
+            "unique_members": unique_members,
+            "study_hours": round(float(total_study_hours), 2),
+            "study_sessions": total_sessions,
+            "total_users": total_users,
+            "active_users": active_users_count,
+            "feedbacks": total_feedbacks,
+            "total_goals": total_goals,
+            "completed_goals": completed_goals,
+        },
+    }
 
     return {
         "total_users": total_users,
@@ -148,6 +289,8 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
         "new_feedbacks": new_feedbacks,
         "feedback_avg_rating": feedback_avg_rating,
         "traffic_trend_7days": traffic_trend_7days,
+        "traffic_trend_30days": traffic_trend_30days,
+        "timeframes": timeframes,
     }
 
 

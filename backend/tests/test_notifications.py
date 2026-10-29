@@ -48,3 +48,12 @@ def test_test_telegram_validation():
         "chat_id": "",
     })
     assert res.status_code == 400
+
+
+def test_send_windows_notification_event():
+    res = client.post("/api/notifications/send-windows", json={
+        "title": "Test Title",
+        "message": "Test Body",
+    })
+    assert res.status_code == 200
+    assert "success" in res.json()

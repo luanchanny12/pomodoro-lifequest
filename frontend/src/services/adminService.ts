@@ -7,6 +7,24 @@ export interface TrafficTrendDay {
   total: number
 }
 
+export interface TimeframeStats {
+  label: string
+  visits: number
+  guest_visits: number
+  member_visits: number
+  unique_guests?: number
+  unique_members?: number
+  study_hours: number
+  study_sessions: number
+  new_users?: number
+  total_users?: number
+  active_users: number
+  feedbacks: number
+  trend?: TrafficTrendDay[]
+  total_goals?: number
+  completed_goals?: number
+}
+
 export interface AdminOverview {
   total_users: number
   active_users_count: number
@@ -42,6 +60,13 @@ export interface AdminOverview {
   new_feedbacks: number
   feedback_avg_rating: number
   traffic_trend_7days: TrafficTrendDay[]
+  traffic_trend_30days?: TrafficTrendDay[]
+  timeframes?: {
+    day: TimeframeStats
+    week: TimeframeStats
+    month: TimeframeStats
+    all: TimeframeStats
+  }
 }
 
 export interface AdminFeedbackItem {

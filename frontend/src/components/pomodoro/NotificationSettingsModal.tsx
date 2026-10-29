@@ -432,6 +432,28 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
 
               {/* Bot Credentials Form */}
               <div className="space-y-3 p-4 rounded-2xl bg-black/40 border border-white/10">
+                <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-amber-300">
+                    <Sparkles className="w-4 h-4 flex-shrink-0" />
+                    <span>BƯỚC BẮT BUỘC ĐỂ NHẬN ĐƯỢC TIN NHẮN:</span>
+                  </div>
+                  <p className="leading-relaxed text-[11px] text-amber-100/90">
+                    Telegram có chính sách bảo mật: Bot <b>không thể tự ý gửi tin</b> nếu bạn chưa bấm <b>START</b>.
+                    Hãy bấm nút bên dưới để mở bot trên Telegram và nhấn <b>Bắt Đầu (START)</b> trước khi test nhé:
+                  </p>
+                  <div className="pt-1">
+                    <a
+                      href="https://t.me/luan_podomoro_focus_bot"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs rounded-xl transition shadow active:scale-95"
+                    >
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>Mở Bot @luan_podomoro_focus_bot & Bấm START ↗</span>
+                    </a>
+                  </div>
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-white/80">
                     Telegram Bot Token:

@@ -205,19 +205,6 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
         player = Player(user_id=user.id, level=1, exp=0, coins=0, streak=0)
         db.add(player)
 
-        # Khởi tạo StudyGoal mặc định cho user
-        default_goal = StudyGoal(
-            user_id=user.id,
-            title="1000 Giờ Học Tiếng Anh",
-            celestial_name="Sirius",
-            target_hours=1000.0,
-            current_hours=0.0,
-            color="#E24A4A",
-            category="Tiếng Anh",
-            notes="Mục tiêu chinh phục 1000 giờ học tập & tập trung Pomodoro.",
-        )
-        db.add(default_goal)
-
         # Khởi tạo cài đặt thông báo riêng cho user
         setting = NotificationSetting(
             user_id=user.id,

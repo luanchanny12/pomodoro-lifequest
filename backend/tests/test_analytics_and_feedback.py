@@ -152,4 +152,38 @@ def test_admin_overview_includes_traffic(admin_token):
     assert "desktop_visits" in data
     assert "traffic_trend_7days" in data
     assert len(data["traffic_trend_7days"]) == 7
+    assert "traffic_trend_30days" in data
+    assert len(data["traffic_trend_30days"]) == 30
+    assert "timeframes" in data
+    assert "day" in data["timeframes"]
+    assert "week" in data["timeframes"]
+    assert "month" in data["timeframes"]
+    assert "all" in data["timeframes"]
     assert "total_feedbacks" in data
+
+
+def test_feedback_and_analytics_aliases_without_api_prefix(admin_token):
+    # Test POST /feedback (without /api)
+    res_fb = client.post("/feedback", json={
+        "rating": 5,
+        "category": "praise",
+        "content": "Tuyệt vời, alias /feedback hoạt động hoàn hảo!",
+        "sender_name": "Alias Tester",
+    })
+    assert res_fb.status_code == 200
+    assert res_fb.json()["status"] == "ok"
+
+    # Test POST /analytics/track-visit (without /api)
+    res_track = client.post("/analytics/track-visit", json={
+        "visitor_id": "test_vis_alias_999",
+        "is_member": False,
+        "device_type": "mobile",
+        "path": "/alias-test",
+    })
+    assert res_track.status_code == 200
+    assert res_track.json()["status"] == "ok"
+
+    # Test GET /admin/feedbacks (without /api)
+    res_list = client.get("/admin/feedbacks", headers={"Authorization": f"Bearer {admin_token}"})
+    assert res_list.status_code == 200
+    assert "items" in res_list.json()

@@ -266,7 +266,34 @@ def test_telegram_notification(data: TelegramTestRequest):
                 raise HTTPException(status_code=400, detail="Lỗi phản hồi từ Telegram: " + str(res_data))
             return {"message": "Đã gửi tin nhắn đến Telegram thành công!", "ok": True}
     except urllib.error.HTTPError as e:
-        err_msg = e.read().decode("utf-8")
-        raise HTTPException(status_code=400, detail=f"Telegram API Error ({e.code}): {err_msg}")
+        err_raw = e.read().decode("utf-8", errors="ignore")
+        if "chat not found" in err_raw.lower():
+            bot_username = "bot của bạn"
+            try:
+                me_req = urllib.request.Request(f"https://api.telegram.org/bot{token}/getMe")
+                with urllib.request.urlopen(me_req, timeout=5) as me_res:
+                    me_data = json.loads(me_res.read().decode("utf-8"))
+                    if me_data.get("ok"):
+                        b_user = me_data.get("result", {}).get("username")
+                        if b_user:
+                            bot_username = f"@{b_user} (https://t.me/{b_user})"
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"⚠️ Bot chưa thể gửi tin vì bạn chưa bấm START trong Telegram! "
+                    f"Theo bảo mật của Telegram: Người dùng phải là người bắt đầu trò chuyện trước. "
+                    f"👉 Hãy mở bot {bot_username}, bấm nút 'START' (Bắt đầu) hoặc gửi '/start'. "
+                    f"Sau đó quay lại đây bấm 'Bắn Thử Tin Nhắn' là nhận được ngay!"
+                ),
+            )
+        elif "unauthorized" in err_raw.lower():
+            raise HTTPException(
+                status_code=400,
+                detail="⚠️ Bot Token không hợp lệ. Vui lòng kiểm tra lại mã Token được cấp bởi @BotFather.",
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Telegram API Error ({e.code}): {err_raw}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Không thể kết nối Telegram: {str(e)}")

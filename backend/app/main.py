@@ -105,20 +105,6 @@ async def lifespan(app: FastAPI):
         player = db.query(Player).first()
         if player:
             get_or_create_avatar(db, player.id)
-        # Seed default goal if none exists
-        from app.models import StudyGoal
-        if not db.query(StudyGoal).first():
-            db.add(
-                StudyGoal(
-                    title="1000 Giờ Học Tiếng Anh",
-                    target_hours=1000.0,
-                    current_hours=0.0,
-                    color="#E24A4A",
-                    category="Tiếng Anh",
-                    notes="Mục tiêu chinh phục 1000 giờ tiếng Anh. Ghi nhận cả học Pomodoro và học offline.",
-                )
-            )
-            db.commit()
 
         # Clean up old seed data so new users start fresh.
         # CHỈ chạy khi bật rõ ràng RESET_SEED_DATA_ON_START=true, tránh xoá dữ liệu

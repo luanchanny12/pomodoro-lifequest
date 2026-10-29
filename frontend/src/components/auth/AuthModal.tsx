@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { authService, UserProfile } from '@/services/authService'
+import { RacerVehicle3DCanvas } from './RacerVehicle3DCanvas'
 
 interface AuthModalProps {
   isOpen: boolean
@@ -130,7 +131,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-[#121622] border border-cyan-500/30 rounded-3xl shadow-2xl overflow-hidden text-white flex flex-col">
+      <div
+        className={`relative w-full ${
+          mode === 'register' ? 'max-w-lg sm:max-w-xl' : 'max-w-md'
+        } max-h-[92vh] bg-[#121622] border border-cyan-500/30 rounded-3xl shadow-2xl overflow-hidden text-white flex flex-col transition-all duration-200`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-gradient-to-r from-cyan-950/60 via-indigo-950/40 to-slate-900/60">
           <div className="flex items-center gap-2.5">
@@ -184,7 +189,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto max-h-[calc(92vh-135px)]">
           {/* Display Name (Only Register) */}
           {mode === 'register' && (
             <div className="space-y-1">
@@ -343,6 +348,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
                   </button>
                 ))}
+              </div>
+
+              {/* 3D Interactive Model Preview */}
+              <div className="pt-1.5">
+                <RacerVehicle3DCanvas selectedAvatar={selectedAvatar} />
               </div>
             </div>
           )}

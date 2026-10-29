@@ -38,6 +38,7 @@ import {
   X,
   ShieldCheck,
   ShieldAlert,
+  AlertCircle,
 } from 'lucide-react'
 import {
   BarChart,
@@ -82,6 +83,18 @@ export default function AdminDashboard() {
   const [roleModalUser, setRoleModalUser] = useState<AdminUserItem | null>(null)
   const [roleModalIsAdmin, setRoleModalIsAdmin] = useState<boolean>(false)
   const [roleModalLoading, setRoleModalLoading] = useState<boolean>(false)
+
+  // Timeframe Filter (Ngày, Tuần, Tháng, Toàn bộ)
+  const [selectedTimeframe, setSelectedTimeframe] = useState<'day' | 'week' | 'month' | 'all'>('all')
+
+  // Status Modal State (Khóa / Mở khóa)
+  const [statusModalUser, setStatusModalUser] = useState<AdminUserItem | null>(null)
+  const [statusModalLoading, setStatusModalLoading] = useState<boolean>(false)
+
+  // Delete Modal State (Xóa vĩnh viễn)
+  const [deleteModalUser, setDeleteModalUser] = useState<AdminUserItem | null>(null)
+  const [deleteModalLoading, setDeleteModalLoading] = useState<boolean>(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState<string>('')
 
   // Cheer / Telegram Message State
   const [cheerMsg, setCheerMsg] = useState<string>('')
@@ -267,33 +280,56 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleToggleStatus = async (u: AdminUserItem) => {
-    const newStatus = !u.is_active
-    const confirmMsg = newStatus
-      ? `Mở khóa tài khoản @${u.username}?`
-      : `Bạn có chắc muốn KHÓA tài khoản @${u.username}? (Người này sẽ không thể đăng nhập)`
-    if (!window.confirm(confirmMsg)) return
+  const handleToggleStatus = (u: AdminUserItem) => {
+    setStatusModalUser(u)
+  }
 
+  const handleConfirmToggleStatus = async () => {
+    if (!statusModalUser) return
+    const newStatus = !statusModalUser.is_active
     try {
-      const res = await adminService.updateStatus(u.id, newStatus)
+      setStatusModalLoading(true)
+      const res = await adminService.updateStatus(statusModalUser.id, newStatus)
       toast.success(res.message)
-      setUsers((prev) => prev.map((item) => (item.id === u.id ? { ...item, is_active: newStatus } : item)))
+      setUsers((prev) =>
+        prev.map((item) => (item.id === statusModalUser.id ? { ...item, is_active: newStatus } : item))
+      )
+      if (userDetail?.user?.id === statusModalUser.id) {
+        setUserDetail({
+          ...userDetail,
+          user: { ...userDetail.user, is_active: newStatus },
+        })
+      }
+      setStatusModalUser(null)
     } catch (err: any) {
       toast.error(err.message || 'Lỗi thay đổi trạng thái!')
+    } finally {
+      setStatusModalLoading(false)
     }
   }
 
-  const handleDeleteUser = async (u: AdminUserItem) => {
-    if (!window.confirm(`⚠️ CẢNH BÁO: Bạn có chắc muốn XÓA HOÀN TOÀN tài khoản @${u.username} và toàn bộ dữ liệu học tập của bạn này? Hành động này không thể hoàn tác!`)) {
-      return
-    }
+  const handleDeleteUser = (u: AdminUserItem) => {
+    setDeleteModalUser(u)
+    setDeleteConfirmText('')
+  }
+
+  const handleConfirmDeleteUser = async () => {
+    if (!deleteModalUser) return
     try {
-      const res = await adminService.deleteUser(u.id)
+      setDeleteModalLoading(true)
+      const res = await adminService.deleteUser(deleteModalUser.id)
       toast.success(res.message)
-      setUsers((prev) => prev.filter((item) => item.id !== u.id))
-      if (selectedUserId === u.id) setSelectedUserId(null)
+      setUsers((prev) => prev.filter((item) => item.id !== deleteModalUser.id))
+      if (selectedUserId === deleteModalUser.id) {
+        setSelectedUserId(null)
+        setUserDetail(null)
+      }
+      setDeleteModalUser(null)
+      setDeleteConfirmText('')
     } catch (err: any) {
       toast.error(err.message || 'Lỗi xóa tài khoản!')
+    } finally {
+      setDeleteModalLoading(false)
     }
   }
 
@@ -415,114 +451,214 @@ export default function AdminDashboard() {
 
       {/* ── MAIN CONTENT ── */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* ── METRIC OVERVIEW CARDS ── */}
+        {/* ── TIMEFRAME SELECTOR PILL ── */}
         {overview && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-            {/* Card 1: Users */}
-            <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-cyan-500/50 transition">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Người Dùng</span>
-                <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400">
-                  <Users className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl font-black text-white">{overview.total_users}</div>
-              <div className="text-xs text-slate-400 mt-1 truncate">
-                <span className="text-emerald-400 font-bold">{overview.active_today_count} bạn</span> cày hôm nay
-              </div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-[#0f1523] border border-slate-800 rounded-2xl p-3 px-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-md shadow-cyan-400/50" />
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                Khung Thời Gian Thống Kê:
+              </span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 font-semibold border border-cyan-500/30">
+                {selectedTimeframe === 'day'
+                  ? 'Hôm nay'
+                  : selectedTimeframe === 'week'
+                  ? '7 ngày (Tuần)'
+                  : selectedTimeframe === 'month'
+                  ? '30 ngày (Tháng)'
+                  : 'Toàn thời gian'}
+              </span>
             </div>
 
-            {/* Card 2: Hours */}
-            <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-amber-500/50 transition">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tổng Giờ Học</span>
-                <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
-                  <Clock className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl font-black text-white">{overview.total_study_hours}h</div>
-              <div className="text-xs text-slate-400 mt-1 truncate">
-                <span className="text-amber-400 font-bold">+{overview.today_study_hours}h</span> hôm nay
-              </div>
-            </div>
+            <div className="flex items-center gap-1.5 bg-[#141c2e] p-1 rounded-xl border border-slate-700/60 overflow-x-auto max-w-full">
+              <button
+                type="button"
+                onClick={() => setSelectedTimeframe('day')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                  selectedTimeframe === 'day'
+                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <span>📅 Hôm Nay</span>
+              </button>
 
-            {/* Card 3: Goals */}
-            <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-purple-500/50 transition">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mục Tiêu</span>
-                <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400">
-                  <Target className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl font-black text-white">{overview.total_goals}</div>
-              <div className="text-xs text-slate-400 mt-1 truncate">
-                <span className="text-purple-400 font-bold">{overview.completed_goals}</span> đã hoàn thành
-              </div>
-            </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTimeframe('week')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                  selectedTimeframe === 'week'
+                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <span>📊 7 Ngày (Tuần)</span>
+              </button>
 
-            {/* Card 4: Sessions */}
-            <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-rose-500/50 transition">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Phiên Focus</span>
-                <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400">
-                  <Flame className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl font-black text-white">{overview.total_sessions}</div>
-              <div className="text-xs text-slate-400 mt-1 truncate">
-                <span className="text-rose-400 font-bold">{overview.today_sessions}</span> phiên hôm nay
-              </div>
-            </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTimeframe('month')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                  selectedTimeframe === 'month'
+                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <span>📈 30 Ngày (Tháng)</span>
+              </button>
 
-            {/* Card 5: Traffic */}
-            <div
-              onClick={() => setActiveAdminTab('traffic')}
-              className={`bg-[#111827] border rounded-2xl p-4 shadow-md cursor-pointer transition ${
-                activeAdminTab === 'traffic'
-                  ? 'border-blue-500/80 ring-1 ring-blue-500/50'
-                  : 'border-slate-800 hover:border-blue-500/50'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lượt Truy Cập</span>
-                <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400">
-                  <Globe className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl font-black text-white">{overview.total_visits}</div>
-              <div className="text-xs text-slate-400 mt-1 truncate">
-                <span className="text-cyan-400 font-bold">{overview.guest_visits} khách</span> • <span className="text-amber-300 font-bold">{overview.member_visits} TV</span>
-              </div>
-            </div>
-
-            {/* Card 6: Feedbacks */}
-            <div
-              onClick={() => setActiveAdminTab('feedbacks')}
-              className={`bg-[#111827] border rounded-2xl p-4 shadow-md cursor-pointer transition ${
-                activeAdminTab === 'feedbacks'
-                  ? 'border-emerald-500/80 ring-1 ring-emerald-500/50'
-                  : 'border-slate-800 hover:border-emerald-500/50'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Góp Ý Web</span>
-                <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
-                  <MessageSquarePlus className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl font-black text-white flex items-center gap-1.5">
-                <span>{overview.feedback_avg_rating}</span>
-                <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
-              </div>
-              <div className="text-xs text-slate-400 mt-1 truncate">
-                <span className="text-emerald-400 font-bold">{overview.total_feedbacks} nhận xét</span>
-                {overview.new_feedbacks > 0 && (
-                  <span className="text-rose-400 font-bold ml-1.5">({overview.new_feedbacks} mới)</span>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTimeframe('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                  selectedTimeframe === 'all'
+                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <span>🌐 Toàn Thời Gian</span>
+              </button>
             </div>
           </div>
         )}
+
+        {/* ── METRIC OVERVIEW CARDS ── */}
+        {overview && (() => {
+          const tf = overview.timeframes?.[selectedTimeframe]
+          const cardHours = selectedTimeframe === 'all' ? overview.total_study_hours : (tf?.study_hours ?? overview.today_study_hours)
+          const cardSessions = selectedTimeframe === 'all' ? overview.total_sessions : (tf?.study_sessions ?? overview.today_sessions)
+          const cardVisits = selectedTimeframe === 'all' ? overview.total_visits : (tf?.visits ?? overview.today_visits)
+          const cardGuestVisits = selectedTimeframe === 'all' ? overview.guest_visits : (tf?.guest_visits ?? overview.today_guest_visits)
+          const cardMemberVisits = selectedTimeframe === 'all' ? overview.member_visits : (tf?.member_visits ?? overview.today_member_visits)
+          const cardFeedbacks = selectedTimeframe === 'all' ? overview.total_feedbacks : (tf?.feedbacks ?? overview.total_feedbacks)
+
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+              {/* Card 1: Users */}
+              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-cyan-500/50 transition">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    {selectedTimeframe === 'all' ? 'Người Dùng' : 'Đăng Ký Mới'}
+                  </span>
+                  <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400">
+                    <Users className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-white">
+                  {selectedTimeframe === 'all' ? overview.total_users : `+${tf?.new_users ?? 0}`}
+                </div>
+                <div className="text-xs text-slate-400 mt-1 truncate">
+                  <span className="text-emerald-400 font-bold">
+                    {selectedTimeframe === 'all'
+                      ? overview.active_today_count
+                      : tf?.active_users ?? overview.active_today_count} bạn
+                  </span>{' '}
+                  hoạt động
+                </div>
+              </div>
+
+              {/* Card 2: Hours */}
+              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-amber-500/50 transition">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    {selectedTimeframe === 'all' ? 'Tổng Giờ Học' : 'Giờ Học'}
+                  </span>
+                  <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-white">{cardHours}h</div>
+                <div className="text-xs text-slate-400 mt-1 truncate">
+                  {selectedTimeframe === 'all' ? (
+                    <>
+                      <span className="text-amber-400 font-bold">+{overview.today_study_hours}h</span> hôm nay
+                    </>
+                  ) : (
+                    <span className="text-amber-400 font-bold">{tf?.label || 'Kỳ này'}</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 3: Goals */}
+              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-purple-500/50 transition">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mục Tiêu</span>
+                  <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400">
+                    <Target className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-white">{overview.total_goals}</div>
+                <div className="text-xs text-slate-400 mt-1 truncate">
+                  <span className="text-purple-400 font-bold">{overview.completed_goals}</span> đã hoàn thành
+                </div>
+              </div>
+
+              {/* Card 4: Sessions */}
+              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-rose-500/50 transition">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Phiên Focus</span>
+                  <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400">
+                    <Flame className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-white">{cardSessions}</div>
+                <div className="text-xs text-slate-400 mt-1 truncate">
+                  <span className="text-rose-400 font-bold">
+                    {selectedTimeframe === 'all' ? `${overview.today_sessions} hôm nay` : `${cardSessions} phiên`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Card 5: Traffic */}
+              <div
+                onClick={() => setActiveAdminTab('traffic')}
+                className={`bg-[#111827] border rounded-2xl p-4 shadow-md cursor-pointer transition ${
+                  activeAdminTab === 'traffic'
+                    ? 'border-blue-500/80 ring-1 ring-blue-500/50'
+                    : 'border-slate-800 hover:border-blue-500/50'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lượt Truy Cập</span>
+                  <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400">
+                    <Globe className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-white">{cardVisits}</div>
+                <div className="text-xs text-slate-400 mt-1 truncate">
+                  <span className="text-cyan-400 font-bold">{cardGuestVisits} khách</span> • <span className="text-amber-300 font-bold">{cardMemberVisits} TV</span>
+                </div>
+              </div>
+
+              {/* Card 6: Feedbacks */}
+              <div
+                onClick={() => setActiveAdminTab('feedbacks')}
+                className={`bg-[#111827] border rounded-2xl p-4 shadow-md cursor-pointer transition ${
+                  activeAdminTab === 'feedbacks'
+                    ? 'border-emerald-500/80 ring-1 ring-emerald-500/50'
+                    : 'border-slate-800 hover:border-emerald-500/50'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Góp Ý Web</span>
+                  <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+                    <MessageSquarePlus className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-white flex items-center gap-1.5">
+                  <span>{overview.feedback_avg_rating}</span>
+                  <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+                </div>
+                <div className="text-xs text-slate-400 mt-1 truncate">
+                  <span className="text-emerald-400 font-bold">{cardFeedbacks} nhận xét</span>
+                  {overview.new_feedbacks > 0 && (
+                    <span className="text-rose-400 font-bold ml-1.5">({overview.new_feedbacks} mới)</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* ── 3 NAVIGATION TABS ── */}
         <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto no-scrollbar">
@@ -939,6 +1075,21 @@ export default function AdminDashboard() {
                               <Key className="w-4 h-4" />
                             </button>
 
+                            {/* Lock / Unlock User */}
+                            {currentUser?.id !== u.id && (
+                              <button
+                                onClick={() => handleToggleStatus(u)}
+                                className={`p-1.5 rounded-xl border transition active:scale-95 ${
+                                  u.is_active
+                                    ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                    : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                }`}
+                                title={u.is_active ? 'Khóa tài khoản này' : 'Mở khóa tài khoản này'}
+                              >
+                                {u.is_active ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                              </button>
+                            )}
+
                             {/* Delete User */}
                             {currentUser?.id !== u.id && (
                               <button
@@ -1022,24 +1173,60 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* 7-Day Trend Chart */}
+            {/* Trend Chart (7-day or 30-day) */}
             <div className="bg-[#111827] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-800">
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-amber-400" />
-                    <span>Xu Hướng Truy Cập 7 Ngày Gần Nhất (Khách Vãng Lai vs Thành Viên)</span>
+                    <span>
+                      {selectedTimeframe === 'month'
+                        ? 'Xu Hướng Truy Cập 30 Ngày Gần Nhất (Khách Vãng Lai vs Thành Viên)'
+                        : 'Xu Hướng Truy Cập 7 Ngày Gần Nhất (Khách Vãng Lai vs Thành Viên)'}
+                    </span>
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
                     Biểu đồ đo lường mức độ tương tác và bạn bè vào web mỗi ngày
                   </p>
                 </div>
+
+                {/* Switcher 7d / 30d */}
+                <div className="flex items-center gap-1 bg-[#162032] p-1 rounded-xl border border-slate-700/60 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTimeframe('week')}
+                    className={`px-3 py-1 rounded-lg transition ${
+                      selectedTimeframe !== 'month'
+                        ? 'bg-amber-400 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    7 Ngày
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTimeframe('month')}
+                    className={`px-3 py-1 rounded-lg transition ${
+                      selectedTimeframe === 'month'
+                        ? 'bg-amber-400 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    30 Ngày
+                  </button>
+                </div>
               </div>
 
               <div className="h-64 sm:h-72 w-full">
-                {overview.traffic_trend_7days && overview.traffic_trend_7days.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={overview.traffic_trend_7days}>
+                {(() => {
+                  const chartData =
+                    selectedTimeframe === 'month' && overview.traffic_trend_30days && overview.traffic_trend_30days.length > 0
+                      ? overview.traffic_trend_30days
+                      : overview.traffic_trend_7days
+
+                  return chartData && chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData}>
                       <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" fontSize={11} tickLine={false} />
                       <YAxis stroke="rgba(255,255,255,0.5)" fontSize={11} tickLine={false} axisLine={false} />
                       <RechartsTooltip
@@ -1063,7 +1250,8 @@ export default function AdminDashboard() {
                   <div className="h-full flex items-center justify-center text-xs text-slate-400">
                     Chưa có đủ dữ liệu lưu lượng
                   </div>
-                )}
+                )
+              })()}
               </div>
             </div>
           </div>
@@ -1741,6 +1929,166 @@ export default function AdminDashboard() {
               >
                 <Key className="w-3.5 h-3.5" />
                 <span>{resetting ? 'Đang lưu...' : 'Lưu Mật Khẩu Mới'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 4: KHÓA / MỞ KHÓA TÀI KHOẢN ── */}
+      {statusModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-[#121929] border border-slate-700 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                    statusModalUser.is_active
+                      ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300'
+                      : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                  }`}
+                >
+                  {statusModalUser.is_active ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">
+                    {statusModalUser.is_active ? 'Khóa Tài Khoản Người Dùng' : 'Mở Khóa Tài Khoản'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Tài khoản: <strong className="text-cyan-300">@{statusModalUser.username}</strong> ({statusModalUser.display_name})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setStatusModalUser(null)}
+                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-sm transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-black/40 border border-slate-800 text-xs space-y-2">
+              {statusModalUser.is_active ? (
+                <>
+                  <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                    <span>Xác nhận khóa tài khoản:</span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed">
+                    Khi bị khóa, người bạn này <strong>sẽ không thể đăng nhập</strong> vào hệ thống Pomodoro LifeQuest.
+                    Toàn bộ dữ liệu mục tiêu và giờ học vẫn được bảo lưu nguyên vẹn, bạn có thể mở khóa lại bất kỳ lúc nào.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                    <span>Xác nhận mở khóa tài khoản:</span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed">
+                    Sau khi mở khóa, người dùng này có thể đăng nhập bình thường và tiếp tục hành trình đua top, tích lũy ngọc và hoàn thành mục tiêu.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setStatusModalUser(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                onClick={handleConfirmToggleStatus}
+                disabled={statusModalLoading}
+                className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition active:scale-95 shadow-lg disabled:opacity-50 ${
+                  statusModalUser.is_active
+                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
+                }`}
+              >
+                {statusModalUser.is_active ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                <span>
+                  {statusModalLoading
+                    ? 'Đang xử lý...'
+                    : statusModalUser.is_active
+                    ? 'Xác Nhận Khóa Tài Khoản'
+                    : 'Xác Nhận Mở Khóa'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 5: XÓA VĨNH VIỄN TÀI KHOẢN (DANGER ZONE) ── */}
+      {deleteModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-[#14121a] border border-rose-500/40 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-100">
+            <div className="flex items-center justify-between border-b border-rose-500/20 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shadow-md shadow-rose-500/20">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-rose-300 text-base">Xóa Vĩnh Viễn Tài Khoản</h3>
+                  <p className="text-xs text-slate-400">
+                    Người dùng: <strong className="text-white">@{deleteModalUser.username}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDeleteModalUser(null)}
+                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-sm transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/30 text-xs space-y-2">
+              <div className="font-bold text-rose-400 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                <span>HÀNH ĐỘNG NGUY HIỂM & KHÔNG THỂ HOÀN TÁC!</span>
+              </div>
+              <p className="text-slate-300 leading-relaxed">
+                Tài khoản <strong>@{deleteModalUser.username}</strong> ({deleteModalUser.display_name}) và toàn bộ dữ liệu đi kèm sẽ bị xóa hoàn toàn khỏi cơ sở dữ liệu:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-slate-400 text-[11px] pl-1">
+                <li>Tất cả mục tiêu học tập (Goals)</li>
+                <li>Tất cả lịch sử các phiên Pomodoro (Sessions)</li>
+                <li>Toàn bộ nhiệm vụ trong Ma Trận 4 Ô</li>
+                <li>Cấu hình thông báo Telegram & thành tích đua top</li>
+              </ul>
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              <label className="text-[11px] font-semibold text-slate-400">
+                Để xác nhận, vui lòng gõ chính xác username <code className="text-rose-300 font-bold bg-rose-500/10 px-1 py-0.5 rounded">@{deleteModalUser.username}</code>:
+              </label>
+              <input
+                type="text"
+                placeholder={deleteModalUser.username}
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="w-full bg-[#1b1725] border border-rose-500/30 focus:border-rose-400 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none transition font-mono"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+              <button
+                onClick={() => setDeleteModalUser(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                onClick={handleConfirmDeleteUser}
+                disabled={deleteModalLoading || deleteConfirmText.trim().replace(/^@/, '') !== deleteModalUser.username}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs transition active:scale-95 shadow-lg shadow-rose-600/30 disabled:opacity-40"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{deleteModalLoading ? 'Đang xóa...' : 'Xác Nhận Xóa Vĩnh Viễn'}</span>
               </button>
             </div>
           </div>

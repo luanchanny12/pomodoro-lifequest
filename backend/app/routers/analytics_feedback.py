@@ -36,6 +36,7 @@ class UpdateFeedbackStatusRequest(BaseModel):
 # --- Endpoints ---
 
 @router.post("/api/analytics/track-visit")
+@router.post("/analytics/track-visit")
 def track_visit(
     data: TrackVisitRequest,
     request: Request,
@@ -75,6 +76,7 @@ def track_visit(
 
 
 @router.post("/api/feedback")
+@router.post("/feedback")
 def submit_feedback(
     data: CreateFeedbackRequest,
     db: Session = Depends(get_db),
@@ -107,6 +109,7 @@ def submit_feedback(
 
 
 @router.get("/api/admin/feedbacks")
+@router.get("/admin/feedbacks")
 def get_admin_feedbacks(
     category: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -162,6 +165,7 @@ def get_admin_feedbacks(
 
 
 @router.put("/api/admin/feedbacks/{feedback_id}/status")
+@router.put("/admin/feedbacks/{feedback_id}/status")
 def update_feedback_status(
     feedback_id: int,
     data: UpdateFeedbackStatusRequest,
@@ -182,6 +186,7 @@ def update_feedback_status(
 
 
 @router.delete("/api/admin/feedbacks/{feedback_id}")
+@router.delete("/admin/feedbacks/{feedback_id}")
 def delete_feedback(
     feedback_id: int,
     admin: User = Depends(get_current_admin),
