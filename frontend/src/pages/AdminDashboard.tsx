@@ -39,6 +39,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   AlertCircle,
+  Activity,
 } from 'lucide-react'
 import {
   BarChart,
@@ -56,6 +57,8 @@ import {
   AdminUserItem,
   UserActivityDetail,
   AdminFeedbackItem,
+  AggregatedVisitorItem,
+  LiveVisitLogItem,
 } from '@/services/adminService'
 import { authService, UserProfile } from '@/services/authService'
 
@@ -112,6 +115,14 @@ export default function AdminDashboard() {
   const [feedbackStatus, setFeedbackStatus] = useState<string>('all')
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null)
   const [adminNotes, setAdminNotes] = useState<Record<number, string>>({})
+
+  // Traffic Visitors State
+  const [aggregatedVisitors, setAggregatedVisitors] = useState<AggregatedVisitorItem[]>([])
+  const [liveVisitLogs, setLiveVisitLogs] = useState<LiveVisitLogItem[]>([])
+  const [visitorsLoading, setVisitorsLoading] = useState<boolean>(false)
+  const [visitorFilterType, setVisitorFilterType] = useState<'all' | 'members' | 'guests'>('all')
+  const [visitorSearchTerm, setVisitorSearchTerm] = useState<string>('')
+  const [visitorViewMode, setVisitorViewMode] = useState<'aggregated' | 'live'>('aggregated')
 
   useEffect(() => {
     const token = authService.getToken()
@@ -177,6 +188,52 @@ export default function AdminDashboard() {
       fetchFeedbacks()
     }
   }, [activeAdminTab, feedbackCategory, feedbackStatus, feedbackRating])
+
+  const fetchVisitors = async () => {
+    try {
+      setVisitorsLoading(true)
+      const res = await adminService.getVisitors({
+        filter_type: visitorFilterType !== 'all' ? visitorFilterType : undefined,
+        search: visitorSearchTerm.trim() || undefined,
+        timeframe: selectedTimeframe !== 'all' ? selectedTimeframe : undefined,
+      })
+      setAggregatedVisitors(res.aggregated_visitors)
+      setLiveVisitLogs(res.live_recent_logs)
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi tải danh sách người truy cập!')
+    } finally {
+      setVisitorsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeAdminTab === 'traffic') {
+      fetchVisitors()
+    }
+  }, [activeAdminTab, visitorFilterType, selectedTimeframe])
+
+  const formatRelativeTime = (isoString: string | null): string => {
+    if (!isoString) return 'Chưa ghi nhận'
+    try {
+      const d = new Date(isoString)
+      const now = new Date()
+      const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000)
+      if (diffSec < 45) return 'Vừa xong'
+      if (diffSec < 3600) return `${Math.floor(diffSec / 60)} phút trước`
+      if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} giờ trước`
+      const diffDays = Math.floor(diffSec / 86400)
+      if (diffDays === 1) return 'Hôm qua'
+      if (diffDays < 7) return `${diffDays} ngày trước`
+      return d.toLocaleDateString('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    } catch {
+      return isoString || ''
+    }
+  }
 
   const handleUpdateFeedbackStatus = async (
     id: number,
@@ -1253,6 +1310,341 @@ export default function AdminDashboard() {
                 )
               })()}
               </div>
+            </div>
+
+            {/* ── BẢNG DANH SÁCH NGƯỜI TRUY CẬP & NHẬT KÝ THIẾT BỊ ── */}
+            <div className="bg-[#111827] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <span>Chi Tiết Người Truy Cập & Thiết Bị Vào Web</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-bold">
+                        {visitorViewMode === 'aggregated' ? `${aggregatedVisitors.length} người` : `${liveVisitLogs.length} lượt`}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Định danh theo Tên (Thành viên) và IP (Khách vãng lai), thống kê số lần vào & thiết bị sử dụng
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right controls: Refresh & View Mode */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center bg-[#162032] p-1 rounded-xl border border-slate-700/60 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setVisitorViewMode('aggregated')}
+                      className={`px-3 py-1 rounded-lg transition flex items-center gap-1.5 ${
+                        visitorViewMode === 'aggregated'
+                          ? 'bg-amber-400 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Theo Người</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVisitorViewMode('live')}
+                      className={`px-3 py-1 rounded-lg transition flex items-center gap-1.5 ${
+                        visitorViewMode === 'live'
+                          ? 'bg-amber-400 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Activity className="w-3.5 h-3.5" />
+                      <span>Nhật Ký Live</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={fetchVisitors}
+                    disabled={visitorsLoading}
+                    className="p-2 rounded-xl bg-[#162032] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition"
+                    title="Làm mới dữ liệu"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${visitorsLoading ? 'animate-spin text-amber-400' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Search & Filter Toolbar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                {/* Search box */}
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={visitorSearchTerm}
+                    onChange={(e) => setVisitorSearchTerm(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && fetchVisitors()}
+                    placeholder="Tìm theo tên hiển thị, @username hoặc địa chỉ IP..."
+                    className="w-full pl-9 pr-9 py-2 bg-black/40 border border-slate-700/80 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 text-xs transition"
+                  />
+                  {visitorSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVisitorSearchTerm('')
+                        setTimeout(fetchVisitors, 0)
+                      }}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex items-center gap-1 bg-[#162032] p-1 rounded-xl border border-slate-700/60 text-xs font-bold overflow-x-auto">
+                  <button
+                    type="button"
+                    onClick={() => setVisitorFilterType('all')}
+                    className={`px-3 py-1 rounded-lg transition whitespace-nowrap ${
+                      visitorFilterType === 'all'
+                        ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Tất Cả ({aggregatedVisitors.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisitorFilterType('members')}
+                    className={`px-3 py-1 rounded-lg transition whitespace-nowrap flex items-center gap-1 ${
+                      visitorFilterType === 'members'
+                        ? 'bg-amber-400 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Thành Viên ({aggregatedVisitors.filter(v => v.is_member).length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisitorFilterType('guests')}
+                    className={`px-3 py-1 rounded-lg transition whitespace-nowrap flex items-center gap-1 ${
+                      visitorFilterType === 'guests'
+                        ? 'bg-cyan-400 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>Khách Vãng Lai ({aggregatedVisitors.filter(v => !v.is_member).length})</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Content Table */}
+              {visitorsLoading ? (
+                <div className="py-12 flex flex-col items-center justify-center text-slate-400 space-y-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-cyan-400" />
+                  <span className="text-xs">Đang tải danh sách người truy cập...</span>
+                </div>
+              ) : visitorViewMode === 'aggregated' ? (
+                /* CHẾ ĐỘ 1: BẢNG TỔNG HỢP THEO NGƯỜI */
+                aggregatedVisitors.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-slate-400 border border-dashed border-slate-800 rounded-xl">
+                    Chưa tìm thấy người truy cập nào phù hợp với bộ lọc.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-800 rounded-xl">
+                    <table className="w-full text-left text-xs text-slate-300">
+                      <thead className="bg-[#162032] text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-800">
+                        <tr>
+                          <th className="py-3 px-4">Người Truy Cập (Tên / IP)</th>
+                          <th className="py-3 px-4 text-center">Số Lần Vào Web</th>
+                          <th className="py-3 px-4">Thiết Bị & Nền Tảng</th>
+                          <th className="py-3 px-4">Trang Xem Gần Nhất</th>
+                          <th className="py-3 px-4">Hoạt Động Gần Nhất</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 bg-black/20">
+                        {aggregatedVisitors.map((v) => (
+                          <tr key={v.id} className="hover:bg-slate-800/40 transition">
+                            {/* Cột 1: Tên hoặc IP */}
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2.5">
+                                {v.is_member ? (
+                                  <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-lg shrink-0">
+                                    {getVehicleIcon(v.avatar || 'cyber_car')}
+                                  </div>
+                                ) : (
+                                  <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shrink-0">
+                                    <Globe className="w-4 h-4" />
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-white truncate">
+                                      {v.identity}
+                                    </span>
+                                    {v.is_member ? (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold shrink-0">
+                                        Thành viên
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold shrink-0">
+                                        Khách IP
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 font-mono truncate">
+                                    {v.is_member && v.username ? (
+                                      <span>@{v.username} • IP: {v.ip_address}</span>
+                                    ) : (
+                                      <span>IP: {v.ip_address}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Cột 2: Số lần vào */}
+                            <td className="py-3 px-4 text-center">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-amber-300 font-extrabold text-xs shadow-sm">
+                                <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                                <span>{v.visit_count} lần</span>
+                              </span>
+                            </td>
+
+                            {/* Cột 3: Thiết bị & Nền tảng */}
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <div className="p-1.5 rounded-lg bg-slate-800/80 text-purple-300 shrink-0">
+                                  {v.device_type === 'mobile' ? (
+                                    <Smartphone className="w-4 h-4" />
+                                  ) : (
+                                    <Monitor className="w-4 h-4" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-white font-semibold truncate">
+                                    {v.browser}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 truncate">
+                                    {v.os} • {v.device_type === 'mobile' ? 'Điện thoại' : 'Máy tính'}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Cột 4: Đường dẫn xem gần nhất */}
+                            <td className="py-3 px-4">
+                              <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-cyan-300 border border-slate-700 truncate inline-block max-w-[160px]">
+                                {v.last_path || '/'}
+                              </span>
+                            </td>
+
+                            {/* Cột 5: Hoạt động gần nhất */}
+                            <td className="py-3 px-4">
+                              <div className="text-slate-200 font-medium">
+                                {formatRelativeTime(v.last_visit)}
+                              </div>
+                              <div className="text-[10px] text-slate-500">
+                                Lần đầu: {formatRelativeTime(v.first_visit)}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : (
+                /* CHẾ ĐỘ 2: NHẬT KÝ LIVE STREAM */
+                liveVisitLogs.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-slate-400 border border-dashed border-slate-800 rounded-xl">
+                    Chưa có lượt truy cập nào được ghi nhận.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-800 rounded-xl">
+                    <table className="w-full text-left text-xs text-slate-300">
+                      <thead className="bg-[#162032] text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-800">
+                        <tr>
+                          <th className="py-3 px-4">Thời Gian</th>
+                          <th className="py-3 px-4">Người Truy Cập</th>
+                          <th className="py-3 px-4">Thiết Bị & Trình Duyệt</th>
+                          <th className="py-3 px-4">Trang Xem (Path)</th>
+                          <th className="py-3 px-4">Địa Chỉ IP</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 bg-black/20">
+                        {liveVisitLogs.map((log) => (
+                          <tr key={log.id} className="hover:bg-slate-800/40 transition">
+                            <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-slate-400">
+                              <div className="text-white font-medium">
+                                {formatRelativeTime(log.created_at)}
+                              </div>
+                              <div className="text-[10px] text-slate-500">
+                                {log.created_at ? new Date(log.created_at).toLocaleTimeString('vi-VN') : ''}
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                {log.is_member ? (
+                                  <>
+                                    <div className="w-6 h-6 rounded-lg bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-xs shrink-0">
+                                      {getVehicleIcon(log.avatar || 'cyber_car')}
+                                    </div>
+                                    <div>
+                                      <div className="font-bold text-white truncate max-w-[150px]">
+                                        {log.display_name || log.username || 'Thành viên'}
+                                      </div>
+                                      {log.username && (
+                                        <div className="text-[10px] text-amber-400/80 font-mono">
+                                          @{log.username}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Globe className="w-4 h-4 text-cyan-400 shrink-0" />
+                                    <span className="font-mono text-cyan-300">
+                                      {log.ip_address || 'Khách vãng lai'}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-1.5">
+                                {log.device_type === 'mobile' ? (
+                                  <Smartphone className="w-3.5 h-3.5 text-purple-400" />
+                                ) : (
+                                  <Monitor className="w-3.5 h-3.5 text-slate-400" />
+                                )}
+                                <span className="text-slate-200">
+                                  {log.browser} • {log.os}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-slate-800/90 text-cyan-300 border border-slate-700">
+                                {log.path || '/'}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-4 font-mono text-[11px] text-slate-400">
+                              {log.ip_address || 'N/A'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              )}
             </div>
           </div>
         )}

@@ -92,6 +92,46 @@ export interface AdminFeedbacksResponse {
   items: AdminFeedbackItem[]
 }
 
+export interface AggregatedVisitorItem {
+  id: string
+  identity: string
+  username?: string | null
+  user_id?: number | null
+  avatar?: string | null
+  is_member: boolean
+  ip_address?: string | null
+  visit_count: number
+  first_visit: string | null
+  last_visit: string | null
+  last_path: string
+  device_type: 'mobile' | 'tablet' | 'desktop'
+  browser: string
+  os: string
+}
+
+export interface LiveVisitLogItem {
+  id: number
+  visitor_id: string
+  user_id?: number | null
+  display_name?: string | null
+  username?: string | null
+  avatar?: string | null
+  is_member: boolean
+  ip_address?: string | null
+  device_type: 'mobile' | 'tablet' | 'desktop'
+  browser: string
+  os: string
+  path: string
+  created_at: string | null
+}
+
+export interface AdminVisitorsResponse {
+  aggregated_visitors: AggregatedVisitorItem[]
+  live_recent_logs: LiveVisitLogItem[]
+  total_unique_visitors: number
+  total_visits: number
+}
+
 export interface AdminUserItem {
   id: number
   username: string
@@ -260,6 +300,16 @@ export const adminService = {
 
   deleteFeedback: async (id: number): Promise<{ message: string }> => {
     const res = await api.delete<{ message: string }>(`/admin/feedbacks/${id}`)
+    return res.data
+  },
+
+  getVisitors: async (params?: {
+    filter_type?: string
+    search?: string
+    timeframe?: string
+    limit?: number
+  }): Promise<AdminVisitorsResponse> => {
+    const res = await api.get<AdminVisitorsResponse>('/admin/visitors', { params })
     return res.data
   },
 }

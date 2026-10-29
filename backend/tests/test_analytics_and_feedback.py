@@ -187,3 +187,66 @@ def test_feedback_and_analytics_aliases_without_api_prefix(admin_token):
     res_list = client.get("/admin/feedbacks", headers={"Authorization": f"Bearer {admin_token}"})
     assert res_list.status_code == 200
     assert "items" in res_list.json()
+
+
+def test_get_admin_visitors_details(admin_token, normal_user_token):
+    # 1. Track sample visit with Chrome User-Agent
+    client.post(
+        "/api/analytics/track-visit",
+        headers={
+            "Authorization": f"Bearer {normal_user_token}",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            "X-Forwarded-For": "118.70.12.34",
+        },
+        json={
+            "visitor_id": "vis_detail_test_01",
+            "is_member": True,
+            "device_type": "desktop",
+            "path": "/pomodoro-test",
+        }
+    )
+
+    # 2. Track sample guest visit with iPhone Safari
+    client.post(
+        "/api/analytics/track-visit",
+        headers={
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            "X-Forwarded-For": "14.162.55.88",
+        },
+        json={
+            "visitor_id": "vis_guest_detail_02",
+            "is_member": False,
+            "device_type": "mobile",
+            "path": "/",
+        }
+    )
+
+    # 3. Test forbidden for normal user
+    res_forb = client.get("/api/admin/visitors", headers={"Authorization": f"Bearer {normal_user_token}"})
+    assert res_forb.status_code == 403
+
+    # 4. Test admin get visitors list
+    res = client.get("/api/admin/visitors", headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    data = res.json()
+    assert "aggregated_visitors" in data
+    assert "live_recent_logs" in data
+    assert "total_unique_visitors" in data
+    assert "total_visits" in data
+
+    # 5. Test filter members
+    res_mem = client.get("/api/admin/visitors?filter_type=members", headers={"Authorization": f"Bearer {admin_token}"})
+    assert res_mem.status_code == 200
+    for v in res_mem.json()["aggregated_visitors"]:
+        assert v["is_member"] is True
+
+    # 6. Test filter guests
+    res_guest = client.get("/api/admin/visitors?filter_type=guests", headers={"Authorization": f"Bearer {admin_token}"})
+    assert res_guest.status_code == 200
+    for v in res_guest.json()["aggregated_visitors"]:
+        assert v["is_member"] is False
+
+    # 7. Test alias without /api
+    res_alias = client.get("/admin/visitors", headers={"Authorization": f"Bearer {admin_token}"})
+    assert res_alias.status_code == 200
+
