@@ -37,6 +37,7 @@ import {
   Smartphone,
   Brain,
   Radio,
+  ChevronDown,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -248,6 +249,8 @@ export default function PomodoroApp() {
   const [isZenClockOpen, setIsZenClockOpen] = useState<boolean>(false)
   const [isPipActive, setIsPipActive] = useState<boolean>(false)
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false)
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false)
+  const profileMenuRef = useRef<HTMLDivElement | null>(null)
 
   // Custom Time Input Popover
   const [showCustomTimeInput, setShowCustomTimeInput] = useState<boolean>(false)
@@ -320,6 +323,17 @@ export default function PomodoroApp() {
   // Track visit for analytics
   useEffect(() => {
     trackVisit()
+  }, [])
+
+  // Close profile menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setIsProfileMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   // Scheduled background notifications check (Golden hours & inactivity)
@@ -724,235 +738,283 @@ export default function PomodoroApp() {
       {/* ── DYNAMIC BACKGROUND (ANIMATED / WALLPAPER / CANVAS) ── */}
       <DynamicBackground config={bgConfig} fallbackColor={currentTheme.bg} />
 
-      {/* ── TOP NAVIGATION ── */}
-      <header className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between border-b border-white/15 relative z-10">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl drop-shadow-md">🍅</span>
-          <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2 drop-shadow-md">
-            Pomodoro Goal
-            <span className="text-[10px] font-normal uppercase px-2 py-0.5 bg-white/20 rounded-full tracking-wider backdrop-blur-sm">
-              Local
-            </span>
-          </h1>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Crystal Pearls Reward Shop button */}
-          <button
-            onClick={() => setIsRewardShopOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-gradient-to-r from-amber-500/80 to-amber-600/90 hover:from-amber-500 hover:to-amber-600 text-white rounded-xl backdrop-blur-md transition active:scale-95 shadow-md shadow-amber-500/20 border border-amber-400/40"
-            title="Mở Lọ Ngọc & Cửa Hàng Đổi Thưởng Thực Tế"
-          >
-            <span className="text-sm">💎</span>
-            <span>{availablePearls.toFixed(1)}</span>
-            <span className="hidden sm:inline">Ngọc</span>
-          </button>
-
-          {/* Time Capsule button */}
-          <button
-            onClick={() => setIsTimeCapsuleOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-white/20 hover:bg-white/30 text-white rounded-xl backdrop-blur-md transition active:scale-95 shadow-sm"
-            title="Hòm Thư Gửi Tương Lai (Milestone Capsules)"
-          >
-            <Mail className="w-4 h-4 text-pink-300" />
-            <span className="hidden sm:inline">Hòm thư</span>
-          </button>
-
-          {/* Background picker button */}
-          <button
-            onClick={() => setIsBgPickerOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/20 hover:bg-white/30 text-white rounded-xl backdrop-blur-md transition active:scale-95 shadow-sm"
-            title="Đổi hình nền động / video / ảnh"
-          >
-            <ImageIcon className="w-4 h-4 text-purple-300" />
-            <span className="hidden sm:inline">Hình nền</span>
-          </button>
-
-          {/* Quick manual log button */}
-          <button
-            onClick={() => {
-              if (!currentUser) {
-                toast.info('Vui lòng đăng nhập để ghi nhận giờ học vào mục tiêu cá nhân!')
-                setIsAuthModalOpen(true)
-                return
-              }
-              setIsManualModalOpen(true)
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium bg-emerald-500/80 hover:bg-emerald-500 text-white rounded-xl backdrop-blur-md transition active:scale-95 shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Ghi nhận giờ học</span>
-            <span className="sm:hidden">+ Giờ</span>
-          </button>
-
-          {/* Cosmic Race Track Button */}
-          <button
-            onClick={() => setIsRaceModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl backdrop-blur-md transition active:scale-95 shadow-md border border-cyan-400/40"
-            title="Đường Đua Bạn Bè & Bảng Vàng Pomodoro"
-          >
-            <Trophy className="w-4 h-4 text-amber-300 animate-pulse" />
-            <span className="hidden md:inline">Đường Đua</span>
-          </button>
-
-          {/* Shareable Achievement Card Button */}
-          <button
-            onClick={() => setIsShareModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/30 rounded-xl transition active:scale-95 shadow backdrop-blur-md"
-            title="Xuất bảng vàng thành tích tuần để khoe Story FB / Zalo"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span className="hidden lg:inline">Khoe Bảng Vàng</span>
-          </button>
-
-          {/* PWA 1-Click Install Button */}
-          {canInstall && (
-            <button
-              onClick={installPWA}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl transition shadow active:scale-95"
-              title="Cài đặt LifeQuest ra màn hình chính điện thoại / máy tính"
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Cài App</span>
-            </button>
-          )}
-
-          {/* Admin Portal Button */}
-          {currentUser?.is_admin && (
-            <button
-              onClick={() => navigate('/admin')}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 text-black rounded-xl transition active:scale-95 shadow-md shadow-amber-500/20 border border-amber-300/40"
-              title="Cổng Quản Trị Hệ Thống (Admin Portal)"
-            >
-              <Shield className="w-3.5 h-3.5 text-black" />
-              <span className="hidden sm:inline">Quản Trị</span>
-            </button>
-          )}
-
-          {/* User Profile / Auth Pill */}
-          {currentUser ? (
-            <div className="flex items-center gap-1 bg-white/10 border border-white/20 rounded-xl px-2 py-1 backdrop-blur-md">
-              <button
-                onClick={() => setIsRaceModalOpen(true)}
-                className="flex items-center gap-1.5 text-xs text-white hover:text-cyan-300 font-bold transition"
-                title={`Đang đăng nhập: ${currentUser.display_name} (@${currentUser.username})`}
-              >
-                <span className="text-sm">
-                  {currentUser.racer_avatar === 'cyber_car' ? '🏎️' :
-                   currentUser.racer_avatar === 'quantum_saucer' ? '🛸' :
-                   currentUser.racer_avatar === 'lightning' ? '⚡' :
-                   currentUser.racer_avatar === 'lightcycle' ? '🏍️' : '🚀'}
-                </span>
-                <span className="max-w-[75px] truncate hidden sm:inline">{currentUser.display_name}</span>
-              </button>
-              <button
-                onClick={handleLogout}
-                className="p-1 text-white/50 hover:text-rose-400 transition ml-0.5"
-                title="Đăng xuất"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
+      {/* ── FLOATING GLASS ISLAND TOP NAVIGATION ── */}
+      <header className="max-w-5xl mx-auto px-4 pt-3 pb-1 relative z-30">
+        <div className="bg-black/45 backdrop-blur-2xl border border-white/15 rounded-3xl px-4 sm:px-6 py-2.5 shadow-2xl flex items-center justify-between gap-3">
+          {/* Brand logo & Streak */}
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-lg shadow-lg shadow-cyan-500/20 font-black text-black flex-shrink-0">
+              ⌛
             </div>
-          ) : (
+            <div>
+              <div className="text-sm font-black text-white tracking-tight leading-none flex items-center gap-1.5">
+                <span className="bg-gradient-to-r from-white via-cyan-100 to-cyan-300 bg-clip-text text-transparent">
+                  LifeQuest
+                </span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-400/20 text-cyan-300 font-mono font-bold border border-cyan-400/30">
+                  3.0
+                </span>
+              </div>
+              {currentUser ? (
+                <div className="text-[11px] text-amber-300 font-semibold flex items-center gap-1.5 mt-0.5">
+                  <span>🔥 {currentUser.streak || 1}d streak</span>
+                  <span className="text-white/30">•</span>
+                  <span className="text-cyan-300 font-mono text-[10px]">Lv.{currentUser.level || 1}</span>
+                </div>
+              ) : (
+                <div className="text-[10px] text-white/50 mt-0.5">Khách tập trung tự do</div>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Actions & Profile Dropdown */}
+          <div className="flex items-center gap-2">
+            {/* Quick manual log button (Desktop) */}
             <button
-              onClick={() => setIsAuthModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-amber-400 hover:bg-amber-300 text-black rounded-xl transition active:scale-95 shadow-md"
+              onClick={() => {
+                if (!currentUser) {
+                  toast.info('Vui lòng đăng nhập để ghi nhận giờ học vào mục tiêu cá nhân!')
+                  setIsAuthModalOpen(true)
+                  return
+                }
+                setIsManualModalOpen(true)
+              }}
+              className="hidden lg:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/10 transition active:scale-95"
+              title="Ghi nhận giờ học offline"
             >
-              <UserIcon className="w-3.5 h-3.5" />
-              <span>Đăng nhập</span>
+              <Plus className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Ghi giờ</span>
             </button>
-          )}
 
-          {/* Notification settings button */}
-          <button
-            onClick={() => {
-              if (!currentUser) {
-                toast.info('Vui lòng đăng nhập để cài đặt thông báo Telegram và lịch cá nhân!')
-                setIsAuthModalOpen(true)
-                return
-              }
-              setIsNotificationModalOpen(true)
-            }}
-            className="p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition backdrop-blur-md relative"
-            title="Cài đặt thông báo & Nhắc nhở"
-          >
-            <Bell className="w-4 h-4 text-amber-300" />
-            <span
-              className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${
-                notificationManager.getPermission() === 'granted'
-                  ? 'bg-emerald-400'
-                  : 'bg-amber-400'
-              }`}
-            />
-          </button>
+            {/* Shareable Achievement Button */}
+            <button
+              onClick={() => setIsShareModalOpen(true)}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 text-amber-300 border border-amber-400/30 text-xs font-bold transition active:scale-95 shadow-sm"
+              title="Khoe Bảng Vàng Chiến Tích"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden md:inline">Khoe Bảng Vàng</span>
+            </button>
 
-          {/* Settings button */}
-          <button
-            onClick={() => setIsSettingsModalOpen(true)}
-            className="p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition backdrop-blur-md"
-            title="Cài đặt Pomodoro"
-          >
-            <SettingsIcon className="w-4 h-4" />
-          </button>
+            {/* Cosmic Race Track Button (Main CTA) */}
+            <button
+              onClick={() => setIsRaceModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-extrabold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl shadow-lg shadow-cyan-500/25 border border-cyan-400/40 transition active:scale-95"
+              title="Đường Đua Bạn Bè & Bảng Vàng Pomodoro"
+            >
+              <Trophy className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <span className="hidden sm:inline">Đường Đua F1</span>
+              <span className="sm:hidden">Đua F1</span>
+            </button>
+
+            {/* User Profile Avatar Capsule or Login Button */}
+            {currentUser ? (
+              <div className="relative" ref={profileMenuRef}>
+                <button
+                  onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/20 transition active:scale-95 text-xs shadow-sm"
+                  title="Menu tài khoản & Cài đặt"
+                >
+                  <span className="text-base leading-none">
+                    {currentUser.racer_avatar === 'cyber_car' ? '🏎️' :
+                     currentUser.racer_avatar === 'quantum_saucer' ? '🛸' :
+                     currentUser.racer_avatar === 'lightning' ? '⚡' :
+                     currentUser.racer_avatar === 'lightcycle' ? '🏍️' : '🚀'}
+                  </span>
+                  <span className="font-bold text-white max-w-[80px] truncate hidden md:inline">
+                    {currentUser.display_name}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-white/60 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown Menu */}
+                {isProfileMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-[#0f1422]/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs">
+                    {/* User Profile Mini Header */}
+                    <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 mb-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-white truncate">{currentUser.display_name}</div>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
+                          Lv.{currentUser.level || 1}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-white/50 font-mono">@{currentUser.username}</div>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <button
+                        onClick={() => {
+                          setIsManualModalOpen(true)
+                          setIsProfileMenuOpen(false)
+                        }}
+                        className="w-full px-2.5 py-2 rounded-xl text-left text-white/80 hover:text-white hover:bg-white/10 flex items-center gap-2 transition"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Ghi nhận giờ học offline</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsBgPickerOpen(true)
+                          setIsProfileMenuOpen(false)
+                        }}
+                        className="w-full px-2.5 py-2 rounded-xl text-left text-white/80 hover:text-white hover:bg-white/10 flex items-center gap-2 transition"
+                      >
+                        <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Đổi không gian & hình nền</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsTimeCapsuleOpen(true)
+                          setIsProfileMenuOpen(false)
+                        }}
+                        className="w-full px-2.5 py-2 rounded-xl text-left text-white/80 hover:text-white hover:bg-white/10 flex items-center gap-2 transition"
+                      >
+                        <Mail className="w-3.5 h-3.5 text-pink-400" />
+                        <span>Hòm thư gửi tương lai</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsNotificationModalOpen(true)
+                          setIsProfileMenuOpen(false)
+                        }}
+                        className="w-full px-2.5 py-2 rounded-xl text-left text-white/80 hover:text-white hover:bg-white/10 flex items-center gap-2 transition"
+                      >
+                        <Bell className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Cài đặt thông báo & Telegram</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsSettingsModalOpen(true)
+                          setIsProfileMenuOpen(false)
+                        }}
+                        className="w-full px-2.5 py-2 rounded-xl text-left text-white/80 hover:text-white hover:bg-white/10 flex items-center gap-2 transition"
+                      >
+                        <SettingsIcon className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Cài đặt Pomodoro & Chuông</span>
+                      </button>
+
+                      {canInstall && (
+                        <button
+                          onClick={() => {
+                            installPWA()
+                            setIsProfileMenuOpen(false)
+                          }}
+                          className="w-full px-2.5 py-2 rounded-xl text-left text-emerald-300 hover:bg-emerald-500/20 flex items-center gap-2 transition"
+                        >
+                          <Smartphone className="w-3.5 h-3.5" />
+                          <span>Cài đặt App ra màn hình chính</span>
+                        </button>
+                      )}
+
+                      {currentUser.is_admin && (
+                        <button
+                          onClick={() => {
+                            navigate('/admin')
+                            setIsProfileMenuOpen(false)
+                          }}
+                          className="w-full px-2.5 py-2 rounded-xl text-left text-amber-300 font-bold hover:bg-amber-500/20 flex items-center gap-2 transition"
+                        >
+                          <Shield className="w-3.5 h-3.5" />
+                          <span>Cổng Quản Trị Viên (Admin)</span>
+                        </button>
+                      )}
+
+                      <div className="my-1 border-t border-white/10" />
+
+                      <button
+                        onClick={() => {
+                          handleLogout()
+                          setIsProfileMenuOpen(false)
+                        }}
+                        className="w-full px-2.5 py-2 rounded-xl text-left text-rose-400 hover:bg-rose-500/20 flex items-center gap-2 transition"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Đăng xuất</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-amber-400 hover:bg-amber-300 text-black rounded-xl transition active:scale-95 shadow-md"
+              >
+                <UserIcon className="w-3.5 h-3.5" />
+                <span>Đăng nhập</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
       {/* ── MAIN CONTENT CONTAINER ── */}
       <main className="max-w-xl mx-auto px-4 pt-6 pb-16 relative z-10">
-        {/* ── POMODORO TIMER CARD ── */}
-        <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden">
-          {/* Quick Floating PiP & Zen Desk Clock action buttons in top-right */}
-          <div className="absolute top-4 right-4 flex items-center gap-1.5 z-20">
-            <button
-              onClick={handleTogglePip}
-              className={`p-2 rounded-xl transition backdrop-blur-md border flex items-center gap-1 text-xs ${
-                isPipActive
-                  ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-md ring-1 ring-cyan-400'
-                  : 'bg-white/10 hover:bg-white/20 border-white/10 text-white/80 hover:text-white'
-              }`}
-              title="Cửa sổ nổi ghim trên mọi ứng dụng khi lướt web / code (Picture-in-Picture)"
-            >
-              <Tv className="w-3.5 h-3.5 text-cyan-300" />
-              <span className="hidden sm:inline text-[11px] font-medium">Nổi</span>
-            </button>
-            <button
-              onClick={() => setIsZenClockOpen(true)}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition backdrop-blur-md border border-white/10 flex items-center gap-1 text-xs"
-              title="Chế độ toàn màn hình đồng hồ để bàn (Zen Desk Clock - giữ màn hình luôn sáng)"
-            >
-              <Maximize2 className="w-3.5 h-3.5 text-amber-300" />
-              <span className="hidden sm:inline text-[11px] font-medium">Zen</span>
-            </button>
+        {/* ── POMODORO TIMER CARD (CYBER FOCUS COCKPIT) ── */}
+        <div className="bg-[#0b0f19]/80 backdrop-blur-2xl border border-white/20 hover:border-cyan-500/40 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden transition-all duration-300">
+          {/* Top Bar inside Card: Session Info on Left, PiP & Zen on Right */}
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+              <span>#{sessionCount} {mode === 'pomodoro' ? 'Phiên tập trung' : 'Phiên nghỉ ngơi'}</span>
+            </span>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleTogglePip}
+                className={`p-2 rounded-xl transition backdrop-blur-md border flex items-center gap-1 text-xs active:scale-95 ${
+                  isPipActive
+                    ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-md ring-1 ring-cyan-400'
+                    : 'bg-white/10 hover:bg-white/20 border-white/10 text-white/80 hover:text-white'
+                }`}
+                title="Cửa sổ nổi ghim trên mọi ứng dụng khi lướt web / code (Picture-in-Picture)"
+              >
+                <Tv className="w-3.5 h-3.5 text-cyan-300" />
+                <span className="hidden sm:inline text-[11px] font-bold">Nổi</span>
+              </button>
+              <button
+                onClick={() => setIsZenClockOpen(true)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition backdrop-blur-md border border-white/10 flex items-center gap-1 text-xs active:scale-95"
+                title="Chế độ toàn màn hình đồng hồ để bàn (Zen Desk Clock - giữ màn hình luôn sáng)"
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-amber-300" />
+                <span className="hidden sm:inline text-[11px] font-bold">Zen</span>
+              </button>
+            </div>
           </div>
 
-          {/* Tabs: Pomodoro | Short Break | Long Break */}
-          <div className="flex items-center justify-center gap-1 sm:gap-2 mb-4">
+          {/* Mode Switcher: Segmented Sliding Pill */}
+          <div className="inline-flex items-center p-1 rounded-2xl bg-black/50 border border-white/15 mb-4 shadow-inner">
             <button
               onClick={() => switchMode('pomodoro')}
-              className={`px-4 py-1.5 text-xs sm:text-sm font-semibold rounded-xl transition ${
+              className={`px-4 py-1.5 text-xs sm:text-sm font-black rounded-xl transition-all duration-200 ${
                 mode === 'pomodoro'
-                  ? 'bg-white text-black shadow-lg font-bold'
-                  : 'text-white/70 hover:text-white hover:bg-white/10'
+                  ? 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-lg shadow-rose-500/25'
+                  : 'text-white/60 hover:text-white hover:bg-white/10'
               }`}
             >
               Pomodoro
             </button>
             <button
               onClick={() => switchMode('shortBreak')}
-              className={`px-4 py-1.5 text-xs sm:text-sm font-semibold rounded-xl transition ${
+              className={`px-4 py-1.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 ${
                 mode === 'shortBreak'
-                  ? 'bg-white text-black shadow-lg font-bold'
-                  : 'text-white/70 hover:text-white hover:bg-white/10'
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25'
+                  : 'text-white/60 hover:text-white hover:bg-white/10'
               }`}
             >
               Nghỉ ngắn
             </button>
             <button
               onClick={() => switchMode('longBreak')}
-              className={`px-4 py-1.5 text-xs sm:text-sm font-semibold rounded-xl transition ${
+              className={`px-4 py-1.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 ${
                 mode === 'longBreak'
-                  ? 'bg-white text-black shadow-lg font-bold'
-                  : 'text-white/70 hover:text-white hover:bg-white/10'
+                  ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/25'
+                  : 'text-white/60 hover:text-white hover:bg-white/10'
               }`}
             >
               Nghỉ dài
@@ -961,8 +1023,8 @@ export default function PomodoroApp() {
 
           {/* ── QUICK STUDY TIME SELECTOR ROW ── */}
           <div className="flex items-center justify-center gap-1.5 mb-5 flex-wrap">
-            <span className="text-[11px] text-white/50 mr-1 flex items-center gap-1">
-              <Clock className="w-3 h-3" /> Thời gian:
+            <span className="text-[11px] text-white/50 mr-1 flex items-center gap-1 font-mono">
+              <Clock className="w-3 h-3 text-cyan-400" /> Thời gian:
             </span>
             {currentPresets.map((m) => {
               const isActive = currentMinutesSetting === m
@@ -971,9 +1033,9 @@ export default function PomodoroApp() {
                   key={m}
                   type="button"
                   onClick={() => handleSetStudyTime(m)}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition border ${
+                  className={`px-2.5 py-1 text-xs font-bold rounded-xl transition border ${
                     isActive
-                      ? 'bg-white/30 border-white text-white shadow-sm'
+                      ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-md shadow-cyan-500/20'
                       : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/15'
                   }`}
                 >
@@ -989,7 +1051,7 @@ export default function PomodoroApp() {
                 setCustomTimeMinutes(currentMinutesSetting)
                 setShowCustomTimeInput(!showCustomTimeInput)
               }}
-              className="px-2 py-1 text-xs font-medium rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 text-white/80 transition"
+              className="px-2.5 py-1 text-xs font-semibold rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white/80 transition"
               title="Nhập số phút tùy chỉnh"
             >
               Tùy chỉnh ✏️
@@ -1020,26 +1082,32 @@ export default function PomodoroApp() {
           )}
 
           {/* Big Digital Countdown */}
-          <div className="my-5">
-            <h2 className="text-7xl sm:text-8xl font-black tracking-tight font-mono drop-shadow-2xl select-none text-white">
+          <div className="my-4 sm:my-5 relative select-none">
+            <h2 className="text-7xl sm:text-8xl font-black tracking-tighter font-mono drop-shadow-[0_0_35px_rgba(255,255,255,0.4)] text-white">
               {formatTimeDisplay(timeLeft)}
             </h2>
+            {selectedGoalId && (
+              <div className="text-xs text-cyan-300 font-semibold mt-1 flex items-center justify-center gap-1.5">
+                <Target className="w-3.5 h-3.5" />
+                <span className="text-white/90 truncate max-w-xs">{goals.find((g) => g.id === selectedGoalId)?.title}</span>
+              </div>
+            )}
           </div>
 
           {/* Main Controls: START / PAUSE + SKIP + RESET */}
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center justify-center gap-3 my-2">
             <button
               onClick={handleStartPause}
-              className="w-40 sm:w-48 py-3.5 sm:py-4 bg-white hover:bg-white/95 active:translate-y-1 text-black text-lg sm:text-xl font-black uppercase rounded-2xl shadow-2xl transition-all duration-150 flex items-center justify-center gap-2"
+              className="w-44 sm:w-52 py-3.5 sm:py-4 bg-gradient-to-r from-white via-slate-100 to-slate-200 hover:from-white hover:to-white text-black text-lg sm:text-xl font-black uppercase rounded-2xl shadow-2xl hover:shadow-cyan-500/25 transition-all duration-150 active:scale-95 flex items-center justify-center gap-2"
             >
               {isRunning ? (
                 <>
-                  <Pause className="w-6 h-6 fill-current" />
+                  <Pause className="w-6 h-6 fill-current text-rose-600" />
                   <span>TẠM DỪNG</span>
                 </>
               ) : (
                 <>
-                  <Play className="w-6 h-6 fill-current" />
+                  <Play className="w-6 h-6 fill-current text-cyan-600" />
                   <span>BẮT ĐẦU</span>
                 </>
               )}
@@ -1048,7 +1116,7 @@ export default function PomodoroApp() {
             {isRunning && (
               <button
                 onClick={handleSkip}
-                className="p-3.5 sm:p-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl transition active:scale-95 backdrop-blur-sm"
+                className="p-3.5 sm:p-4 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition active:scale-95 border border-white/15 shadow-sm"
                 title="Bỏ qua phiên này"
               >
                 <SkipForward className="w-5 h-5" />
@@ -1064,7 +1132,7 @@ export default function PomodoroApp() {
                   : settings.longBreakMinutes * 60) && (
                 <button
                   onClick={handleReset}
-                  className="p-3.5 sm:p-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl transition active:scale-95 backdrop-blur-sm"
+                  className="p-3.5 sm:p-4 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition active:scale-95 border border-white/15 shadow-sm"
                   title="Đặt lại thời gian"
                 >
                   <RotateCcw className="w-5 h-5" />
@@ -1179,158 +1247,153 @@ export default function PomodoroApp() {
           <DailyQuoteCard />
         </div>
 
-        {/* ── ACTIVE GOAL & TOPIC TRACKER ── */}
-        <div className="mt-5 bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-4 sm:p-5 shadow-lg">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-white/80" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-white/80">
-                Mục tiêu đang chọn
-              </span>
-            </div>
+        {/* ── UNIFIED EPIC QUEST & CRYSTAL DOPAMINE CARD ── */}
+        <div className="mt-5 bg-[#0b0f19]/80 backdrop-blur-2xl border border-amber-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl relative overflow-hidden transition-all">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-center">
+            {/* Left 2 cols: Goal & Progress */}
+            <div className="md:col-span-2 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-xl bg-amber-400/20 text-amber-300 text-sm shadow-sm">
+                    <Target className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-black uppercase tracking-wider text-amber-200">
+                    Nhiệm Vụ Mục Tiêu
+                  </span>
+                </div>
 
-            {/* Quick dropdown for selecting active goal */}
-            <select
-              value={selectedGoalId || ''}
-              onChange={(e) => setSelectedGoalId(e.target.value ? Number(e.target.value) : null)}
-              className="bg-black/50 border border-white/25 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
-            >
-              {goals.length === 0 && <option value="">Chưa có mục tiêu</option>}
-              {goals.map((g) => (
-                <option key={g.id} value={g.id} className="bg-[#1F232B] text-white">
-                  {g.title} ({g.current_hours}/{g.target_hours}h)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {activeGoal ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-semibold flex items-center gap-2">
-                  {activeGoal.title}
-                  {activeGoal.is_completed && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-400 text-black text-[10px] font-bold rounded-full">
-                      <Trophy className="w-3 h-3" /> DONE
-                    </span>
-                  )}
-                </span>
-                <span className="text-xs font-medium text-white/80">
-                  {activeGoal.current_hours} / {activeGoal.target_hours} giờ ({activeGoal.progress_percent}%)
-                </span>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="w-full bg-black/40 rounded-full h-3 overflow-hidden border border-white/15 p-0.5">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    activeGoal.is_completed
-                      ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
-                      : 'bg-white'
-                  }`}
-                  style={{ width: `${Math.min(100, activeGoal.progress_percent)}%` }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] text-white/70">
-                <span>
-                  {activeGoal.is_completed
-                    ? '🎉 Đã đạt mục tiêu đề ra!'
-                    : `Còn ${activeGoal.remaining_hours} giờ nữa để về đích`}
-                </span>
-                <button
-                  onClick={() => setIsManualModalOpen(true)}
-                  className="text-white hover:underline flex items-center gap-1 font-medium"
+                <select
+                  value={selectedGoalId || ''}
+                  onChange={(e) => setSelectedGoalId(e.target.value ? Number(e.target.value) : null)}
+                  className="bg-black/60 border border-white/20 rounded-xl px-3 py-1 text-xs text-white focus:outline-none max-w-[200px] truncate"
                 >
-                  <Plus className="w-3 h-3" /> Ghi thêm giờ offline
-                </button>
+                  {goals.length === 0 && <option value="">Chưa có mục tiêu</option>}
+                  {goals.map((g) => (
+                    <option key={g.id} value={g.id} className="bg-[#1F232B] text-white">
+                      {g.title} ({g.current_hours}/{g.target_hours}h)
+                    </option>
+                  ))}
+                </select>
               </div>
+
+              {activeGoal ? (
+                <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      <span>{activeGoal.title}</span>
+                      {activeGoal.is_completed && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                          DONE 🏆
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-mono text-cyan-300 font-extrabold">
+                      {activeGoal.current_hours} / {activeGoal.target_hours}h ({activeGoal.progress_percent}%)
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-slate-800/80 rounded-full h-3 p-0.5 border border-white/15 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-amber-400 via-rose-500 to-cyan-400 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, activeGoal.progress_percent)}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-white/60">
+                    <span>
+                      {activeGoal.is_completed
+                        ? '🎉 Đã đạt mục tiêu đề ra!'
+                        : `Còn ${activeGoal.remaining_hours} giờ nữa để về đích`}
+                    </span>
+                    <button
+                      onClick={() => setIsManualModalOpen(true)}
+                      className="text-cyan-300 hover:underline flex items-center gap-1 font-medium"
+                    >
+                      <Plus className="w-3 h-3" /> Ghi thêm giờ offline
+                    </button>
+                  </div>
+                </div>
+              ) : !currentUser ? (
+                <div className="text-center py-4 text-xs text-white/80 bg-white/5 rounded-2xl border border-white/10">
+                  🔒 Đang ở chế độ Khách tập trung tự do.{' '}
+                  <button
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="underline font-bold text-amber-300 hover:text-amber-200"
+                  >
+                    Đăng nhập để lưu tiến độ 1000h
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center py-4 text-xs text-white/80 bg-white/5 rounded-2xl border border-white/10">
+                  Chưa có mục tiêu nào.{' '}
+                  <button
+                    onClick={() => setIsGoalModalOpen(true)}
+                    className="underline font-semibold text-white"
+                  >
+                    Tạo mục tiêu ngay
+                  </button>
+                </div>
+              )}
 
               {/* Focus Topic Note */}
-              <div className="pt-2">
+              <div>
                 <input
                   type="text"
                   value={sessionNote}
                   onChange={(e) => setSessionNote(e.target.value)}
                   placeholder="Ghi chú phiên này: ví dụ Nói tiếng Anh chủ đề Du lịch..."
-                  className="w-full px-3 py-2 text-xs bg-black/30 border border-white/20 rounded-xl text-white placeholder:text-white/40 focus:outline-none focus:border-white/60"
+                  className="w-full px-3.5 py-2 text-xs bg-black/40 border border-white/15 rounded-xl text-white placeholder:text-white/40 focus:outline-none focus:border-cyan-400 transition"
                 />
               </div>
             </div>
-          ) : !currentUser ? (
-            <div className="text-center py-2 text-xs text-white/80">
-              🔒 Đang ở chế độ Khách tập trung tự do.{' '}
-              <button
-                onClick={() => setIsAuthModalOpen(true)}
-                className="underline font-bold text-amber-300 hover:text-amber-200"
-              >
-                Đăng ký / Đăng nhập để lưu tiến độ 1000h
-              </button>
-            </div>
-          ) : (
-            <div className="text-center py-2 text-xs text-white/80">
-              Chưa có mục tiêu nào.{' '}
-              <button
-                onClick={() => setIsGoalModalOpen(true)}
-                className="underline font-semibold text-white"
-              >
-                Tạo mục tiêu ngay (ví dụ 1000 giờ)
-              </button>
-            </div>
-          )}
-        </div>
 
-        {/* ── DOPAMINE REWARD JAR MINI BANNER ── */}
-        <div className="mt-4 flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-500/20 via-purple-500/15 to-indigo-500/20 border border-amber-400/30 rounded-2xl backdrop-blur-md shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-300 text-base shadow-sm">
-              💎
-            </div>
-            <div>
-              <div className="text-xs font-bold text-amber-200 flex items-center gap-2">
-                <span>Lọ Ngọc Tích Lũy:</span>
-                <span className="text-white text-sm font-extrabold">{currentUser ? availablePearls.toFixed(1) : 0} viên</span>
+            {/* Right col: 3D Crystal Pearl Jar */}
+            <div className="p-4 rounded-2xl bg-gradient-to-b from-amber-500/15 via-purple-500/15 to-indigo-500/15 border border-amber-400/30 text-center relative overflow-hidden flex flex-col items-center justify-center">
+              <div className="text-3xl animate-bounce">💎</div>
+              <div className="text-xs font-black text-amber-200 mt-1">Lọ Ngọc Dopamine</div>
+              <div className="text-xl font-black font-mono text-white mt-0.5">
+                {currentUser ? availablePearls.toFixed(1) : 0} <span className="text-xs font-normal text-amber-300">viên</span>
               </div>
-              <div className="text-[10px] text-white/60">
+              <p className="text-[10px] text-white/60 mt-1 leading-tight">
                 1 giờ học = 1 ngọc • Đổi giờ xem phim, chơi game không lo tội lỗi!
-              </div>
+              </p>
+              <button
+                onClick={() => {
+                  if (!currentUser) {
+                    toast.info('Vui lòng đăng nhập để mở Cửa Hàng Đổi Thưởng!')
+                    setIsAuthModalOpen(true)
+                    return
+                  }
+                  setIsRewardShopOpen(true)
+                }}
+                className="mt-3 px-3 py-1.5 w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-extrabold text-xs shadow-md active:scale-95 transition flex items-center justify-center gap-1.5"
+              >
+                <Gift className="w-3.5 h-3.5" />
+                <span>Đổi Thưởng {!currentUser && '🔒'}</span>
+              </button>
             </div>
           </div>
-          <button
-            onClick={() => {
-              if (!currentUser) {
-                toast.info('Vui lòng đăng nhập để mở Cửa Hàng Đổi Thưởng!')
-                setIsAuthModalOpen(true)
-                return
-              }
-              setIsRewardShopOpen(true)
-            }}
-            className="text-xs font-bold px-3 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black rounded-xl transition shadow-md flex items-center gap-1.5 flex-shrink-0 active:scale-95"
-          >
-            <Gift className="w-3.5 h-3.5" />
-            <span>Đổi thưởng {!currentUser && '🔒'}</span>
-          </button>
         </div>
 
-        {/* ── SECONDARY NAVIGATION TABS (MOBILE THUMB SCROLLABLE) ── */}
-        <div className="mt-8 flex items-center gap-1.5 sm:gap-2 border-b border-white/20 pb-2 overflow-x-auto no-scrollbar flex-nowrap sm:flex-wrap justify-start sm:justify-center py-1">
+        {/* ── SECONDARY NAVIGATION TABS (MACOS DOCK STYLE) ── */}
+        <div className="mt-8 p-1.5 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/15 flex items-center gap-1.5 overflow-x-auto no-scrollbar justify-start sm:justify-center shadow-xl">
           <button
             onClick={() => setActiveTab('goals')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
+            className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'goals'
-                ? 'bg-white/25 text-white shadow-sm'
+                ? 'bg-white text-black shadow-lg'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
             }`}
           >
-            <Target className="w-4 h-4" />
+            <Target className="w-4 h-4 text-rose-500" />
             <span>Mục tiêu lớn {!currentUser ? '🔒' : `(${goals.length})`}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('matrix')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
+            className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'matrix'
-                ? 'bg-gradient-to-r from-amber-500/30 to-rose-500/30 text-amber-200 border border-amber-400/40 shadow-sm'
+                ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-lg shadow-amber-500/25'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
             }`}
           >
@@ -1340,45 +1403,45 @@ export default function PomodoroApp() {
 
           <button
             onClick={() => setActiveTab('galaxy')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
+            className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'galaxy'
-                ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 shadow-sm'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
             }`}
           >
-            <Orbit className="w-4 h-4 text-cyan-400" />
+            <Orbit className="w-4 h-4 text-cyan-300" />
             <span>Thiên hà tri thức {!currentUser && '🔒'}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('timewarp')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
+            className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'timewarp'
-                ? 'bg-purple-500/30 text-purple-200 border border-purple-400/40 shadow-sm'
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/25'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
             }`}
           >
-            <Compass className="w-4 h-4 text-purple-400" />
+            <Compass className="w-4 h-4 text-purple-300" />
             <span>Cỗ máy tương lai {!currentUser && '🔒'}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('logs')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
+            className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'logs'
-                ? 'bg-white/25 text-white shadow-sm'
+                ? 'bg-white text-black shadow-lg'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
             }`}
           >
-            <BookOpen className="w-4 h-4" />
+            <BookOpen className="w-4 h-4 text-emerald-500" />
             <span>Nhật ký {!currentUser ? '🔒' : `(${sessions.length})`}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('stats')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
+            className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'stats'
-                ? 'bg-white/25 text-white shadow-sm'
+                ? 'bg-white text-black shadow-lg'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
             }`}
           >

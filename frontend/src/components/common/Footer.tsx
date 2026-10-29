@@ -119,7 +119,7 @@ export const Footer: React.FC<FooterProps> = ({
               <div className="font-mono font-bold text-amber-300 text-xs tracking-wider">
                 STK: 1211059999
               </div>
-              <div className="text-[10px] text-white/40">Chủ TK: TRAN LUAN</div>
+              <div className="text-[10px] text-white/40">Chủ TK: NGUYEN THANH LUAN</div>
             </div>
           </div>
         </div>

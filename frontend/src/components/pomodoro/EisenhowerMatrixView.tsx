@@ -487,32 +487,32 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
   const [isDragOver, setIsDragOver] = useState(false)
   const colorStyles = {
     rose: {
-      border: 'border-rose-500/35',
-      headerBg: 'from-rose-950/40 via-black/40 to-black/30',
-      badge: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+      border: 'border-rose-500/40 hover:border-rose-400/60 shadow-rose-950/30',
+      headerBg: 'from-rose-950/50 via-black/40 to-black/30',
+      badge: 'bg-rose-500/25 text-rose-200 border-rose-500/50',
       accentText: 'text-rose-400',
-      addBtn: 'hover:bg-rose-500/20 text-rose-300',
+      addBtn: 'hover:bg-rose-500/25 text-rose-300',
     },
     emerald: {
-      border: 'border-emerald-500/35',
-      headerBg: 'from-emerald-950/40 via-black/40 to-black/30',
-      badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+      border: 'border-emerald-500/40 hover:border-emerald-400/60 shadow-emerald-950/30',
+      headerBg: 'from-emerald-950/50 via-black/40 to-black/30',
+      badge: 'bg-emerald-500/25 text-emerald-200 border-emerald-500/50',
       accentText: 'text-emerald-400',
-      addBtn: 'hover:bg-emerald-500/20 text-emerald-300',
+      addBtn: 'hover:bg-emerald-500/25 text-emerald-300',
     },
     amber: {
-      border: 'border-amber-500/35',
-      headerBg: 'from-amber-950/40 via-black/40 to-black/30',
-      badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+      border: 'border-amber-500/40 hover:border-amber-400/60 shadow-amber-950/30',
+      headerBg: 'from-amber-950/50 via-black/40 to-black/30',
+      badge: 'bg-amber-500/25 text-amber-200 border-amber-500/50',
       accentText: 'text-amber-400',
-      addBtn: 'hover:bg-amber-500/20 text-amber-300',
+      addBtn: 'hover:bg-amber-500/25 text-amber-300',
     },
     purple: {
-      border: 'border-purple-500/35',
-      headerBg: 'from-purple-950/40 via-black/40 to-black/30',
-      badge: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+      border: 'border-purple-500/40 hover:border-purple-400/60 shadow-purple-950/30',
+      headerBg: 'from-purple-950/50 via-black/40 to-black/30',
+      badge: 'bg-purple-500/25 text-purple-200 border-purple-500/50',
       accentText: 'text-purple-400',
-      addBtn: 'hover:bg-purple-500/20 text-purple-300',
+      addBtn: 'hover:bg-purple-500/25 text-purple-300',
     },
   }[themeColor]
 

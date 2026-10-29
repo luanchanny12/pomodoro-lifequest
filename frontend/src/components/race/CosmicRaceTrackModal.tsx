@@ -184,6 +184,61 @@ export const CosmicRaceTrackModal: React.FC<CosmicRaceTrackModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+          {/* ── TOP 3 PODIUM (BỤC VINH QUANG DẪN ĐẦU) ── */}
+          {sortedRacers.length >= 2 && !loading && (
+            <div className="p-4 sm:p-5 rounded-3xl bg-black/50 border border-amber-500/30 text-center relative overflow-hidden shadow-xl">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-300 text-xs font-bold mb-3 shadow-sm">
+                <Trophy className="w-3.5 h-3.5 text-amber-300" />
+                <span>BỤC VINH QUANG DẪN ĐẦU {filterMode === 'today' ? 'HÔM NAY' : 'TUẦN NÀY'}</span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5 max-w-md mx-auto items-end pt-3 pb-1">
+                {/* #2 Rank: Silver */}
+                {sortedRacers[1] && (
+                  <div className="p-3 rounded-2xl bg-white/5 border border-slate-400/30 flex flex-col items-center space-y-1">
+                    <span className="text-base font-bold text-slate-300">🥈 #2</span>
+                    <span className="text-2xl">{VEHICLE_ICONS[sortedRacers[1].racer_avatar] || '🛸'}</span>
+                    <span className="text-xs font-bold text-white truncate max-w-[90px]">{sortedRacers[1].display_name}</span>
+                    <span className="text-xs font-mono font-black text-slate-300">
+                      {filterMode === 'today' ? sortedRacers[1].today_hours : sortedRacers[1].weekly_hours}h
+                    </span>
+                    <span className="text-[10px] text-amber-300 font-semibold">🔥 {sortedRacers[1].streak}d</span>
+                  </div>
+                )}
+
+                {/* #1 Rank: Gold (Tallest) */}
+                {sortedRacers[0] && (
+                  <div className="p-3.5 rounded-2xl bg-gradient-to-b from-amber-400/20 via-yellow-500/15 to-transparent border-2 border-amber-400 shadow-lg shadow-amber-400/20 flex flex-col items-center space-y-1 -translate-y-2">
+                    <span className="text-lg font-black text-amber-300">👑 🥇 #1</span>
+                    <span className="text-3xl animate-bounce">{VEHICLE_ICONS[sortedRacers[0].racer_avatar] || '🏎️'}</span>
+                    <span className="text-xs font-black text-amber-200 truncate max-w-[100px]">{sortedRacers[0].display_name}</span>
+                    <span className="text-sm font-mono font-black text-amber-400">
+                      {filterMode === 'today' ? sortedRacers[0].today_hours : sortedRacers[0].weekly_hours}h
+                    </span>
+                    <span className="text-[10px] text-amber-300 font-bold">🔥 {sortedRacers[0].streak}d streak</span>
+                  </div>
+                )}
+
+                {/* #3 Rank: Bronze */}
+                {sortedRacers[2] ? (
+                  <div className="p-3 rounded-2xl bg-white/5 border border-amber-700/40 flex flex-col items-center space-y-1">
+                    <span className="text-base font-bold text-amber-600">🥉 #3</span>
+                    <span className="text-2xl">{VEHICLE_ICONS[sortedRacers[2].racer_avatar] || '⚡'}</span>
+                    <span className="text-xs font-bold text-white truncate max-w-[90px]">{sortedRacers[2].display_name}</span>
+                    <span className="text-xs font-mono font-black text-amber-500">
+                      {filterMode === 'today' ? sortedRacers[2].today_hours : sortedRacers[2].weekly_hours}h
+                    </span>
+                    <span className="text-[10px] text-amber-300 font-semibold">🔥 {sortedRacers[2].streak}d</span>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex flex-col items-center justify-center text-white/30 text-xs">
+                    <span>Đang chờ #3</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ── 1. THE VISUAL HORIZONTAL RACE CIRCUIT ── */}
           <div className="relative p-5 rounded-3xl bg-gradient-to-b from-black/80 via-[#0d101a] to-black/90 border border-white/15 shadow-2xl overflow-hidden">
             {/* Background Glow */}

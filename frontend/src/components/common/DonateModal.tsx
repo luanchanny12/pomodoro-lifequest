@@ -33,7 +33,7 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
 
   const bankName = 'MB Bank (Ngân hàng Quân Đội)'
   const accountNumber = '1211059999'
-  const accountName = 'TRAN LUAN'
+  const accountName = 'NGUYEN THANH LUAN'
   const memoText = 'Ung ho Pomodoro LifeQuest'
 
   // VietQR Dynamic URL (VietQR Standard)
