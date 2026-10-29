@@ -33,6 +33,15 @@ export const notificationService = {
     return res.data
   },
 
+  sendWindowsNotification: async (title: string, message: string): Promise<{ success: boolean }> => {
+    try {
+      const res = await api.post('/notifications/send-windows', { title, message })
+      return res.data
+    } catch {
+      return { success: false }
+    }
+  },
+
   testTelegramNotification: async (
     botToken: string,
     chatId: string,

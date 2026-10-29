@@ -4,6 +4,7 @@
  */
 
 import { soundManager } from './soundEffects'
+import { notificationService } from '@/services/notificationService'
 
 export interface NotificationConfig {
   webEnabled: boolean
@@ -66,30 +67,35 @@ class NotificationManager {
   }
 
   sendNotification(title: string, options?: NotificationOptions) {
-    if (typeof window === 'undefined' || !('Notification' in window)) return null
-    if (Notification.permission !== 'granted') return null
     if (!this.config.webEnabled) return null
 
-    try {
-      const notif = new Notification(title, {
-        icon: '/favicon.ico',
-        badge: '/favicon.ico',
-        silent: false,
-        ...options,
-      })
+    // 1. Luôn kích hoạt Windows Toast Native (góc dưới màn hình Windows)
+    const bodyText = options?.body || ''
+    notificationService.sendWindowsNotification(title, bodyText).catch(() => {})
 
-      notif.onclick = () => {
-        window.focus()
-        notif.close()
+    // 2. Kích hoạt Web Browser Notification nếu người dùng đã bật quyền
+    let notif: Notification | null = null
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        notif = new Notification(title, {
+          icon: '/favicon.ico',
+          badge: '/favicon.ico',
+          silent: false,
+          ...options,
+        })
+
+        notif.onclick = () => {
+          window.focus()
+          notif?.close()
+        }
+      } catch (e) {
+        console.warn('Could not display web notification:', e)
       }
-
-      // Play chime sound
-      soundManager.playCosmicChime()
-      return notif
-    } catch (e) {
-      console.warn('Could not display notification:', e)
-      return null
     }
+
+    // Phát chuông báo âm thanh
+    soundManager.playCosmicChime()
+    return notif
   }
 
   notifyPomodoroEnd(goalTitle?: string) {

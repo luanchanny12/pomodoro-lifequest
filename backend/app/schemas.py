@@ -1028,3 +1028,7 @@ class TelegramTestRequest(BaseModel):
     chat_id: str
     message: Optional[str] = None
 
+
+class WindowsToastRequest(BaseModel):
+    title: str
+    message: str

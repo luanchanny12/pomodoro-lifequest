@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import threading
+from typing import Optional
 import urllib.request
 import urllib.parse
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,10 +10,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import NotificationSetting
+from app.models_auth import User
+from app.routers.auth import get_current_user_optional
 from app.schemas import (
     NotificationSettingsResponse,
     NotificationSettingsUpdate,
     TelegramTestRequest,
+    WindowsToastRequest,
 )
 
 router = APIRouter(prefix="/api/notifications", tags=["Notification Engine & Telegram"])
@@ -130,10 +134,15 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
     }
 
 
-def _get_or_create_settings(db: Session) -> NotificationSetting:
-    setting = db.query(NotificationSetting).first()
+def _get_or_create_settings(db: Session, user_id: Optional[int] = None) -> NotificationSetting:
+    setting = None
+    if user_id:
+        setting = db.query(NotificationSetting).filter(NotificationSetting.user_id == user_id).first()
+    if not setting:
+        setting = db.query(NotificationSetting).first()
     if not setting:
         setting = NotificationSetting(
+            user_id=user_id,
             web_notifications_enabled=True,
             pomodoro_end_enabled=True,
             break_end_enabled=True,
@@ -146,21 +155,32 @@ def _get_or_create_settings(db: Session) -> NotificationSetting:
         db.add(setting)
         db.commit()
         db.refresh(setting)
+    elif user_id and setting.user_id is None:
+        setting.user_id = user_id
+        db.commit()
     return setting
 
 
 @router.get("/settings", response_model=NotificationSettingsResponse)
-def get_notification_settings(db: Session = Depends(get_db)):
-    return _get_or_create_settings(db)
+def get_notification_settings(
+    user: Optional[User] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    return _get_or_create_settings(db, user_id=user.id if user else None)
 
 
 @router.put("/settings", response_model=NotificationSettingsResponse)
 def update_notification_settings(
-    data: NotificationSettingsUpdate, db: Session = Depends(get_db)
+    data: NotificationSettingsUpdate,
+    user: Optional[User] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
 ):
-    setting = _get_or_create_settings(db)
+    user_id = user.id if user else None
+    setting = _get_or_create_settings(db, user_id=user_id)
     for field, val in data.model_dump(exclude_unset=True).items():
         setattr(setting, field, val)
+    if user_id and not setting.user_id:
+        setting.user_id = user_id
     setting.updated_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(setting)
@@ -189,6 +209,20 @@ def test_windows_notification():
             status_code=500, detail="Không thể gửi thông báo Windows Toast"
         )
     return {"message": "Đã gửi thông báo Windows Toast thành công!", "success": True}
+
+
+@router.post("/send-windows")
+def send_windows_notification(data: WindowsToastRequest):
+    """
+    Triggers a native Windows Toast notification directly on the host machine for real app events
+    (Pomodoro finished, break ended, study reminders).
+    """
+    import sys
+    if sys.platform != "win32":
+        return {"success": False, "message": "Chỉ khả dụng trên Windows."}
+    from windows_notifier import send_windows_toast
+    success = send_windows_toast(data.title, data.message)
+    return {"success": success, "message": "Notification dispatched."}
 
 
 @router.api_route("/telegram-trigger-check", methods=["GET", "POST"])
