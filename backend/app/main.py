@@ -57,32 +57,27 @@ async def lifespan(app: FastAPI):
 
         # Đảm bảo có tài khoản Quản trị viên (Admin)
         from app.models_auth import User as AuthUser
-        existing_admin = db.query(AuthUser).filter(AuthUser.is_admin == True).first()
-        if not existing_admin:
-            # Ưu tiên thăng cấp luan12111 hoặc tài khoản đầu tiên
-            promoted_user = (
-                db.query(AuthUser).filter(AuthUser.username.in_(["luan12111", "admin"])).first()
-                or db.query(AuthUser).first()
+        admin_account = db.query(AuthUser).filter(AuthUser.username == "admin").first()
+        if not admin_account:
+            from app.routers.auth import hash_password
+            pwd_hash, salt = hash_password(os.getenv("ADMIN_DEFAULT_PASSWORD", "Admin@123456"))
+            admin_account = AuthUser(
+                username="admin",
+                display_name="Quản Trị Viên (Luân)",
+                password_hash=pwd_hash,
+                salt=salt,
+                racer_avatar="rocket",
+                is_admin=True,
             )
-            if promoted_user:
-                promoted_user.is_admin = True
+            db.add(admin_account)
+            db.commit()
+            db.refresh(admin_account)
+            if not db.query(Player).filter(Player.user_id == admin_account.id).first():
+                db.add(Player(user_id=admin_account.id, level=1, exp=0, coins=0, streak=0))
                 db.commit()
-            else:
-                # Tạo sẵn tài khoản admin mặc định: admin / Admin@123456
-                from app.routers.auth import hash_password
-                pwd_hash, salt = hash_password(os.getenv("ADMIN_DEFAULT_PASSWORD", "Admin@123456"))
-                init_admin = AuthUser(
-                    username="admin",
-                    display_name="Quản Trị Viên",
-                    password_hash=pwd_hash,
-                    salt=salt,
-                    racer_avatar="rocket",
-                    is_admin=True,
-                )
-                db.add(init_admin)
-                db.commit()
-                db.refresh(init_admin)
-                db.add(Player(user_id=init_admin.id, level=1, exp=0, coins=0, streak=0))
+        else:
+            if not admin_account.is_admin:
+                admin_account.is_admin = True
                 db.commit()
         if not db.query(Level).first():
             levels = [

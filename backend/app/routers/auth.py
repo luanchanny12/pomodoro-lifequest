@@ -180,10 +180,9 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     valid_avatars = {"rocket", "cyber_car", "quantum_saucer", "lightning", "lightcycle"}
     chosen_avatar = data.racer_avatar if data.racer_avatar in valid_avatars else "rocket"
 
-    admin_secret_env = os.getenv("ADMIN_INVITE_CODE", "LIFEQUEST_ADMIN_2026")
+    # Mọi tài khoản mới đăng ký mặc định là Thành viên thông thường (is_admin = False).
+    # Quyền Quản trị viên chỉ được cấp bởi Admin trong Admin Portal hoặc tài khoản admin hệ thống.
     is_admin_flag = False
-    if (data.admin_secret and data.admin_secret.strip() == admin_secret_env) or clean_username in ("admin", "luan12111") or db.query(User).count() == 0:
-        is_admin_flag = True
 
     try:
         user = User(

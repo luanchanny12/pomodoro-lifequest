@@ -39,7 +39,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [adminSecret, setAdminSecret] = useState('')
   const [selectedAvatar, setSelectedAvatar] = useState('cyber_car')
   const [loading, setLoading] = useState(false)
 
@@ -106,8 +105,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           username.trim().toLowerCase(),
           displayName.trim(),
           password,
-          selectedAvatar,
-          adminSecret.trim() || undefined
+          selectedAvatar
         )
         toast.success(`Chào mừng ${res.user.display_name} tham gia đường đua! 🎉`)
         onSuccess(res.user)
@@ -345,15 +343,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
                   </button>
                 ))}
-              </div>
-              <div className="pt-1">
-                <input
-                  type="password"
-                  value={adminSecret}
-                  onChange={(e) => setAdminSecret(e.target.value)}
-                  placeholder="Mã kích hoạt Admin (Tùy chọn dành riêng cho Quản Trị Viên)"
-                  className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:outline-none focus:border-amber-400 text-[11px]"
-                />
               </div>
             </div>
           )}
