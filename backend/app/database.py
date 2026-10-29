@@ -20,9 +20,10 @@ if DATABASE_URL and DATABASE_URL.strip().lower() != "auto":
     if "?" not in DATABASE_URL and "&" in DATABASE_URL:
         DATABASE_URL = DATABASE_URL.replace("&", "?", 1)
 
-    # Tự động thêm endpoint parameter cho Neon nếu thiếu (tránh lỗi libpq SNI cũ)
-    if "neon.tech" in DATABASE_URL and "options=" not in DATABASE_URL:
-        m = re.search(r"@([a-z0-9\-]+?)(?:-pooler)?\.[a-z0-9\-\.]*neon\.tech", DATABASE_URL)
+    # Trên Windows (local dev), libpq có thể thiếu SNI nên cần endpoint option.
+    # Trên Linux/Render, libpq đã hỗ trợ SNI chuẩn 100%, không can thiệp options để tránh xung đột SNI.
+    if os.name == "nt" and "neon.tech" in DATABASE_URL and "options=" not in DATABASE_URL:
+        m = re.search(r"@([a-z0-9\-]+)\.[a-z0-9\-\.]*neon\.tech", DATABASE_URL)
         if m:
             endpoint_id = m.group(1)
             sep = "&" if "?" in DATABASE_URL else "?"

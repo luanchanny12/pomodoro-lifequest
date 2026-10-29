@@ -41,8 +41,8 @@ def check_connection(url: str = None):
     if "?" not in url and "&" in url:
         url = url.replace("&", "?", 1)
 
-    if "neon.tech" in url and "options=" not in url:
-        m = re.search(r"@([a-z0-9\-]+?)(?:-pooler)?\.[a-z0-9\-\.]*neon\.tech", url)
+    if os.name == "nt" and "neon.tech" in url and "options=" not in url:
+        m = re.search(r"@([a-z0-9\-]+)\.[a-z0-9\-\.]*neon\.tech", url)
         if m:
             endpoint_id = m.group(1)
             sep = "&" if "?" in url else "?"

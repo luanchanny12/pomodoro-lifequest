@@ -58,8 +58,8 @@ def run_migration(target_db_url: str = None):
     if "?" not in target_db_url and "&" in target_db_url:
         target_db_url = target_db_url.replace("&", "?", 1)
 
-    if "neon.tech" in target_db_url and "options=" not in target_db_url:
-        m = re.search(r"@([a-z0-9\-]+?)(?:-pooler)?\.[a-z0-9\-\.]*neon\.tech", target_db_url)
+    if os.name == "nt" and "neon.tech" in target_db_url and "options=" not in target_db_url:
+        m = re.search(r"@([a-z0-9\-]+)\.[a-z0-9\-\.]*neon\.tech", target_db_url)
         if m:
             endpoint_id = m.group(1)
             sep = "&" if "?" in target_db_url else "?"
