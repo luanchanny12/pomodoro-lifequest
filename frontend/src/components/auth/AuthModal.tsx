@@ -23,11 +23,11 @@ interface AuthModalProps {
 }
 
 const RACER_AVATARS = [
-  { id: 'rocket', name: 'Tàu Vũ Trụ', icon: '🚀', desc: 'Lướt nhanh vạn dặm' },
-  { id: 'cyber_car', name: 'Siêu Xe Neon', icon: '🏎️', desc: 'Bứt tốc ngoạn mục' },
-  { id: 'quantum_saucer', name: 'Đĩa Bay Lượng Tử', icon: '🛸', desc: 'Dịch chuyển tức thời' },
-  { id: 'lightning', name: 'Tia Chớp', icon: '⚡', desc: 'Nhanh như sét đánh' },
-  { id: 'lightcycle', name: 'Mô Tô Ánh Sáng', icon: '🏍️', desc: 'Uốn lượn phong cách' },
+  { id: 'rocket', name: 'Tàu Vũ Trụ', icon: '🚀', desc: 'Lướt nhanh vạn dặm', speed: '9.9/10', color: 'from-rose-500/20 to-orange-500/20' },
+  { id: 'cyber_car', name: 'Siêu Xe Neon', icon: '🏎️', desc: 'Bứt tốc ngoạn mục', speed: '9.7/10', color: 'from-cyan-500/20 to-blue-500/20' },
+  { id: 'quantum_saucer', name: 'Đĩa Bay Lượng Tử', icon: '🛸', desc: 'Dịch chuyển tức thời', speed: '9.8/10', color: 'from-purple-500/20 to-indigo-500/20' },
+  { id: 'lightning', name: 'Tia Chớp', icon: '⚡', desc: 'Nhanh như sét đánh', speed: '10/10', color: 'from-amber-500/20 to-yellow-500/20' },
+  { id: 'lightcycle', name: 'Mô Tô Ánh Sáng', icon: '🏍️', desc: 'Uốn lượn phong cách', speed: '9.5/10', color: 'from-pink-500/20 to-rose-500/20' },
 ]
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -133,8 +133,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div
         className={`relative w-full ${
-          mode === 'register' ? 'max-w-lg sm:max-w-xl' : 'max-w-md'
-        } max-h-[92vh] bg-[#121622] border border-cyan-500/30 rounded-3xl shadow-2xl overflow-hidden text-white flex flex-col transition-all duration-200`}
+          mode === 'register' ? 'max-w-lg md:max-w-4xl' : 'max-w-md'
+        } max-h-[92vh] bg-[#121622] border border-cyan-500/30 rounded-3xl shadow-2xl overflow-hidden text-white flex flex-col transition-all duration-300`}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-gradient-to-r from-cyan-950/60 via-indigo-950/40 to-slate-900/60">
@@ -149,7 +149,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <p className="text-[11px] text-white/60">
                 {mode === 'login'
                   ? 'Vào đua Pomodoro & cày mục tiêu cùng bạn bè'
-                  : 'Chọn xe đua và lập kỷ lục tập trung mới'}
+                  : 'Chọn xe đua 3D và lập kỷ lục tập trung mới'}
               </p>
             </div>
           </div>
@@ -189,189 +189,288 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto max-h-[calc(92vh-135px)]">
-          {/* Display Name (Only Register) */}
-          {mode === 'register' && (
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-white/80">
-                Tên hiển thị:
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => {
-                    setDisplayName(e.target.value)
-                    if (fieldErrors.displayName) setFieldErrors((prev) => ({ ...prev, displayName: '' }))
-                  }}
-                  placeholder="Nhập tên hiển thị của bạn"
-                  className={`w-full pl-9 pr-3 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs transition ${
-                    fieldErrors.displayName ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-amber-400'
-                  }`}
-                />
-              </div>
-              {fieldErrors.displayName && (
-                <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{fieldErrors.displayName}</span>
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 text-xs overflow-y-auto max-h-[calc(92vh-135px)]">
+          {mode === 'login' ? (
+            /* ── CHẾ ĐỘ ĐĂNG NHẬP ── */
+            <div className="space-y-4 max-w-sm mx-auto py-2">
+              {/* Username */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-white/80">
+                  Tên đăng nhập:
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))
+                      if (fieldErrors.username) setFieldErrors((prev) => ({ ...prev, username: '' }))
+                    }}
+                    placeholder="Nhập tên đăng nhập"
+                    className={`w-full pl-9 pr-3 py-2.5 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs font-mono transition ${
+                      fieldErrors.username ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-cyan-400'
+                    }`}
+                  />
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Username */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-white/80">
-              Tên đăng nhập:
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => {
-                  setUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))
-                  if (fieldErrors.username) setFieldErrors((prev) => ({ ...prev, username: '' }))
-                }}
-                placeholder="Nhập tên đăng nhập (viết liền, không dấu)"
-                className={`w-full pl-9 pr-3 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs font-mono transition ${
-                  fieldErrors.username ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-cyan-400'
-                }`}
-              />
-            </div>
-            {fieldErrors.username && (
-              <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{fieldErrors.username}</span>
+                {fieldErrors.username && (
+                  <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{fieldErrors.username}</span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Password with Eye icon */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-white/80">
-              Mật khẩu:
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value)
-                  if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }))
-                }}
-                placeholder="Nhập mật khẩu (tối thiểu 6 ký tự)"
-                className={`w-full pl-9 pr-10 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs transition ${
-                  fieldErrors.password ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-cyan-400'
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-2.5 text-white/40 hover:text-white transition"
-                title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            {fieldErrors.password && (
-              <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{fieldErrors.password}</span>
+              {/* Password */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-white/80">
+                  Mật khẩu:
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value)
+                      if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }))
+                    }}
+                    placeholder="Nhập mật khẩu"
+                    className={`w-full pl-9 pr-10 py-2.5 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs transition ${
+                      fieldErrors.password ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-cyan-400'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-white/40 hover:text-white transition"
+                    title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {fieldErrors.password && (
+                  <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{fieldErrors.password}</span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Confirm Password (Only Register) with Eye icon */}
-          {mode === 'register' && (
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-white/80">
-                Xác nhận mật khẩu:
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => {
-                    setConfirmPassword(e.target.value)
-                    if (fieldErrors.confirmPassword) setFieldErrors((prev) => ({ ...prev, confirmPassword: '' }))
-                  }}
-                  placeholder="Nhập lại mật khẩu để xác nhận"
-                  className={`w-full pl-9 pr-10 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs transition ${
-                    fieldErrors.confirmPassword ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-amber-400'
-                  }`}
-                />
+              {/* Submit Button Login */}
+              <div className="pt-2">
                 <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-2.5 text-white/40 hover:text-white transition"
-                  title={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2.5 font-extrabold rounded-xl transition shadow-lg flex items-center justify-center gap-2 active:scale-95 text-xs bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:opacity-95"
                 >
-                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  <span>{loading ? 'Đang xác thực...' : 'Đăng Nhập Ngay'}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
-              {fieldErrors.confirmPassword && (
-                <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{fieldErrors.confirmPassword}</span>
-                </div>
-              )}
             </div>
-          )}
-
-          {/* Racer Avatar Picker (Only Register) */}
-          {mode === 'register' && (
-            <div className="space-y-2 pt-1">
-              <label className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5" />
-                <span>Chọn Chiến Hạm / Siêu Xe Đua Của Bạn:</span>
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {RACER_AVATARS.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    onClick={() => setSelectedAvatar(v.id)}
-                    className={`p-2.5 rounded-2xl border text-left transition flex items-center gap-2.5 ${
-                      selectedAvatar === v.id
-                        ? 'bg-amber-400/20 border-amber-400 text-white shadow-lg'
-                        : 'bg-black/30 border-white/10 text-white/60 hover:border-white/30'
-                    }`}
-                  >
-                    <span className="text-xl">{v.icon}</span>
-                    <div className="overflow-hidden">
-                      <div className="font-bold text-[11px] truncate text-white">{v.name}</div>
-                      <div className="text-[9px] text-white/50 truncate">{v.desc}</div>
+          ) : (
+            /* ── CHẾ ĐỘ ĐĂNG KÝ (SPLIT DESKTOP 2 CỘT: FORM & 3D GARAGE) ── */
+            <div className="md:grid md:grid-cols-12 md:gap-6 items-start">
+              {/* CỘT TRÁI: FORM ĐĂNG KÝ */}
+              <div className="md:col-span-6 space-y-3">
+                {/* Tên hiển thị */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-white/80">
+                    Tên hiển thị:
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => {
+                        setDisplayName(e.target.value)
+                        if (fieldErrors.displayName) setFieldErrors((prev) => ({ ...prev, displayName: '' }))
+                      }}
+                      placeholder="Nhập tên hiển thị của bạn"
+                      className={`w-full pl-9 pr-3 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs transition ${
+                        fieldErrors.displayName ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-amber-400'
+                      }`}
+                    />
+                  </div>
+                  {fieldErrors.displayName && (
+                    <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{fieldErrors.displayName}</span>
                     </div>
+                  )}
+                </div>
+
+                {/* Tên đăng nhập */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-white/80">
+                    Tên đăng nhập:
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => {
+                        setUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))
+                        if (fieldErrors.username) setFieldErrors((prev) => ({ ...prev, username: '' }))
+                      }}
+                      placeholder="Viết liền, không dấu (ví dụ: taydua99)"
+                      className={`w-full pl-9 pr-3 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs font-mono transition ${
+                        fieldErrors.username ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-cyan-400'
+                      }`}
+                    />
+                  </div>
+                  {fieldErrors.username && (
+                    <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{fieldErrors.username}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Mật khẩu */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-white/80">
+                    Mật khẩu:
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value)
+                        if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }))
+                      }}
+                      placeholder="Tối thiểu 6 ký tự"
+                      className={`w-full pl-9 pr-10 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs transition ${
+                        fieldErrors.password ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-cyan-400'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-2.5 text-white/40 hover:text-white transition"
+                      title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {fieldErrors.password && (
+                    <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{fieldErrors.password}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Xác nhận mật khẩu */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-white/80">
+                    Xác nhận mật khẩu:
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value)
+                        if (fieldErrors.confirmPassword) setFieldErrors((prev) => ({ ...prev, confirmPassword: '' }))
+                      }}
+                      placeholder="Nhập lại mật khẩu"
+                      className={`w-full pl-9 pr-10 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs transition ${
+                        fieldErrors.confirmPassword ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-amber-400'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-2.5 text-white/40 hover:text-white transition"
+                      title={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {fieldErrors.confirmPassword && (
+                    <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{fieldErrors.confirmPassword}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Submit button on Desktop */}
+                <div className="hidden md:block pt-3">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 font-extrabold rounded-2xl transition shadow-xl flex items-center justify-center gap-2 active:scale-95 text-xs bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-black hover:opacity-95 shadow-amber-500/20"
+                  >
+                    <span>{loading ? 'Đang khởi tạo...' : 'Khởi Tạo Tay Đua & Vào Trường Đua'}</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
-                ))}
+                </div>
               </div>
 
-              {/* 3D Interactive Model Preview */}
-              <div className="pt-1.5">
+              {/* CỘT PHẢI: GARA 3D & CHỌN CHIẾN HẠM */}
+              <div className="md:col-span-6 space-y-2.5 mt-4 md:mt-0">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Gara Chiến Hạm & Siêu Xe 3D 360°:</span>
+                  </label>
+                  <span className="text-[10px] text-cyan-300 font-mono px-2 py-0.5 rounded-md bg-cyan-950/60 border border-cyan-500/30">
+                    ⚡ {RACER_AVATARS.find(v => v.id === selectedAvatar)?.speed} Tốc độ
+                  </span>
+                </div>
+
+                {/* 3D Interactive Model Preview */}
                 <RacerVehicle3DCanvas selectedAvatar={selectedAvatar} />
+
+                {/* Danh sách 5 xe đua chọn nhanh */}
+                <div className="space-y-1 pt-1">
+                  <div className="text-[10px] text-white/50 font-semibold">
+                    Nhấp chọn xe bên dưới để đổi mô hình 3D ngay lập tức:
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 gap-2">
+                    {RACER_AVATARS.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setSelectedAvatar(v.id)}
+                        className={`p-2 rounded-xl border text-left transition flex items-center gap-2 ${
+                          selectedAvatar === v.id
+                            ? 'bg-amber-400/20 border-amber-400 text-white shadow-md shadow-amber-500/20 scale-[1.02]'
+                            : 'bg-black/40 border-white/10 text-white/60 hover:border-white/30 hover:text-white'
+                        }`}
+                      >
+                        <span className="text-lg shrink-0">{v.icon}</span>
+                        <div className="overflow-hidden min-w-0">
+                          <div className="font-bold text-[11px] truncate text-white">{v.name}</div>
+                          <div className="text-[9px] text-white/50 truncate">{v.desc}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Submit button on Mobile */}
+                <div className="block md:hidden pt-3">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 font-extrabold rounded-2xl transition shadow-xl flex items-center justify-center gap-2 active:scale-95 text-xs bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 text-black hover:opacity-95 shadow-amber-500/20"
+                  >
+                    <span>{loading ? 'Đang khởi tạo...' : 'Khởi Tạo Tay Đua & Vào Trường Đua'}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           )}
-
-          {/* Submit Button */}
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full py-2.5 font-extrabold rounded-xl transition shadow-lg flex items-center justify-center gap-2 active:scale-95 text-xs ${
-                mode === 'register'
-                  ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-black hover:opacity-95'
-                  : 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:opacity-95'
-              }`}
-            >
-              <span>{loading ? 'Đang xử lý...' : mode === 'register' ? 'Khởi Tạo Tay Đua & Vào Trường Đua' : 'Đăng Nhập Ngay'}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
         </form>
 
         {/* Footer info */}

@@ -30,6 +30,18 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.status === 401) {
+      const url = String(error.config?.url || '')
+      // Chỉ kích hoạt xóa phiên nếu không phải đang thử login hoặc register
+      if (!url.includes('/auth/login') && !url.includes('/auth/register')) {
+        localStorage.removeItem('pomodoro_access_token')
+        localStorage.removeItem('pomodoro_user_profile')
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('pomodoro_auth_expired'))
+        }
+      }
+    }
+
     const message =
       (error.response?.data as { detail?: string })?.detail ||
       error.message ||

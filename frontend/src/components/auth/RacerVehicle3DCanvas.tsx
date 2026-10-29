@@ -644,7 +644,7 @@ export const RacerVehicle3DCanvas: React.FC<RacerVehicle3DCanvasProps> = ({ sele
       </div>
 
       {/* 3D Canvas Viewport */}
-      <div className="w-full h-44 sm:h-48 cursor-grab active:cursor-grabbing">
+      <div className="w-full h-48 sm:h-52 md:h-56 cursor-grab active:cursor-grabbing touch-none select-none">
         <Canvas
           camera={{ position: [2.8, 1.6, 2.8], fov: 42 }}
           gl={{ antialias: true, alpha: true }}

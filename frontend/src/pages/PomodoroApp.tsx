@@ -346,11 +346,25 @@ export default function PomodoroApp() {
     return () => clearInterval(reminderInterval)
   }, [])
 
-  // Check auth session
+  // Check auth session & listen for session expiration
   useEffect(() => {
     if (authService.getToken()) {
-      authService.getMe().then(setCurrentUser).catch(() => {})
+      authService
+        .getMe()
+        .then(setCurrentUser)
+        .catch(() => {
+          authService.logout()
+          setCurrentUser(null)
+        })
     }
+
+    const handleAuthExpired = () => {
+      setCurrentUser(null)
+      toast.error('Phiên đăng nhập đã hết hạn hoặc không còn tồn tại. Vui lòng đăng nhập lại!')
+    }
+
+    window.addEventListener('pomodoro_auth_expired', handleAuthExpired)
+    return () => window.removeEventListener('pomodoro_auth_expired', handleAuthExpired)
   }, [])
 
   const handleLogout = () => {
