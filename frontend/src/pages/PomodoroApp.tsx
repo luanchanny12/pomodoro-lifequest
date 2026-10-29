@@ -79,6 +79,7 @@ import { EisenhowerMatrixView } from '@/components/pomodoro/EisenhowerMatrixView
 import { AIFloatingBuddy } from '@/components/pomodoro/AIFloatingBuddy'
 import { NotificationSettingsModal } from '@/components/pomodoro/NotificationSettingsModal'
 import { AuthModal } from '@/components/auth/AuthModal'
+import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { CosmicRaceTrackModal } from '@/components/race/CosmicRaceTrackModal'
 import { DonateModal } from '@/components/common/DonateModal'
 import { FeedbackModal } from '@/components/common/FeedbackModal'
@@ -268,6 +269,7 @@ export default function PomodoroApp() {
   const [isRaceModalOpen, setIsRaceModalOpen] = useState<boolean>(false)
   const [isDonateModalOpen, setIsDonateModalOpen] = useState<boolean>(false)
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false)
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState<boolean>(false)
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authService.getCurrentUser())
   const [goalToEdit, setGoalToEdit] = useState<StudyGoal | null>(null)
 
@@ -922,6 +924,17 @@ export default function PomodoroApp() {
                           <span>Cổng Quản Trị Viên (Admin)</span>
                         </button>
                       )}
+
+                      <button
+                        onClick={() => {
+                          setIsChangePasswordOpen(true)
+                          setIsProfileMenuOpen(false)
+                        }}
+                        className="w-full px-2.5 py-2 rounded-xl text-left text-white/80 hover:text-white hover:bg-white/10 flex items-center gap-2 transition"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-slate-300" />
+                        <span>Đổi mật khẩu</span>
+                      </button>
 
                       <div className="my-1 border-t border-white/10" />
 
@@ -1913,6 +1926,11 @@ export default function PomodoroApp() {
         isOpen={isFeedbackModalOpen}
         onClose={() => setIsFeedbackModalOpen(false)}
         currentUser={currentUser}
+      />
+
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
       />
 
       {/* ── ZEN DESK CLOCK FULLSCREEN MODAL ── */}

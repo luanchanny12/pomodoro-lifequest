@@ -110,6 +110,10 @@ class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     racer_avatar: Optional[str] = None
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=6)
+
 class UserResponse(BaseModel):
     id: int
     username: str
@@ -271,3 +275,24 @@ def update_profile(data: ProfileUpdateRequest, user: User = Depends(get_current_
     db.commit()
     db.refresh(user)
     return _build_user_response(user, db)
+
+
+@router.post("/change-password")
+def change_password(
+    data: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mọi user tự đổi mật khẩu của chính mình (yêu cầu mật khẩu hiện tại)."""
+    if not verify_password(data.current_password, user.salt, user.password_hash):
+        raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không chính xác!")
+
+    if len(data.new_password.strip()) < 6:
+        raise HTTPException(status_code=400, detail="Mật khẩu mới phải có ít nhất 6 ký tự!")
+
+    pwd_hash, salt = hash_password(data.new_password.strip())
+    user.password_hash = pwd_hash
+    user.salt = salt
+    db.commit()
+
+    return {"message": "Đã đổi mật khẩu thành công!", "success": True}

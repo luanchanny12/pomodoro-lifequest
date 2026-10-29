@@ -84,6 +84,20 @@ export const authService = {
     return res.data
   },
 
+  changePassword: async (
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ message: string; success: boolean }> => {
+    const res = await api.post<{ message: string; success: boolean }>(
+      '/auth/change-password',
+      {
+        current_password: currentPassword,
+        new_password: newPassword,
+      }
+    )
+    return res.data
+  },
+
   logout: () => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
