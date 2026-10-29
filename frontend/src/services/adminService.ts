@@ -1,5 +1,12 @@
 import api from './api'
 
+export interface TrafficTrendDay {
+  date: string
+  guest: number
+  member: number
+  total: number
+}
+
 export interface AdminOverview {
   total_users: number
   active_users_count: number
@@ -19,6 +26,45 @@ export interface AdminOverview {
     level: number
     streak: number
   }>
+  // Traffic Analytics
+  total_visits: number
+  guest_visits: number
+  member_visits: number
+  unique_guests: number
+  unique_members: number
+  today_visits: number
+  today_guest_visits: number
+  today_member_visits: number
+  mobile_visits: number
+  desktop_visits: number
+  // Feedback
+  total_feedbacks: number
+  new_feedbacks: number
+  feedback_avg_rating: number
+  traffic_trend_7days: TrafficTrendDay[]
+}
+
+export interface AdminFeedbackItem {
+  id: number
+  user_id: number | null
+  sender_name: string
+  sender_contact: string | null
+  is_member: boolean
+  member_username: string | null
+  racer_avatar: string | null
+  rating: number
+  category: string
+  content: string
+  status: 'new' | 'reviewed' | 'resolved'
+  admin_note: string | null
+  created_at: string | null
+}
+
+export interface AdminFeedbacksResponse {
+  total: number
+  new_count: number
+  average_rating: number
+  items: AdminFeedbackItem[]
 }
 
 export interface AdminUserItem {
@@ -161,6 +207,34 @@ export const adminService = {
     const res = await api.post<{ message: string }>(`/admin/users/${userId}/notify-telegram`, {
       message,
     })
+    return res.data
+  },
+
+  getFeedbacks: async (params?: {
+    category?: string
+    status?: string
+    rating?: number
+    skip?: number
+    limit?: number
+  }): Promise<AdminFeedbacksResponse> => {
+    const res = await api.get<AdminFeedbacksResponse>('/admin/feedbacks', { params })
+    return res.data
+  },
+
+  updateFeedbackStatus: async (
+    id: number,
+    status: 'new' | 'reviewed' | 'resolved',
+    adminNote?: string
+  ): Promise<{ message: string }> => {
+    const res = await api.put<{ message: string }>(`/admin/feedbacks/${id}/status`, {
+      status,
+      admin_note: adminNote,
+    })
+    return res.data
+  },
+
+  deleteFeedback: async (id: number): Promise<{ message: string }> => {
+    const res = await api.delete<{ message: string }>(`/admin/feedbacks/${id}`)
     return res.data
   },
 }

@@ -13,7 +13,7 @@ from app.routers import (
     goals, roadmaps, courses, tasks, sprints, daily_logs, study_hours,
     gamification, vocabulary, ipa, exports, backlog, ai, ai_v2, ai_v3,
     knowledge, learning, daily_coach, schedule, focus_hub, notifications,
-    calendar_sync, auth, race_track, admin
+    calendar_sync, auth, race_track, admin, analytics_feedback
 )
 import app.models
 import app.models_auth
@@ -184,6 +184,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(race_track.router)
 app.include_router(admin.router)
+app.include_router(analytics_feedback.router)
 app.include_router(focus_hub.router)
 app.include_router(notifications.router)
 app.include_router(calendar_sync.router)

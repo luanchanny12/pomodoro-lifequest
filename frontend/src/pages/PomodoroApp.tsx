@@ -74,8 +74,12 @@ import { AIFloatingBuddy } from '@/components/pomodoro/AIFloatingBuddy'
 import { NotificationSettingsModal } from '@/components/pomodoro/NotificationSettingsModal'
 import { AuthModal } from '@/components/auth/AuthModal'
 import { CosmicRaceTrackModal } from '@/components/race/CosmicRaceTrackModal'
+import { DonateModal } from '@/components/common/DonateModal'
+import { FeedbackModal } from '@/components/common/FeedbackModal'
+import { Footer } from '@/components/common/Footer'
 import { authService, UserProfile } from '@/services/authService'
 import { notificationManager } from '@/utils/notificationManager'
+import { trackVisit } from '@/utils/analytics'
 
 type TimerMode = 'pomodoro' | 'shortBreak' | 'longBreak'
 
@@ -241,6 +245,8 @@ export default function PomodoroApp() {
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState<boolean>(false)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false)
   const [isRaceModalOpen, setIsRaceModalOpen] = useState<boolean>(false)
+  const [isDonateModalOpen, setIsDonateModalOpen] = useState<boolean>(false)
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false)
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authService.getCurrentUser())
   const [goalToEdit, setGoalToEdit] = useState<StudyGoal | null>(null)
 
@@ -292,6 +298,11 @@ export default function PomodoroApp() {
   useEffect(() => {
     loadData()
   }, [currentUser])
+
+  // Track visit for analytics
+  useEffect(() => {
+    trackVisit()
+  }, [])
 
   // Scheduled background notifications check (Golden hours & inactivity)
   useEffect(() => {
@@ -1142,11 +1153,11 @@ export default function PomodoroApp() {
           </button>
         </div>
 
-        {/* ── SECONDARY NAVIGATION TABS ── */}
-        <div className="mt-8 flex items-center justify-center gap-1.5 sm:gap-2 border-b border-white/20 pb-2 flex-wrap">
+        {/* ── SECONDARY NAVIGATION TABS (MOBILE THUMB SCROLLABLE) ── */}
+        <div className="mt-8 flex items-center gap-1.5 sm:gap-2 border-b border-white/20 pb-2 overflow-x-auto no-scrollbar flex-nowrap sm:flex-wrap justify-start sm:justify-center py-1">
           <button
             onClick={() => setActiveTab('goals')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition ${
+            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'goals'
                 ? 'bg-white/25 text-white shadow-sm'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
@@ -1158,7 +1169,7 @@ export default function PomodoroApp() {
 
           <button
             onClick={() => setActiveTab('matrix')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition ${
+            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'matrix'
                 ? 'bg-gradient-to-r from-amber-500/30 to-rose-500/30 text-amber-200 border border-amber-400/40 shadow-sm'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
@@ -1170,7 +1181,7 @@ export default function PomodoroApp() {
 
           <button
             onClick={() => setActiveTab('galaxy')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition ${
+            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'galaxy'
                 ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 shadow-sm'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
@@ -1182,7 +1193,7 @@ export default function PomodoroApp() {
 
           <button
             onClick={() => setActiveTab('timewarp')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition ${
+            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'timewarp'
                 ? 'bg-purple-500/30 text-purple-200 border border-purple-400/40 shadow-sm'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
@@ -1194,7 +1205,7 @@ export default function PomodoroApp() {
 
           <button
             onClick={() => setActiveTab('logs')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition ${
+            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'logs'
                 ? 'bg-white/25 text-white shadow-sm'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
@@ -1206,7 +1217,7 @@ export default function PomodoroApp() {
 
           <button
             onClick={() => setActiveTab('stats')}
-            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition ${
+            className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'stats'
                 ? 'bg-white/25 text-white shadow-sm'
                 : 'text-white/70 hover:text-white hover:bg-white/10'
@@ -1553,6 +1564,14 @@ export default function PomodoroApp() {
         )}
       </main>
 
+      {/* ── FOOTER (DONATE & FEEDBACK & BRAND) ── */}
+      <Footer
+        onOpenDonate={() => setIsDonateModalOpen(true)}
+        onOpenFeedback={() => setIsFeedbackModalOpen(true)}
+        onOpenRace={() => setIsRaceModalOpen(true)}
+        isAdmin={currentUser?.is_admin}
+      />
+
       {/* ── CELEBRATION MODAL (WHEN GOAL REACHED) ── */}
       {showCelebration && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
@@ -1655,6 +1674,17 @@ export default function PomodoroApp() {
         isOpen={isRaceModalOpen}
         onClose={() => setIsRaceModalOpen(false)}
         onOpenAuth={() => setIsAuthModalOpen(true)}
+        currentUser={currentUser}
+      />
+
+      <DonateModal
+        isOpen={isDonateModalOpen}
+        onClose={() => setIsDonateModalOpen(false)}
+      />
+
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
         currentUser={currentUser}
       />
 

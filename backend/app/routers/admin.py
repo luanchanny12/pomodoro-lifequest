@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
-from app.models_auth import User, CheerLog
+from app.models_auth import User, CheerLog, VisitorLog, UserFeedback
 from app.models import Player, StudyGoal, StudySessionLog, DailyMatrixTask, NotificationSetting
 from app.routers.auth import get_current_admin, hash_password
 
@@ -88,6 +88,40 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
         })
     user_ranking.sort(key=lambda x: x["total_hours"], reverse=True)
 
+    # --- Traffic & Visitor Breakdown ---
+    total_visits = db.query(VisitorLog).count()
+    guest_visits = db.query(VisitorLog).filter(VisitorLog.is_member == False).count()
+    member_visits = db.query(VisitorLog).filter(VisitorLog.is_member == True).count()
+    unique_guests = db.query(func.count(func.distinct(VisitorLog.visitor_id))).filter(VisitorLog.is_member == False).scalar() or 0
+    unique_members = db.query(func.count(func.distinct(VisitorLog.user_id))).filter(VisitorLog.is_member == True).scalar() or 0
+
+    today_visits = db.query(VisitorLog).filter(VisitorLog.visit_date == today).count()
+    today_guest_visits = db.query(VisitorLog).filter(VisitorLog.visit_date == today, VisitorLog.is_member == False).count()
+    today_member_visits = db.query(VisitorLog).filter(VisitorLog.visit_date == today, VisitorLog.is_member == True).count()
+
+    mobile_visits = db.query(VisitorLog).filter(VisitorLog.device_type.in_(["mobile", "tablet"])).count()
+    desktop_visits = db.query(VisitorLog).filter(VisitorLog.device_type == "desktop").count()
+
+    # --- Feedback Overview ---
+    total_feedbacks = db.query(UserFeedback).count()
+    new_feedbacks = db.query(UserFeedback).filter(UserFeedback.status == "new").count()
+    avg_rating_raw = db.query(func.avg(UserFeedback.rating)).scalar()
+    feedback_avg_rating = round(float(avg_rating_raw), 1) if avg_rating_raw is not None else 5.0
+
+    # 7-day Traffic Trend
+    traffic_trend_7days = []
+    for i in range(6, -1, -1):
+        d = today - datetime.timedelta(days=i)
+        d_str = d.strftime("%d/%m")
+        d_guests = db.query(VisitorLog).filter(VisitorLog.visit_date == d, VisitorLog.is_member == False).count()
+        d_members = db.query(VisitorLog).filter(VisitorLog.visit_date == d, VisitorLog.is_member == True).count()
+        traffic_trend_7days.append({
+            "date": d_str,
+            "guest": d_guests,
+            "member": d_members,
+            "total": d_guests + d_members,
+        })
+
     return {
         "total_users": total_users,
         "active_users_count": active_users_count,
@@ -99,6 +133,21 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
         "total_goals": total_goals,
         "completed_goals": completed_goals,
         "top_racers": user_ranking[:5],
+        # Analytics & Feedback
+        "total_visits": total_visits,
+        "guest_visits": guest_visits,
+        "member_visits": member_visits,
+        "unique_guests": unique_guests,
+        "unique_members": unique_members,
+        "today_visits": today_visits,
+        "today_guest_visits": today_guest_visits,
+        "today_member_visits": today_member_visits,
+        "mobile_visits": mobile_visits,
+        "desktop_visits": desktop_visits,
+        "total_feedbacks": total_feedbacks,
+        "new_feedbacks": new_feedbacks,
+        "feedback_avg_rating": feedback_avg_rating,
+        "traffic_trend_7days": traffic_trend_7days,
     }
 
 
