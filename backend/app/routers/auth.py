@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import hmac
@@ -95,9 +96,9 @@ def get_current_admin(user: User = Depends(get_current_user)) -> User:
 # --- Schemas ---
 
 class RegisterRequest(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50)
-    display_name: str = Field(..., min_length=2, max_length=100)
-    password: str = Field(..., min_length=4)
+    username: str = Field(..., min_length=3, max_length=30)
+    display_name: str = Field(..., min_length=2, max_length=50)
+    password: str = Field(..., min_length=6)
     racer_avatar: Optional[str] = "rocket"
     admin_secret: Optional[str] = None
 
@@ -152,10 +153,28 @@ def _build_user_response(user: User, db: Session) -> UserResponse:
 @router.post("/register", response_model=AuthResponse)
 def register(data: RegisterRequest, db: Session = Depends(get_db)):
     clean_username = data.username.strip().lower()
+    if not re.match(r"^[a-zA-Z0-9_]{3,30}$", clean_username):
+        raise HTTPException(
+            status_code=400,
+            detail="Tên đăng nhập không hợp lệ. Chỉ được chứa chữ cái không dấu, số và dấu gạch dưới (từ 3 đến 30 ký tự)!"
+        )
+
     if db.query(User).filter(User.username == clean_username).first():
         raise HTTPException(status_code=400, detail="Tên đăng nhập này đã có người sử dụng. Vui lòng chọn tên khác!")
 
     clean_display = data.display_name.strip()
+    if len(clean_display) < 2 or len(clean_display) > 50:
+        raise HTTPException(
+            status_code=400,
+            detail="Tên hiển thị phải có độ dài từ 2 đến 50 ký tự!"
+        )
+
+    if len(data.password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="Mật khẩu phải có độ dài tối thiểu 6 ký tự!"
+        )
+
     pwd_hash, salt = hash_password(data.password)
 
     valid_avatars = {"rocket", "cyber_car", "quantum_saucer", "lightning", "lightcycle"}

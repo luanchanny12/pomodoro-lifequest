@@ -5,6 +5,23 @@ from app.main import app
 client = TestClient(app)
 
 def test_auth_registration_and_login():
+    # 0. Test validation errors: short password and invalid username
+    short_pwd_res = client.post("/api/auth/register", json={
+        "username": "valid_user_99",
+        "display_name": "Test User",
+        "password": "123",  # < 6 chars
+        "racer_avatar": "rocket"
+    })
+    assert short_pwd_res.status_code in (400, 422)
+
+    invalid_uname_res = client.post("/api/auth/register", json={
+        "username": "user with spaces!",
+        "display_name": "Test User",
+        "password": "valid_password_123",
+        "racer_avatar": "rocket"
+    })
+    assert invalid_uname_res.status_code in (400, 422)
+
     # 1. Register a new user
     reg_res = client.post("/api/auth/register", json={
         "username": "speed_racer_test",

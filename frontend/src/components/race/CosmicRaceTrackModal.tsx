@@ -63,6 +63,11 @@ export const CosmicRaceTrackModal: React.FC<CosmicRaceTrackModalProps> = ({
   if (!isOpen) return null
 
   const handleCheer = async (racer: RacerCard, emoji: string) => {
+    if (!currentUser) {
+      toast.info('Vui lòng đăng nhập để gửi cổ vũ cho bạn bè! 🔥')
+      onOpenAuth()
+      return
+    }
     setCheeringId(racer.user_id)
     try {
       const res = await raceService.cheer(racer.user_id, emoji)
@@ -389,9 +394,24 @@ export const CosmicRaceTrackModal: React.FC<CosmicRaceTrackModalProps> = ({
 
         {/* Modal Footer */}
         <div className="px-6 py-3 border-t border-white/10 bg-black/40 flex items-center justify-between text-xs">
-          <div className="text-[11px] text-white/60">
-            💡 Mỗi khi hoàn thành một phiên Pomodoro 25 phút, xe đua của bạn sẽ tự động tiến lên trên đường đua!
-          </div>
+          {!currentUser ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-amber-300 font-medium">Bạn chưa xuất hiện trên đường đua!</span>
+              <button
+                onClick={() => {
+                  onClose()
+                  onOpenAuth()
+                }}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-bold text-xs shadow-md transition active:scale-95"
+              >
+                Đăng nhập tham gia đua ngay 🏎️
+              </button>
+            </div>
+          ) : (
+            <div className="text-[11px] text-white/60">
+              💡 Mỗi khi hoàn thành một phiên Pomodoro 25 phút, xe đua của bạn sẽ tự động tiến lên trên đường đua!
+            </div>
+          )}
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition"

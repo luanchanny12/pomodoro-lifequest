@@ -30,6 +30,8 @@ import {
   User as UserIcon,
   LogOut,
   Shield,
+  Lock,
+  Rocket,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -98,6 +100,96 @@ const THEME_COLORS: Record<TimerMode, { bg: string; buttonText: string }> = {
 const POMO_PRESETS = [15, 25, 30, 45, 60, 90]
 const SHORT_BREAK_PRESETS = [3, 5, 10, 15]
 const LONG_BREAK_PRESETS = [10, 15, 20, 30]
+
+function GuestFeatureLockCard({
+  tab,
+  onOpenAuth,
+}: {
+  tab: 'goals' | 'matrix' | 'galaxy' | 'timewarp' | 'logs' | 'stats'
+  onOpenAuth: () => void
+}) {
+  const tabInfo: Record<
+    string,
+    { title: string; desc: string; icon: React.ReactNode; color: string }
+  > = {
+    goals: {
+      title: 'Mở Khóa Quản Lý Mục Tiêu 1000 Giờ',
+      desc: 'Tạo các môn học, kỹ năng cần chinh phục, đo lường từng giờ học tập trung và thắp sáng chòm sao thiên hà của riêng bạn.',
+      icon: <Target className="w-7 h-7 text-cyan-400" />,
+      color: 'from-cyan-500/20 to-blue-500/10 border-cyan-500/30',
+    },
+    matrix: {
+      title: 'Mở Khóa Ma Trận 4 Ô Eisenhower',
+      desc: 'Lên kế hoạch việc ngày thông minh theo mức độ Khẩn Cấp & Quan Trọng, tích hợp ghi chú phản tư cá nhân.',
+      icon: <LayoutGrid className="w-7 h-7 text-amber-400" />,
+      color: 'from-amber-500/20 to-rose-500/10 border-amber-500/30',
+    },
+    galaxy: {
+      title: 'Mở Khóa Thiên Hà Tri Thức & Chòm Sao',
+      desc: 'Xây dựng hệ mặt trời kiến thức của riêng bạn, biến mỗi giờ học thành một tinh cầu phát sáng rực rỡ.',
+      icon: <Orbit className="w-7 h-7 text-purple-400" />,
+      color: 'from-purple-500/20 to-indigo-500/10 border-purple-500/30',
+    },
+    timewarp: {
+      title: 'Mở Khóa Hòm Thư Gửi Tương Lai',
+      desc: 'Gửi những lá thư động viên đến chính bạn khi đạt các cột mốc 10h, 50h, 100h, 500h và 1000h tập trung.',
+      icon: <Mail className="w-7 h-7 text-rose-400" />,
+      color: 'from-rose-500/20 to-pink-500/10 border-rose-500/30',
+    },
+    logs: {
+      title: 'Mở Khóa Lịch Sử Phiên Học Pomodoro',
+      desc: 'Lưu vết tự động từng buổi học, thời gian, chủ đề và nhật ký tiến bộ xuyên suốt hành trình.',
+      icon: <BookOpen className="w-7 h-7 text-emerald-400" />,
+      color: 'from-emerald-500/20 to-teal-500/10 border-emerald-500/30',
+    },
+    stats: {
+      title: 'Mở Khóa Biểu Đồ & Báo Cáo Thống Kê',
+      desc: 'Theo dõi tổng số giờ học tuần, tháng, tỷ lệ tập trung cao điểm và chuỗi ngày rèn luyện liên tục.',
+      icon: <BarChart3 className="w-7 h-7 text-yellow-400" />,
+      color: 'from-yellow-500/20 to-amber-500/10 border-yellow-500/30',
+    },
+  }
+
+  const current = tabInfo[tab] || tabInfo.goals
+
+  return (
+    <div className={`mt-6 bg-gradient-to-b ${current.color} bg-[#0c101a] border rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden animate-in fade-in duration-300`}>
+      <div className="absolute top-0 right-1/4 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 left-1/4 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="relative z-10 max-w-lg mx-auto space-y-4">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-black/50 border border-white/20 flex items-center justify-center shadow-lg">
+          {current.icon}
+        </div>
+
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 inline-block mb-2">
+            🔒 Tính Năng Dành Cho Thành Viên
+          </span>
+          <h3 className="text-lg sm:text-xl font-black text-white tracking-tight">
+            {current.title}
+          </h3>
+          <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+            {current.desc}
+          </p>
+        </div>
+
+        <div className="pt-2">
+          <button
+            onClick={onOpenAuth}
+            className="w-full sm:w-auto px-7 py-2.5 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-black font-black text-xs sm:text-sm transition active:scale-95 shadow-xl shadow-amber-400/20 flex items-center justify-center gap-2 mx-auto"
+          >
+            <Rocket className="w-4 h-4 text-black" />
+            <span>Tạo Tài Khoản / Đăng Nhập Miễn Phí</span>
+          </button>
+          <p className="text-[10px] text-white/50 mt-2">
+            ⚡ Chỉ mất 10 giây để nhận Siêu Xe Đua riêng và bắt đầu so tài cùng bạn bè!
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function PomodoroApp() {
   const navigate = useNavigate()
@@ -170,6 +262,13 @@ export default function PomodoroApp() {
 
   // ── Load Data ──
   const loadData = async () => {
+    if (!currentUser) {
+      setGoals([])
+      setSessions([])
+      setStats(null)
+      setAvailablePearls(0)
+      return
+    }
     try {
       const [goalsData, sessionsData, statsData, rewardsData] = await Promise.all([
         focusService.getGoals(),
@@ -192,7 +291,7 @@ export default function PomodoroApp() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [currentUser])
 
   // Scheduled background notifications check (Golden hours & inactivity)
   useEffect(() => {
@@ -379,7 +478,10 @@ export default function PomodoroApp() {
       notificationManager.notifyPomodoroEnd(activeGoal?.title)
       notificationManager.recordActivity()
 
-      if (recordSession) {
+      if (!currentUser) {
+        soundManager.playPearlDrop()
+        toast.success('🎉 Tuyệt vời! Bạn vừa hoàn thành 1 phiên tập trung! Hãy tạo tài khoản để lưu kỷ lục vào Đường Đua bạn bè!')
+      } else if (recordSession) {
         try {
           const durationMins = settings.focusMinutes
           const res = await focusService.createSession({
@@ -566,7 +668,14 @@ export default function PomodoroApp() {
 
           {/* Quick manual log button */}
           <button
-            onClick={() => setIsManualModalOpen(true)}
+            onClick={() => {
+              if (!currentUser) {
+                toast.info('Vui lòng đăng nhập để ghi nhận giờ học vào mục tiêu cá nhân!')
+                setIsAuthModalOpen(true)
+                return
+              }
+              setIsManualModalOpen(true)
+            }}
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium bg-emerald-500/80 hover:bg-emerald-500 text-white rounded-xl backdrop-blur-md transition active:scale-95 shadow-sm"
           >
             <Plus className="w-4 h-4" />
@@ -632,7 +741,14 @@ export default function PomodoroApp() {
 
           {/* Notification settings button */}
           <button
-            onClick={() => setIsNotificationModalOpen(true)}
+            onClick={() => {
+              if (!currentUser) {
+                toast.info('Vui lòng đăng nhập để cài đặt thông báo Telegram và lịch cá nhân!')
+                setIsAuthModalOpen(true)
+                return
+              }
+              setIsNotificationModalOpen(true)
+            }}
             className="p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition backdrop-blur-md relative"
             title="Cài đặt thông báo & Nhắc nhở"
           >
@@ -971,6 +1087,16 @@ export default function PomodoroApp() {
                 />
               </div>
             </div>
+          ) : !currentUser ? (
+            <div className="text-center py-2 text-xs text-white/80">
+              🔒 Đang ở chế độ Khách tập trung tự do.{' '}
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="underline font-bold text-amber-300 hover:text-amber-200"
+              >
+                Đăng ký / Đăng nhập để lưu tiến độ 1000h
+              </button>
+            </div>
           ) : (
             <div className="text-center py-2 text-xs text-white/80">
               Chưa có mục tiêu nào.{' '}
@@ -993,7 +1119,7 @@ export default function PomodoroApp() {
             <div>
               <div className="text-xs font-bold text-amber-200 flex items-center gap-2">
                 <span>Lọ Ngọc Tích Lũy:</span>
-                <span className="text-white text-sm font-extrabold">{availablePearls.toFixed(1)} viên</span>
+                <span className="text-white text-sm font-extrabold">{currentUser ? availablePearls.toFixed(1) : 0} viên</span>
               </div>
               <div className="text-[10px] text-white/60">
                 1 giờ học = 1 ngọc • Đổi giờ xem phim, chơi game không lo tội lỗi!
@@ -1001,11 +1127,18 @@ export default function PomodoroApp() {
             </div>
           </div>
           <button
-            onClick={() => setIsRewardShopOpen(true)}
+            onClick={() => {
+              if (!currentUser) {
+                toast.info('Vui lòng đăng nhập để mở Cửa Hàng Đổi Thưởng!')
+                setIsAuthModalOpen(true)
+                return
+              }
+              setIsRewardShopOpen(true)
+            }}
             className="text-xs font-bold px-3 py-1.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black rounded-xl transition shadow-md flex items-center gap-1.5 flex-shrink-0 active:scale-95"
           >
             <Gift className="w-3.5 h-3.5" />
-            <span>Đổi thưởng</span>
+            <span>Đổi thưởng {!currentUser && '🔒'}</span>
           </button>
         </div>
 
@@ -1020,7 +1153,7 @@ export default function PomodoroApp() {
             }`}
           >
             <Target className="w-4 h-4" />
-            <span>Mục tiêu lớn ({goals.length})</span>
+            <span>Mục tiêu lớn {!currentUser ? '🔒' : `(${goals.length})`}</span>
           </button>
 
           <button
@@ -1032,7 +1165,7 @@ export default function PomodoroApp() {
             }`}
           >
             <LayoutGrid className="w-4 h-4 text-amber-300" />
-            <span>Ma trận 4 Ô (Việc ngày)</span>
+            <span>Ma trận 4 Ô {!currentUser ? '🔒' : '(Việc ngày)'}</span>
           </button>
 
           <button
@@ -1044,7 +1177,7 @@ export default function PomodoroApp() {
             }`}
           >
             <Orbit className="w-4 h-4 text-cyan-400" />
-            <span>Thiên hà tri thức</span>
+            <span>Thiên hà tri thức {!currentUser && '🔒'}</span>
           </button>
 
           <button
@@ -1056,7 +1189,7 @@ export default function PomodoroApp() {
             }`}
           >
             <Compass className="w-4 h-4 text-purple-400" />
-            <span>Cỗ máy tương lai</span>
+            <span>Cỗ máy tương lai {!currentUser && '🔒'}</span>
           </button>
 
           <button
@@ -1068,7 +1201,7 @@ export default function PomodoroApp() {
             }`}
           >
             <BookOpen className="w-4 h-4" />
-            <span>Nhật ký ({sessions.length})</span>
+            <span>Nhật ký {!currentUser ? '🔒' : `(${sessions.length})`}</span>
           </button>
 
           <button
@@ -1080,11 +1213,19 @@ export default function PomodoroApp() {
             }`}
           >
             <BarChart3 className="w-4 h-4" />
-            <span>Thống kê</span>
+            <span>Thống kê {!currentUser && '🔒'}</span>
           </button>
         </div>
 
-        {/* ── TAB: DAILY 4-QUADRANT MATRIX ── */}
+        {/* ── TAB PANELS (GUEST FEATURE GATED) ── */}
+        {!currentUser ? (
+          <GuestFeatureLockCard
+            tab={activeTab}
+            onOpenAuth={() => setIsAuthModalOpen(true)}
+          />
+        ) : (
+          <>
+            {/* ── TAB: DAILY 4-QUADRANT MATRIX ── */}
         {activeTab === 'matrix' && (
           <div className="mt-6 space-y-4 animate-in fade-in duration-200">
             <EisenhowerMatrixView
@@ -1407,6 +1548,8 @@ export default function PomodoroApp() {
               </div>
             </div>
           </div>
+        )}
+          </>
         )}
       </main>
 

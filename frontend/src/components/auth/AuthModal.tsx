@@ -8,6 +8,9 @@ import {
   Zap,
   ArrowRight,
   ShieldCheck,
+  Eye,
+  EyeOff,
+  AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { authService, UserProfile } from '@/services/authService'
@@ -35,29 +38,72 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [adminSecret, setAdminSecret] = useState('')
   const [selectedAvatar, setSelectedAvatar] = useState('cyber_car')
   const [loading, setLoading] = useState(false)
 
+  // Toggle password visibility
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+
+  // Field validation errors
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
   if (!isOpen) return null
+
+  const validate = (): boolean => {
+    const errors: Record<string, string> = {}
+    const cleanUsername = username.trim().toLowerCase()
+    const cleanDisplay = displayName.trim()
+
+    // Validate Username
+    if (!cleanUsername) {
+      errors.username = 'Vui lòng nhập tên đăng nhập!'
+    } else if (!/^[a-zA-Z0-9_]{3,30}$/.test(cleanUsername)) {
+      errors.username = 'Tên đăng nhập từ 3–30 ký tự, chỉ gồm chữ không dấu, số và dấu gạch dưới (không khoảng trắng)!'
+    }
+
+    // Validate Display Name (only in register mode)
+    if (mode === 'register') {
+      if (!cleanDisplay) {
+        errors.displayName = 'Vui lòng nhập tên hiển thị!'
+      } else if (cleanDisplay.length < 2 || cleanDisplay.length > 50) {
+        errors.displayName = 'Tên hiển thị phải có từ 2 đến 50 ký tự!'
+      }
+    }
+
+    // Validate Password
+    if (!password) {
+      errors.password = 'Vui lòng nhập mật khẩu!'
+    } else if (password.length < 6) {
+      errors.password = 'Mật khẩu phải có tối thiểu 6 ký tự!'
+    }
+
+    // Validate Confirm Password (only in register mode)
+    if (mode === 'register') {
+      if (!confirmPassword) {
+        errors.confirmPassword = 'Vui lòng nhập lại mật khẩu để xác nhận!'
+      } else if (confirmPassword !== password) {
+        errors.confirmPassword = 'Mật khẩu xác nhận không trùng khớp!'
+      }
+    }
+
+    setFieldErrors(errors)
+    return Object.keys(errors).length === 0
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!username.trim() || !password.trim()) {
-      toast.error('Vui lòng nhập đầy đủ thông tin!')
+    if (!validate()) {
       return
     }
 
     setLoading(true)
     try {
       if (mode === 'register') {
-        if (!displayName.trim()) {
-          toast.error('Vui lòng nhập tên hiển thị!')
-          setLoading(false)
-          return
-        }
         const res = await authService.register(
-          username.trim(),
+          username.trim().toLowerCase(),
           displayName.trim(),
           password,
           selectedAvatar,
@@ -67,7 +113,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onSuccess(res.user)
         onClose()
       } else {
-        const res = await authService.login(username.trim(), password)
+        const res = await authService.login(username.trim().toLowerCase(), password)
         toast.success(`Chào mừng ${res.user.display_name} trở lại! 🚀`)
         onSuccess(res.user)
         onClose()
@@ -77,6 +123,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     } finally {
       setLoading(false)
     }
+  }
+
+  const switchMode = (newMode: 'login' | 'register') => {
+    setMode(newMode)
+    setFieldErrors({})
   }
 
   return (
@@ -112,7 +163,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <div className="flex border-b border-white/10 bg-black/40">
           <button
             type="button"
-            onClick={() => setMode('login')}
+            onClick={() => switchMode('login')}
             className={`flex-1 py-3 text-xs font-bold transition border-b-2 ${
               mode === 'login'
                 ? 'border-cyan-400 text-cyan-300 bg-white/5'
@@ -123,7 +174,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setMode('register')}
+            onClick={() => switchMode('register')}
             className={`flex-1 py-3 text-xs font-bold transition border-b-2 ${
               mode === 'register'
                 ? 'border-amber-400 text-amber-300 bg-white/5'
@@ -136,42 +187,65 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+          {/* Display Name (Only Register) */}
           {mode === 'register' && (
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-white/80">
-                Tên hiển thị (Tên bạn bè sẽ thấy trên đường đua):
+                Tên hiển thị:
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
                 <input
                   type="text"
-                  required
                   value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Ví dụ: Luân Phi Công, Tuấn Cày Cuốc..."
-                  className="w-full pl-9 pr-3 py-2 bg-black/50 border border-white/20 rounded-xl text-white placeholder:text-white/30 focus:outline-none focus:border-amber-400 text-xs"
+                  onChange={(e) => {
+                    setDisplayName(e.target.value)
+                    if (fieldErrors.displayName) setFieldErrors((prev) => ({ ...prev, displayName: '' }))
+                  }}
+                  placeholder="Nhập tên hiển thị của bạn"
+                  className={`w-full pl-9 pr-3 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs transition ${
+                    fieldErrors.displayName ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-amber-400'
+                  }`}
                 />
               </div>
+              {fieldErrors.displayName && (
+                <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{fieldErrors.displayName}</span>
+                </div>
+              )}
             </div>
           )}
 
+          {/* Username */}
           <div className="space-y-1">
             <label className="text-[11px] font-bold text-white/80">
-              Tên đăng nhập (Username viết liền):
+              Tên đăng nhập:
             </label>
             <div className="relative">
               <User className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
               <input
                 type="text"
-                required
                 value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
-                placeholder="Ví dụ: luan123, tuanninja..."
-                className="w-full pl-9 pr-3 py-2 bg-black/50 border border-white/20 rounded-xl text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 text-xs font-mono"
+                onChange={(e) => {
+                  setUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))
+                  if (fieldErrors.username) setFieldErrors((prev) => ({ ...prev, username: '' }))
+                }}
+                placeholder="Nhập tên đăng nhập (viết liền, không dấu)"
+                className={`w-full pl-9 pr-3 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs font-mono transition ${
+                  fieldErrors.username ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-cyan-400'
+                }`}
               />
             </div>
+            {fieldErrors.username && (
+              <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{fieldErrors.username}</span>
+              </div>
+            )}
           </div>
 
+          {/* Password with Eye icon */}
           <div className="space-y-1">
             <label className="text-[11px] font-bold text-white/80">
               Mật khẩu:
@@ -179,16 +253,73 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="relative">
               <Lock className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
               <input
-                type="password"
-                required
+                type={showPassword ? 'text' : 'password'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Nhập mật khẩu..."
-                className="w-full pl-9 pr-3 py-2 bg-black/50 border border-white/20 rounded-xl text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 text-xs"
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }))
+                }}
+                placeholder="Nhập mật khẩu (tối thiểu 6 ký tự)"
+                className={`w-full pl-9 pr-10 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs transition ${
+                  fieldErrors.password ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-cyan-400'
+                }`}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 text-white/40 hover:text-white transition"
+                title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
+            {fieldErrors.password && (
+              <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>{fieldErrors.password}</span>
+              </div>
+            )}
           </div>
 
+          {/* Confirm Password (Only Register) with Eye icon */}
+          {mode === 'register' && (
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-white/80">
+                Xác nhận mật khẩu:
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-2.5 w-4 h-4 text-white/40" />
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value)
+                    if (fieldErrors.confirmPassword) setFieldErrors((prev) => ({ ...prev, confirmPassword: '' }))
+                  }}
+                  placeholder="Nhập lại mật khẩu để xác nhận"
+                  className={`w-full pl-9 pr-10 py-2 bg-black/50 border rounded-xl text-white placeholder:text-white/30 focus:outline-none text-xs transition ${
+                    fieldErrors.confirmPassword ? 'border-rose-500 focus:border-rose-400' : 'border-white/20 focus:border-amber-400'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-2.5 text-white/40 hover:text-white transition"
+                  title={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                >
+                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {fieldErrors.confirmPassword && (
+                <div className="flex items-center gap-1 text-[11px] text-rose-400 pt-0.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{fieldErrors.confirmPassword}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Racer Avatar Picker (Only Register) */}
           {mode === 'register' && (
             <div className="space-y-2 pt-1">
               <label className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
@@ -220,13 +351,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   type="password"
                   value={adminSecret}
                   onChange={(e) => setAdminSecret(e.target.value)}
-                  placeholder="Mã kích hoạt Admin (Tùy chọn dành riêng cho Quản Trị Viên)..."
+                  placeholder="Mã kích hoạt Admin (Tùy chọn dành riêng cho Quản Trị Viên)"
                   className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-xl text-white placeholder:text-white/20 focus:outline-none focus:border-amber-400 text-[11px]"
                 />
               </div>
             </div>
           )}
 
+          {/* Submit Button */}
           <div className="pt-2">
             <button
               type="submit"
@@ -251,7 +383,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+            onClick={() => switchMode(mode === 'login' ? 'register' : 'login')}
             className="text-cyan-300 hover:underline font-bold"
           >
             {mode === 'login' ? 'Chưa có nick? Đăng ký' : 'Đã có nick? Đăng nhập'}
