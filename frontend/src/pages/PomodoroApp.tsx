@@ -32,6 +32,11 @@ import {
   Shield,
   Lock,
   Rocket,
+  Tv,
+  Maximize2,
+  Smartphone,
+  Brain,
+  Radio,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -77,6 +82,11 @@ import { CosmicRaceTrackModal } from '@/components/race/CosmicRaceTrackModal'
 import { DonateModal } from '@/components/common/DonateModal'
 import { FeedbackModal } from '@/components/common/FeedbackModal'
 import { Footer } from '@/components/common/Footer'
+import { pipTimerManager } from '@/utils/pipTimer'
+import { ZenDeskClockModal } from '@/components/pomodoro/ZenDeskClockModal'
+import { CloudStatusBanner } from '@/components/common/CloudStatusBanner'
+import { usePWAInstall } from '@/utils/usePWAInstall'
+import { ShareableAchievementModal } from '@/components/pomodoro/ShareableAchievementModal'
 import { authService, UserProfile } from '@/services/authService'
 import { notificationManager } from '@/utils/notificationManager'
 import { trackVisit } from '@/utils/analytics'
@@ -229,7 +239,15 @@ export default function PomodoroApp() {
   const [activeTab, setActiveTab] = useState<'goals' | 'matrix' | 'galaxy' | 'timewarp' | 'logs' | 'stats'>('goals')
 
   // Ambient sound
-  const [ambientSound, setAmbientSound] = useState<'none' | 'rain' | 'waves' | 'ticking' | 'fire'>('none')
+  const [ambientSound, setAmbientSound] = useState<'none' | 'rain' | 'waves' | 'ticking' | 'fire' | 'binaural' | 'lofi'>('none')
+
+  // PWA Install hook
+  const { canInstall, installPWA } = usePWAInstall()
+
+  // Zen Desk Clock & Floating PiP state
+  const [isZenClockOpen, setIsZenClockOpen] = useState<boolean>(false)
+  const [isPipActive, setIsPipActive] = useState<boolean>(false)
+  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false)
 
   // Custom Time Input Popover
   const [showCustomTimeInput, setShowCustomTimeInput] = useState<boolean>(false)
@@ -474,6 +492,71 @@ export default function PomodoroApp() {
     document.title = `${timeStr} - ${goalTitle} (${modeLabel})`
   }, [timeLeft, mode, goals, selectedGoalId])
 
+  // Sync Picture-in-Picture Floating Window
+  useEffect(() => {
+    if (pipTimerManager.isActive()) {
+      const mins = Math.floor(timeLeft / 60)
+      const secs = timeLeft % 60
+      const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+      const activeGoal = goals.find((g) => g.id === selectedGoalId)
+      const goalTitle = activeGoal ? activeGoal.title : 'Học tập'
+      const totalSecs = (mode === 'pomodoro' ? settings.focusMinutes : mode === 'shortBreak' ? settings.shortBreakMinutes : settings.longBreakMinutes) * 60
+      const progressPercent = totalSecs > 0 ? ((totalSecs - timeLeft) / totalSecs) * 100 : 0
+
+      pipTimerManager.update({
+        timeStr,
+        progressPercent,
+        modeLabel: mode === 'pomodoro' ? 'Pomodoro' : mode === 'shortBreak' ? 'Nghỉ ngắn' : 'Nghỉ dài',
+        topicNote: sessionNote || goalTitle || 'Tập trung học tập',
+        isRunning,
+      })
+    }
+  }, [timeLeft, mode, isRunning, goals, selectedGoalId, sessionNote, settings])
+
+  // Cleanup PiP on unmount
+  useEffect(() => {
+    return () => {
+      pipTimerManager.stop()
+    }
+  }, [])
+
+  // Toggle PiP Floating Window
+  const handleTogglePip = async () => {
+    try {
+      const mins = Math.floor(timeLeft / 60)
+      const secs = timeLeft % 60
+      const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+      const activeGoal = goals.find((g) => g.id === selectedGoalId)
+      const goalTitle = activeGoal ? activeGoal.title : 'Học tập'
+      const totalSecs = (mode === 'pomodoro' ? settings.focusMinutes : mode === 'shortBreak' ? settings.shortBreakMinutes : settings.longBreakMinutes) * 60
+      const progressPercent = totalSecs > 0 ? ((totalSecs - timeLeft) / totalSecs) * 100 : 0
+
+      const active = await pipTimerManager.togglePip(
+        {
+          timeStr,
+          progressPercent,
+          modeLabel: mode === 'pomodoro' ? 'Pomodoro' : mode === 'shortBreak' ? 'Nghỉ ngắn' : 'Nghỉ dài',
+          topicNote: sessionNote || goalTitle || 'Tập trung học tập',
+          isRunning,
+        },
+        () => {
+          handleStartPause()
+        },
+        () => {
+          setIsPipActive(false)
+        }
+      )
+      setIsPipActive(active)
+      if (active) {
+        toast.success('Đã mở cửa sổ nổi ghim trên màn hình! 🖥️')
+      } else {
+        toast.info('Đã thu hồi cửa sổ nổi')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Không thể mở cửa sổ nổi')
+    }
+  }
+
   // Timer complete handler
   const onTimerComplete = async (recordSession = true) => {
     // Play alarm sound
@@ -543,7 +626,7 @@ export default function PomodoroApp() {
   }
 
   // ── Ambient sounds handler with automatic background synchronization ──
-  const toggleAmbientSound = async (type: 'rain' | 'waves' | 'ticking' | 'fire') => {
+  const toggleAmbientSound = async (type: 'rain' | 'waves' | 'ticking' | 'fire' | 'binaural' | 'lofi') => {
     if (ambientSound === type) {
       soundManager.stopAmbient()
       setAmbientSound('none')
@@ -553,7 +636,13 @@ export default function PomodoroApp() {
       setAmbientSound(type)
 
       // Automatically change to the corresponding beautiful wallpaper!
-      const matching = PRESET_THEMES.find((t) => t.id === type)
+      let matching = PRESET_THEMES.find((t) => t.id === type)
+      if (!matching && type === 'binaural') {
+        matching = PRESET_THEMES.find((t) => t.id === 'cyberpunk')
+      } else if (!matching && type === 'lofi') {
+        matching = PRESET_THEMES.find((t) => t.id === 'lofi')
+      }
+
       if (matching) {
         setBgConfig(matching)
         localStorage.setItem('pomodoro_bg_theme', JSON.stringify(matching))
@@ -564,6 +653,8 @@ export default function PomodoroApp() {
         waves: 'Tiếng sóng biển 🌊 (Đã chuyển không gian Biển)',
         ticking: 'Tiếng tích tắc ⏰ (Đã chuyển không gian Bàn học)',
         fire: 'Tiếng lò sưởi 🔥 (Đã chuyển không gian Lò sưởi)',
+        binaural: 'Sóng não Gamma 40Hz 🧠 (Kích hoạt tập trung sâu & trí nhớ)',
+        lofi: 'Lo-Fi Chill Cozy 🎵 (Hợp âm thư giãn êm ái & tiếng đĩa than)',
       }
       toast.success(labels[type] || `Đang phát: ${type}`)
     }
@@ -704,6 +795,28 @@ export default function PomodoroApp() {
             <span className="hidden md:inline">Đường Đua</span>
           </button>
 
+          {/* Shareable Achievement Card Button */}
+          <button
+            onClick={() => setIsShareModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/30 rounded-xl transition active:scale-95 shadow backdrop-blur-md"
+            title="Xuất bảng vàng thành tích tuần để khoe Story FB / Zalo"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span className="hidden lg:inline">Khoe Bảng Vàng</span>
+          </button>
+
+          {/* PWA 1-Click Install Button */}
+          {canInstall && (
+            <button
+              onClick={installPWA}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl transition shadow active:scale-95"
+              title="Cài đặt LifeQuest ra màn hình chính điện thoại / máy tính"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Cài App</span>
+            </button>
+          )}
+
           {/* Admin Portal Button */}
           {currentUser?.is_admin && (
             <button
@@ -788,6 +901,30 @@ export default function PomodoroApp() {
       <main className="max-w-xl mx-auto px-4 pt-6 pb-16 relative z-10">
         {/* ── POMODORO TIMER CARD ── */}
         <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden">
+          {/* Quick Floating PiP & Zen Desk Clock action buttons in top-right */}
+          <div className="absolute top-4 right-4 flex items-center gap-1.5 z-20">
+            <button
+              onClick={handleTogglePip}
+              className={`p-2 rounded-xl transition backdrop-blur-md border flex items-center gap-1 text-xs ${
+                isPipActive
+                  ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-md ring-1 ring-cyan-400'
+                  : 'bg-white/10 hover:bg-white/20 border-white/10 text-white/80 hover:text-white'
+              }`}
+              title="Cửa sổ nổi ghim trên mọi ứng dụng khi lướt web / code (Picture-in-Picture)"
+            >
+              <Tv className="w-3.5 h-3.5 text-cyan-300" />
+              <span className="hidden sm:inline text-[11px] font-medium">Nổi</span>
+            </button>
+            <button
+              onClick={() => setIsZenClockOpen(true)}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition backdrop-blur-md border border-white/10 flex items-center gap-1 text-xs"
+              title="Chế độ toàn màn hình đồng hồ để bàn (Zen Desk Clock - giữ màn hình luôn sáng)"
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden sm:inline text-[11px] font-medium">Zen</span>
+            </button>
+          </div>
+
           {/* Tabs: Pomodoro | Short Break | Long Break */}
           <div className="flex items-center justify-center gap-1 sm:gap-2 mb-4">
             <button
@@ -986,6 +1123,28 @@ export default function PomodoroApp() {
               }`}
             >
               🔥 Lò sưởi
+            </button>
+            <button
+              onClick={() => toggleAmbientSound('binaural')}
+              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 transition ${
+                ambientSound === 'binaural'
+                  ? 'bg-cyan-400 text-black font-bold shadow'
+                  : 'text-white/70 hover:bg-white/15'
+              }`}
+              title="Sóng não Gamma 40Hz kích hoạt tập trung sâu & trí nhớ"
+            >
+              <Brain className="w-3.5 h-3.5 text-cyan-300" /> Sóng 40Hz
+            </button>
+            <button
+              onClick={() => toggleAmbientSound('lofi')}
+              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 transition ${
+                ambientSound === 'lofi'
+                  ? 'bg-amber-400 text-black font-bold shadow'
+                  : 'text-white/70 hover:bg-white/15'
+              }`}
+              title="Lo-Fi Chill Cozy thư giãn với tiếng đĩa than"
+            >
+              <Radio className="w-3.5 h-3.5 text-amber-300" /> Lo-Fi Chill
             </button>
 
             {ambientSound !== 'none' && (
@@ -1240,14 +1399,19 @@ export default function PomodoroApp() {
         {activeTab === 'matrix' && (
           <div className="mt-6 space-y-4 animate-in fade-in duration-200">
             <EisenhowerMatrixView
-              onStartPomodoroWithGoal={(goalId) => {
+              onStartPomodoroWithGoal={(goalId, taskTitle) => {
                 if (goalId) {
                   setSelectedGoalId(goalId)
                   const g = goals.find((item) => item.id === goalId)
-                  if (g) setSessionNote(g.title)
+                  if (g) setSessionNote(taskTitle || g.title)
+                } else if (taskTitle) {
+                  setSessionNote(taskTitle)
                 }
                 window.scrollTo({ top: 0, behavior: 'smooth' })
-                toast.info('Đã chuẩn bị phiên Pomodoro cho mục tiêu này! 🚀')
+                if (!isRunning) {
+                  handleStartPause()
+                }
+                toast.success(`Đang cày Pomodoro: "${taskTitle || 'Mục tiêu'}" 🚀`)
               }}
             />
           </div>
@@ -1687,6 +1851,39 @@ export default function PomodoroApp() {
         onClose={() => setIsFeedbackModalOpen(false)}
         currentUser={currentUser}
       />
+
+      {/* ── ZEN DESK CLOCK FULLSCREEN MODAL ── */}
+      <ZenDeskClockModal
+        isOpen={isZenClockOpen}
+        onClose={() => setIsZenClockOpen(false)}
+        timeLeft={timeLeft}
+        isRunning={isRunning}
+        mode={mode}
+        onStartPause={handleStartPause}
+        onReset={handleReset}
+        onSkip={handleSkip}
+        onSwitchMode={switchMode}
+        totalDurationSeconds={
+          (mode === 'pomodoro'
+            ? settings.focusMinutes
+            : mode === 'shortBreak'
+            ? settings.shortBreakMinutes
+            : settings.longBreakMinutes) * 60
+        }
+        topicNote={sessionNote}
+        goalTitle={goals.find((g) => g.id === selectedGoalId)?.title}
+      />
+
+      {/* ── SHAREABLE ACHIEVEMENT INFOGRAPHIC MODAL ── */}
+      <ShareableAchievementModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        currentUser={currentUser}
+        stats={stats}
+      />
+
+      {/* ── CLOUD COLD-START INDICATOR ── */}
+      <CloudStatusBanner />
 
       {/* ── AI FLOATING BUDDY COMPANION ── */}
       <AIFloatingBuddy

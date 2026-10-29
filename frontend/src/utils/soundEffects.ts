@@ -7,6 +7,7 @@ class SoundManager {
   private ambientInterval: number | null = null
   private lfoOsc: OscillatorNode | null = null
   private currentAmbientType: string | null = null
+  private extraOscs: OscillatorNode[] = []
 
   async ensureContext(): Promise<AudioContext> {
     if (!this.ctx) {
@@ -93,7 +94,7 @@ class SoundManager {
   }
 
   // ── AMBIENT NOISE GENERATOR ──
-  async startAmbient(type: 'rain' | 'waves' | 'ticking' | 'fire', volume = 0.5) {
+  async startAmbient(type: 'rain' | 'waves' | 'ticking' | 'fire' | 'binaural' | 'lofi', volume = 0.5) {
     this.stopAmbient()
     try {
       const ctx = await this.ensureContext()
@@ -263,6 +264,119 @@ class SoundManager {
         }, 120)
         return
       }
+
+      // 5. BINAURAL BEATS 40Hz (GAMMA DEEP FOCUS)
+      if (type === 'binaural') {
+        const merger = ctx.createChannelMerger(2)
+
+        // Left ear 200 Hz
+        const oscLeft = ctx.createOscillator()
+        oscLeft.type = 'sine'
+        oscLeft.frequency.setValueAtTime(200, ctx.currentTime)
+
+        const gainLeft = ctx.createGain()
+        gainLeft.gain.setValueAtTime(0.35, ctx.currentTime)
+        oscLeft.connect(gainLeft)
+        gainLeft.connect(merger, 0, 0) // left channel
+
+        // Right ear 240 Hz (Difference = 40 Hz Gamma Focus)
+        const oscRight = ctx.createOscillator()
+        oscRight.type = 'sine'
+        oscRight.frequency.setValueAtTime(240, ctx.currentTime)
+
+        const gainRight = ctx.createGain()
+        gainRight.gain.setValueAtTime(0.35, ctx.currentTime)
+        oscRight.connect(gainRight)
+        gainRight.connect(merger, 0, 1) // right channel
+
+        // Soft pink noise background warmth
+        const warmFilter = ctx.createBiquadFilter()
+        warmFilter.type = 'lowpass'
+        warmFilter.frequency.setValueAtTime(250, ctx.currentTime)
+        const noiseGain = ctx.createGain()
+        noiseGain.gain.setValueAtTime(0.15, ctx.currentTime)
+        noiseSource.connect(warmFilter)
+        warmFilter.connect(noiseGain)
+        noiseGain.connect(masterGain)
+
+        merger.connect(masterGain)
+        masterGain.connect(ctx.destination)
+
+        oscLeft.start()
+        oscRight.start()
+        noiseSource.start()
+
+        this.extraOscs = [oscLeft, oscRight]
+        this.ambientSource = noiseSource
+        this.ambientGain = masterGain
+        return
+      }
+
+      // 6. LO-FI CHILL COZY SYNTH & VINYL CRACKLE
+      if (type === 'lofi') {
+        // Vinyl noise crackle
+        const vinylFilter = ctx.createBiquadFilter()
+        vinylFilter.type = 'bandpass'
+        vinylFilter.frequency.setValueAtTime(1200, ctx.currentTime)
+        vinylFilter.Q.setValueAtTime(1.0, ctx.currentTime)
+
+        const vinylGain = ctx.createGain()
+        vinylGain.gain.setValueAtTime(0.18, ctx.currentTime)
+        noiseSource.connect(vinylFilter)
+        vinylFilter.connect(vinylGain)
+        vinylGain.connect(masterGain)
+        noiseSource.start()
+
+        // Cozy lo-fi chords progression: Cmaj7 -> Am7 -> Dm7 -> G7
+        const chords = [
+          [261.63, 329.63, 392.00, 493.88], // Cmaj7: C4, E4, G4, B4
+          [220.00, 261.63, 329.63, 392.00], // Am7: A3, C4, E4, G4
+          [146.83, 174.61, 220.00, 261.63], // Dm7: D3, F3, A3, C4
+          [196.00, 246.94, 293.66, 349.23], // G7: G3, B3, D4, F4
+        ]
+        let chordIdx = 0
+
+        const playLofiChord = () => {
+          if (this.currentAmbientType !== 'lofi') return
+          try {
+            const chord = chords[chordIdx % chords.length]
+            chordIdx++
+            const now = ctx.currentTime
+
+            chord.forEach((freq) => {
+              const osc = ctx.createOscillator()
+              const chordGain = ctx.createGain()
+              const filter = ctx.createBiquadFilter()
+
+              osc.type = 'triangle'
+              osc.frequency.setValueAtTime(freq, now)
+
+              // Lowpass for warm vintage vinyl feel
+              filter.type = 'lowpass'
+              filter.frequency.setValueAtTime(650, now)
+
+              chordGain.gain.setValueAtTime(0, now)
+              chordGain.gain.linearRampToValueAtTime(volume * 0.12, now + 0.8)
+              chordGain.gain.exponentialRampToValueAtTime(0.0001, now + 3.8)
+
+              osc.connect(filter)
+              filter.connect(chordGain)
+              chordGain.connect(masterGain)
+
+              osc.start(now)
+              osc.stop(now + 3.9)
+            })
+          } catch {}
+        }
+
+        playLofiChord()
+        this.ambientInterval = window.setInterval(playLofiChord, 4000)
+
+        masterGain.connect(ctx.destination)
+        this.ambientSource = noiseSource
+        this.ambientGain = masterGain
+        return
+      }
     } catch (e) {
       console.warn('Ambient sound error:', e)
     }
@@ -285,6 +399,15 @@ class SoundManager {
         this.lfoOsc.disconnect()
       } catch {}
       this.lfoOsc = null
+    }
+    if (this.extraOscs.length > 0) {
+      this.extraOscs.forEach((o) => {
+        try {
+          o.stop()
+          o.disconnect()
+        } catch {}
+      })
+      this.extraOscs = []
     }
     if (this.ambientSource) {
       try {

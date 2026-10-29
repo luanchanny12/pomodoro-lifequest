@@ -19,6 +19,7 @@ import {
   ChevronRight,
   RotateCcw,
   MessageSquare,
+  GripVertical,
 } from 'lucide-react'
 import { format, addDays, isSameDay, parseISO } from 'date-fns'
 import { vi } from 'date-fns/locale'
@@ -33,7 +34,7 @@ import {
 import { MonthlyMatrixReportModal } from './MonthlyMatrixReportModal'
 
 interface EisenhowerMatrixViewProps {
-  onStartPomodoroWithGoal?: (goalId?: number) => void
+  onStartPomodoroWithGoal?: (goalId?: number, taskTitle?: string) => void
 }
 
 export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
@@ -453,7 +454,7 @@ interface QuadrantCardProps {
   onReflectionInputChange: (val: string) => void
   onSaveReflection: (taskId: number) => void
   onCancelReflection: () => void
-  onStartPomodoro?: (goalId?: number) => void
+  onStartPomodoro?: (goalId?: number, taskTitle?: string) => void
 }
 
 const QuadrantCard: React.FC<QuadrantCardProps> = ({
@@ -483,6 +484,7 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
   onCancelReflection,
   onStartPomodoro,
 }) => {
+  const [isDragOver, setIsDragOver] = useState(false)
   const colorStyles = {
     rose: {
       border: 'border-rose-500/35',
@@ -518,8 +520,34 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
 
   return (
     <div
-      className={`bg-black/40 backdrop-blur-xl border ${colorStyles.border} rounded-3xl p-5 shadow-xl flex flex-col justify-between transition-all duration-200`}
+      onDragOver={(e) => {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+        if (!isDragOver) setIsDragOver(true)
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setIsDragOver(false)
+        const taskIdStr = e.dataTransfer.getData('text/plain')
+        if (taskIdStr) {
+          const taskId = Number(taskIdStr)
+          if (taskId) {
+            onMove(taskId, quadrantNumber)
+          }
+        }
+      }}
+      className={`bg-black/40 backdrop-blur-xl border ${colorStyles.border} rounded-3xl p-5 shadow-xl flex flex-col justify-between transition-all duration-200 relative ${
+        isDragOver ? 'ring-2 ring-amber-400 bg-amber-500/10 shadow-2xl scale-[1.015]' : ''
+      }`}
     >
+      {isDragOver && (
+        <div className="absolute inset-0 rounded-3xl border-2 border-dashed border-amber-400 pointer-events-none flex items-center justify-center bg-black/40 z-20">
+          <span className="text-xs font-bold text-amber-300 px-3 py-1.5 rounded-xl bg-black/80 shadow">
+            Thả vào đây để chuyển sang Ô {quadrantNumber} 📥
+          </span>
+        </div>
+      )}
       <div>
         {/* Quadrant Header */}
         <div className="flex items-start justify-between gap-2 pb-3 border-b border-white/10">
@@ -619,15 +647,26 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
               return (
                 <div
                   key={task.id}
-                  className={`p-3 rounded-2xl border transition-all duration-150 ${
+                  draggable={!task.is_completed}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/plain', String(task.id))
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
+                  className={`p-3 rounded-2xl border transition-all duration-150 group/task relative ${
                     task.is_completed
                       ? 'bg-white/5 border-white/10 opacity-70'
-                      : 'bg-black/30 border-white/15 hover:border-white/30'
+                      : 'bg-black/30 border-white/15 hover:border-white/30 cursor-grab active:cursor-grabbing hover:bg-white/5'
                   }`}
+                  title={!task.is_completed ? 'Kéo thả sang ô khác hoặc bấm vào để học' : undefined}
                 >
                   <div className="flex items-start justify-between gap-2.5">
-                    {/* Checkbox & Title */}
-                    <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                    {/* Grip handle & Checkbox & Title */}
+                    <div className="flex items-start gap-1.5 flex-1 min-w-0">
+                      {!task.is_completed && (
+                        <div className="mt-1 text-white/20 group-hover/task:text-white/60 transition flex-shrink-0 cursor-grab active:cursor-grabbing" title="Kéo để đổi ô">
+                          <GripVertical className="w-3.5 h-3.5" />
+                        </div>
+                      )}
                       <button
                         onClick={() => onToggle(task.id)}
                         className="mt-0.5 text-white/50 hover:text-emerald-400 transition flex-shrink-0"
@@ -649,9 +688,9 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
                           {task.title}
                         </div>
 
-                        {/* Associated Goal Badge */}
-                        {task.goal_title && (
-                          <div className="mt-1 flex items-center gap-1.5">
+                        {/* Associated Goal Badge & Quick Pomodoro Focus Button */}
+                        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                          {task.goal_title && (
                             <span
                               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold"
                               style={{
@@ -662,20 +701,20 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
                               }}
                             >
                               <Target className="w-2.5 h-2.5" />
-                              <span className="truncate max-w-[150px]">{task.goal_title}</span>
+                              <span className="truncate max-w-[140px]">{task.goal_title}</span>
                             </span>
+                          )}
 
-                            {onStartPomodoro && task.goal_id && (
-                              <button
-                                onClick={() => onStartPomodoro(task.goal_id || undefined)}
-                                className="text-[10px] text-white/50 hover:text-white underline"
-                                title="Bật đồng hồ Pomodoro cho mục tiêu này"
-                              >
-                                Học Pomodoro
-                              </button>
-                            )}
-                          </div>
-                        )}
+                          {onStartPomodoro && !task.is_completed && (
+                            <button
+                              onClick={() => onStartPomodoro(task.goal_id || undefined, task.title)}
+                              className="text-[10px] text-cyan-300 hover:text-cyan-200 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 px-2 py-0.5 rounded-md font-semibold transition flex items-center gap-1"
+                              title="Điền tên việc này vào đồng hồ Pomodoro và bắt đầu cày ngay"
+                            >
+                              <span>▶ Học Pomodoro</span>
+                            </button>
+                          )}
+                        </div>
 
                         {/* Reflection Note display if present */}
                         {task.reflection_note && !isEditingRef && (
