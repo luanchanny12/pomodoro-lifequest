@@ -8,6 +8,11 @@ hoặc:
 
 import os
 import sys
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 import datetime
 
 # Thêm thư mục backend vào sys.path
@@ -46,6 +51,19 @@ def run_migration(target_db_url: str = None):
 
     if target_db_url.startswith("postgres://"):
         target_db_url = target_db_url.replace("postgres://", "postgresql://", 1)
+
+    import re
+    # Loại bỏ channel_binding vì psycopg2 không hỗ trợ tham số này
+    target_db_url = re.sub(r"[?&]channel_binding=[^&]+", "", target_db_url)
+    if "?" not in target_db_url and "&" in target_db_url:
+        target_db_url = target_db_url.replace("&", "?", 1)
+
+    if "neon.tech" in target_db_url and "options=" not in target_db_url:
+        m = re.search(r"@([a-z0-9\-]+?)(?:-pooler)?\.[a-z0-9\-\.]*neon\.tech", target_db_url)
+        if m:
+            endpoint_id = m.group(1)
+            sep = "&" if "?" in target_db_url else "?"
+            target_db_url += f"{sep}options=endpoint%3D{endpoint_id}"
 
     # 2. Kết nối Source SQLite
     sqlite_path = os.path.join(BACKEND_DIR, "lifequest.db")

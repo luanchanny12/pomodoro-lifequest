@@ -7,6 +7,11 @@ Cách dùng:
 import sys
 import os
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, BACKEND_DIR)
@@ -29,6 +34,19 @@ def check_connection(url: str = None):
 
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
+
+    import re
+    # Loại bỏ channel_binding vì psycopg2 không hỗ trợ tham số này
+    url = re.sub(r"[?&]channel_binding=[^&]+", "", url)
+    if "?" not in url and "&" in url:
+        url = url.replace("&", "?", 1)
+
+    if "neon.tech" in url and "options=" not in url:
+        m = re.search(r"@([a-z0-9\-]+?)(?:-pooler)?\.[a-z0-9\-\.]*neon\.tech", url)
+        if m:
+            endpoint_id = m.group(1)
+            sep = "&" if "?" in url else "?"
+            url += f"{sep}options=endpoint%3D{endpoint_id}"
 
     masked = url.split("@")[-1] if "@" in url else url
     print(f"🔍 Đang kiểm tra kết nối đến: ...@{masked}")

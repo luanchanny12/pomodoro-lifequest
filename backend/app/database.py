@@ -11,8 +11,23 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if DATABASE_URL and DATABASE_URL.strip().lower() != "auto":
+    import re
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    
+    # Loại bỏ channel_binding vì psycopg2 không hỗ trợ tham số này trong URL
+    DATABASE_URL = re.sub(r"[?&]channel_binding=[^&]+", "", DATABASE_URL)
+    if "?" not in DATABASE_URL and "&" in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace("&", "?", 1)
+
+    # Tự động thêm endpoint parameter cho Neon nếu thiếu (tránh lỗi libpq SNI cũ)
+    if "neon.tech" in DATABASE_URL and "options=" not in DATABASE_URL:
+        m = re.search(r"@([a-z0-9\-]+?)(?:-pooler)?\.[a-z0-9\-\.]*neon\.tech", DATABASE_URL)
+        if m:
+            endpoint_id = m.group(1)
+            sep = "&" if "?" in DATABASE_URL else "?"
+            DATABASE_URL += f"{sep}options=endpoint%3D{endpoint_id}"
+
     is_postgres = DATABASE_URL.startswith("postgresql")
     engine = create_engine(
         DATABASE_URL,
