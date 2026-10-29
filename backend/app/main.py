@@ -13,7 +13,7 @@ from app.routers import (
     goals, roadmaps, courses, tasks, sprints, daily_logs, study_hours,
     gamification, vocabulary, ipa, exports, backlog, ai, ai_v2, ai_v3,
     knowledge, learning, daily_coach, schedule, focus_hub, notifications,
-    calendar_sync, auth, race_track
+    calendar_sync, auth, race_track, admin
 )
 import app.models
 import app.models_auth
@@ -47,12 +47,43 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE study_session_logs ADD COLUMN user_id INTEGER",
             "ALTER TABLE daily_matrix_tasks ADD COLUMN user_id INTEGER",
             "ALTER TABLE notification_settings ADD COLUMN user_id INTEGER",
+            "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0",
         ]:
             try:
                 db.execute(text(stmt))
                 db.commit()
             except Exception:
                 db.rollback()
+
+        # Đảm bảo có tài khoản Quản trị viên (Admin)
+        from app.models_auth import User as AuthUser
+        existing_admin = db.query(AuthUser).filter(AuthUser.is_admin == True).first()
+        if not existing_admin:
+            # Ưu tiên thăng cấp luan12111 hoặc tài khoản đầu tiên
+            promoted_user = (
+                db.query(AuthUser).filter(AuthUser.username.in_(["luan12111", "admin"])).first()
+                or db.query(AuthUser).first()
+            )
+            if promoted_user:
+                promoted_user.is_admin = True
+                db.commit()
+            else:
+                # Tạo sẵn tài khoản admin mặc định: admin / Admin@123456
+                from app.routers.auth import hash_password
+                pwd_hash, salt = hash_password(os.getenv("ADMIN_DEFAULT_PASSWORD", "Admin@123456"))
+                init_admin = AuthUser(
+                    username="admin",
+                    display_name="Quản Trị Viên",
+                    password_hash=pwd_hash,
+                    salt=salt,
+                    racer_avatar="rocket",
+                    is_admin=True,
+                )
+                db.add(init_admin)
+                db.commit()
+                db.refresh(init_admin)
+                db.add(Player(user_id=init_admin.id, level=1, exp=0, coins=0, streak=0))
+                db.commit()
         if not db.query(Level).first():
             levels = [
                 Level(level=1, exp_required=0, title="Tân Thủ"),
@@ -152,6 +183,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(race_track.router)
+app.include_router(admin.router)
 app.include_router(focus_hub.router)
 app.include_router(notifications.router)
 app.include_router(calendar_sync.router)

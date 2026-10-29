@@ -6,6 +6,7 @@ export interface UserProfile {
   display_name: string
   racer_avatar: 'rocket' | 'cyber_car' | 'quantum_saucer' | 'lightning' | 'lightcycle'
   cheer_count: number
+  is_admin?: boolean
   level: number
   exp: number
   coins: number
@@ -40,13 +41,15 @@ export const authService = {
     username: string,
     display_name: string,
     password: string,
-    racer_avatar: string = 'rocket'
+    racer_avatar: string = 'rocket',
+    admin_secret?: string
   ): Promise<AuthResponse> => {
     const res = await api.post<AuthResponse>('/auth/register', {
       username,
       display_name,
       password,
       racer_avatar,
+      admin_secret: admin_secret || undefined,
     })
     localStorage.setItem(TOKEN_KEY, res.data.access_token)
     localStorage.setItem(USER_KEY, JSON.stringify(res.data.user))

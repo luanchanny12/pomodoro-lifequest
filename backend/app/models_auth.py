@@ -14,6 +14,7 @@ class User(Base):
     racer_avatar = Column(String, default="rocket")  # rocket, cyber_car, quantum_saucer, lightning, lightcycle
     cheer_count = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class CheerLog(Base):

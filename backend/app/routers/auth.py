@@ -84,6 +84,14 @@ def get_current_user(user: Optional[User] = Depends(get_current_user_optional)) 
         )
     return user
 
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    if not getattr(user, "is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không có quyền Quản trị viên (Admin) để thực hiện thao tác này.",
+        )
+    return user
+
 # --- Schemas ---
 
 class RegisterRequest(BaseModel):
@@ -91,6 +99,7 @@ class RegisterRequest(BaseModel):
     display_name: str = Field(..., min_length=2, max_length=100)
     password: str = Field(..., min_length=4)
     racer_avatar: Optional[str] = "rocket"
+    admin_secret: Optional[str] = None
 
 class LoginRequest(BaseModel):
     username: str
@@ -106,6 +115,7 @@ class UserResponse(BaseModel):
     display_name: str
     racer_avatar: str
     cheer_count: int
+    is_admin: bool = False
     level: int = 1
     exp: int = 0
     coins: int = 0
@@ -132,6 +142,7 @@ def _build_user_response(user: User, db: Session) -> UserResponse:
         display_name=user.display_name,
         racer_avatar=user.racer_avatar or "rocket",
         cheer_count=user.cheer_count or 0,
+        is_admin=bool(getattr(user, "is_admin", False)),
         level=player.level,
         exp=player.exp,
         coins=player.coins,
@@ -150,6 +161,11 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     valid_avatars = {"rocket", "cyber_car", "quantum_saucer", "lightning", "lightcycle"}
     chosen_avatar = data.racer_avatar if data.racer_avatar in valid_avatars else "rocket"
 
+    admin_secret_env = os.getenv("ADMIN_INVITE_CODE", "LIFEQUEST_ADMIN_2026")
+    is_admin_flag = False
+    if (data.admin_secret and data.admin_secret.strip() == admin_secret_env) or clean_username in ("admin", "luan12111") or db.query(User).count() == 0:
+        is_admin_flag = True
+
     try:
         user = User(
             username=clean_username,
@@ -157,6 +173,7 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
             password_hash=pwd_hash,
             salt=salt,
             racer_avatar=chosen_avatar,
+            is_admin=is_admin_flag,
         )
         db.add(user)
         db.commit()

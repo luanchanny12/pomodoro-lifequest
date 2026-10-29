@@ -4,6 +4,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from 'sonner'
 
 import PomodoroApp from '@/pages/PomodoroApp'
+import AdminDashboard from '@/pages/AdminDashboard'
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
           {/* Main streamlined Pomodoro & Goal Focus App */}
           <Route path="/" element={<PomodoroApp />} />
           <Route path="/focus" element={<PomodoroApp />} />
+          <Route path="/admin" element={<AdminDashboard />} />
         </Routes>
         <Toaster position="top-right" richColors closeButton />
       </BrowserRouter>

@@ -29,7 +29,9 @@ import {
   Bell,
   User as UserIcon,
   LogOut,
+  Shield,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import {
   BarChart,
   Bar,
@@ -98,6 +100,7 @@ const SHORT_BREAK_PRESETS = [3, 5, 10, 15]
 const LONG_BREAK_PRESETS = [10, 15, 20, 30]
 
 export default function PomodoroApp() {
+  const navigate = useNavigate()
   // ── Settings ──
   const [settings, setSettings] = useState<PomodoroSettings>(() => {
     try {
@@ -580,6 +583,18 @@ export default function PomodoroApp() {
             <Trophy className="w-4 h-4 text-amber-300 animate-pulse" />
             <span className="hidden md:inline">Đường Đua</span>
           </button>
+
+          {/* Admin Portal Button */}
+          {currentUser?.is_admin && (
+            <button
+              onClick={() => navigate('/admin')}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 text-black rounded-xl transition active:scale-95 shadow-md shadow-amber-500/20 border border-amber-300/40"
+              title="Cổng Quản Trị Hệ Thống (Admin Portal)"
+            >
+              <Shield className="w-3.5 h-3.5 text-black" />
+              <span className="hidden sm:inline">Quản Trị</span>
+            </button>
+          )}
 
           {/* User Profile / Auth Pill */}
           {currentUser ? (
