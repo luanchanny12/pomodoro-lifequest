@@ -1117,7 +1117,7 @@ def get_matrix_tasks(
     target_date = task_date or datetime.date.today()
     query = db.query(DailyMatrixTask).filter(DailyMatrixTask.date == target_date)
     if user:
-        query = query.filter((DailyMatrixTask.user_id == user.id) | (DailyMatrixTask.user_id == None))
+        query = query.filter((DailyMatrixTask.user_id == user.id) | (DailyMatrixTask.user_id.is_(None)))
     tasks = (
         query
         .order_by(DailyMatrixTask.quadrant.asc(), DailyMatrixTask.order_index.asc(), DailyMatrixTask.id.asc())
@@ -1141,7 +1141,7 @@ def get_matrix_tasks(
                 is_completed=t.is_completed,
                 completed_at=t.completed_at,
                 reflection_note=t.reflection_note,
-                order_index=t.order_index,
+                order_index=t.order_index or 0,
                 created_at=t.created_at,
                 updated_at=t.updated_at,
             )
@@ -1187,7 +1187,7 @@ def create_matrix_task(
                 is_completed=recent_duplicate.is_completed,
                 completed_at=recent_duplicate.completed_at,
                 reflection_note=recent_duplicate.reflection_note,
-                order_index=recent_duplicate.order_index,
+                order_index=recent_duplicate.order_index or 0,
                 created_at=recent_duplicate.created_at,
                 updated_at=recent_duplicate.updated_at,
             )
@@ -1200,6 +1200,7 @@ def create_matrix_task(
         quadrant=quadrant,
         goal_id=data.goal_id,
         reflection_note=data.reflection_note,
+        order_index=0,
     )
     db.add(task)
     db.commit()
@@ -1218,7 +1219,7 @@ def create_matrix_task(
         is_completed=task.is_completed,
         completed_at=task.completed_at,
         reflection_note=task.reflection_note,
-        order_index=task.order_index,
+        order_index=task.order_index or 0,
         created_at=task.created_at,
         updated_at=task.updated_at,
     )
@@ -1265,7 +1266,7 @@ def update_matrix_task(task_id: int, data: DailyMatrixTaskUpdate, db: Session = 
         is_completed=task.is_completed,
         completed_at=task.completed_at,
         reflection_note=task.reflection_note,
-        order_index=task.order_index,
+        order_index=task.order_index or 0,
         created_at=task.created_at,
         updated_at=task.updated_at,
     )
@@ -1296,7 +1297,7 @@ def toggle_matrix_task(task_id: int, db: Session = Depends(get_db)):
         is_completed=task.is_completed,
         completed_at=task.completed_at,
         reflection_note=task.reflection_note,
-        order_index=task.order_index,
+        order_index=task.order_index or 0,
         created_at=task.created_at,
         updated_at=task.updated_at,
     )
@@ -1326,7 +1327,7 @@ def update_matrix_task_reflection(task_id: int, data: DailyMatrixTaskReflectionU
         is_completed=task.is_completed,
         completed_at=task.completed_at,
         reflection_note=task.reflection_note,
-        order_index=task.order_index,
+        order_index=task.order_index or 0,
         created_at=task.created_at,
         updated_at=task.updated_at,
     )

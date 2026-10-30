@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime, Text
 from datetime import datetime
-from app.database import Base
+from app.models import LegacyBase as Base
 
 
 class SpacedRepetition(Base):

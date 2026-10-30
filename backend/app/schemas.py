@@ -989,9 +989,9 @@ class DailyMatrixTaskResponse(BaseModel):
     is_completed: bool
     completed_at: Optional[datetime.datetime] = None
     reflection_note: Optional[str] = None
-    order_index: int
-    created_at: datetime.datetime
-    updated_at: datetime.datetime
+    order_index: Optional[int] = 0
+    created_at: Optional[datetime.datetime] = None
+    updated_at: Optional[datetime.datetime] = None
 
     class Config:
         from_attributes = True

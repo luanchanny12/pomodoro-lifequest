@@ -2,9 +2,11 @@ from sqlalchemy import Column, Integer, String, Float, Date, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import date, datetime
 from app.database import Base
+from sqlalchemy.orm import declarative_base
+LegacyBase = declarative_base()
 
 
-class Goal(Base):
+class Goal(LegacyBase):
     __tablename__ = "goals"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
@@ -18,7 +20,7 @@ class Goal(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class RoadmapItem(Base):
+class RoadmapItem(LegacyBase):
     __tablename__ = "roadmap_items"
     id = Column(Integer, primary_key=True, index=True)
     goal_type = Column(String, nullable=False)
@@ -31,7 +33,7 @@ class RoadmapItem(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Course(Base):
+class Course(LegacyBase):
     __tablename__ = "courses"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
@@ -42,7 +44,7 @@ class Course(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Task(Base):
+class Task(LegacyBase):
     __tablename__ = "tasks"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
@@ -57,7 +59,7 @@ class Task(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Sprint(Base):
+class Sprint(LegacyBase):
     __tablename__ = "sprints"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
@@ -69,7 +71,7 @@ class Sprint(Base):
     days = relationship("SprintDay", back_populates="sprint", cascade="all, delete-orphan")
 
 
-class SprintDay(Base):
+class SprintDay(LegacyBase):
     __tablename__ = "sprint_days"
     id = Column(Integer, primary_key=True, index=True)
     sprint_id = Column(Integer, ForeignKey("sprints.id"), nullable=False)
@@ -82,7 +84,7 @@ class SprintDay(Base):
     sprint = relationship("Sprint", back_populates="days")
 
 
-class DailyLog(Base):
+class DailyLog(LegacyBase):
     __tablename__ = "daily_logs"
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False, unique=True)
@@ -95,7 +97,7 @@ class DailyLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class StudyHour(Base):
+class StudyHour(LegacyBase):
     __tablename__ = "study_hours"
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False)
@@ -138,7 +140,7 @@ class Level(Base):
     title = Column(String, nullable=False)
 
 
-class Vocabulary(Base):
+class Vocabulary(LegacyBase):
     __tablename__ = "vocabulary"
     id = Column(Integer, primary_key=True, index=True)
     word = Column(String, nullable=False)
@@ -149,7 +151,7 @@ class Vocabulary(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class IPA(Base):
+class IPA(LegacyBase):
     __tablename__ = "ipa"
     id = Column(Integer, primary_key=True, index=True)
     symbol = Column(String, nullable=False, unique=True)
@@ -158,7 +160,7 @@ class IPA(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class BacklogItem(Base):
+class BacklogItem(LegacyBase):
     __tablename__ = "backlog_items"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
@@ -169,7 +171,7 @@ class BacklogItem(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class BrainMemory(Base):
+class BrainMemory(LegacyBase):
     __tablename__ = "brain_memory"
     id = Column(Integer, primary_key=True, index=True)
     goal_type = Column(String, nullable=False)
@@ -184,7 +186,7 @@ class BrainMemory(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class V1LearningHistory(Base):
+class V1LearningHistory(LegacyBase):
     __tablename__ = "v1_learning_history"
     id = Column(Integer, primary_key=True, index=True)
     goal_type = Column(String, nullable=False)
@@ -197,7 +199,7 @@ class V1LearningHistory(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class CurrentPosition(Base):
+class CurrentPosition(LegacyBase):
     __tablename__ = "current_positions"
     id = Column(Integer, primary_key=True, index=True)
     goal_type = Column(String, nullable=False, unique=True)
@@ -213,7 +215,7 @@ class CurrentPosition(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class RoadmapLesson(Base):
+class RoadmapLesson(LegacyBase):
     __tablename__ = "roadmap_lessons"
     id = Column(Integer, primary_key=True, index=True)
     goal_type = Column(String, nullable=False)
@@ -230,7 +232,7 @@ class RoadmapLesson(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class AIConversation(Base):
+class AIConversation(LegacyBase):
     __tablename__ = "ai_conversations"
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String, nullable=False, index=True)
@@ -240,7 +242,7 @@ class AIConversation(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Prediction(Base):
+class Prediction(LegacyBase):
     __tablename__ = "predictions"
     id = Column(Integer, primary_key=True, index=True)
     goal_type = Column(String, nullable=False, unique=True)
@@ -251,7 +253,7 @@ class Prediction(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class WeeklyReport(Base):
+class WeeklyReport(LegacyBase):
     __tablename__ = "weekly_reports"
     id = Column(Integer, primary_key=True, index=True)
     week_start = Column(Date, nullable=False)
@@ -267,7 +269,7 @@ class WeeklyReport(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class UserStatistic(Base):
+class UserStatistic(LegacyBase):
     __tablename__ = "user_statistics"
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False, unique=True)
@@ -279,7 +281,7 @@ class UserStatistic(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class SmartNotification(Base):
+class SmartNotification(LegacyBase):
     __tablename__ = "smart_notifications"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
@@ -291,7 +293,7 @@ class SmartNotification(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class LifeScoreHistory(Base):
+class LifeScoreHistory(LegacyBase):
     __tablename__ = "life_score_history"
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False)
@@ -305,7 +307,7 @@ class LifeScoreHistory(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class PlanSetupSession(Base):
+class PlanSetupSession(LegacyBase):
     __tablename__ = "plan_setup_sessions"
     id = Column(Integer, primary_key=True, index=True)
     chat_session_id = Column(String, default="default", index=True)

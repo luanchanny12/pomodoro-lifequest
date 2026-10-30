@@ -25,19 +25,13 @@ async def lifespan(app: FastAPI):
     import app.models_auth
     Base.metadata.create_all(bind=engine)
     from app.models import Player, Level
-    from app.models_v2 import Base as BaseV2
-    BaseV2.metadata.create_all(bind=engine)
-    from app.models_v3 import Base as BaseV3
-    BaseV3.metadata.create_all(bind=engine)
-    from app.models_schedule import Base as BaseSchedule
-    BaseSchedule.metadata.create_all(bind=engine)
     from sqlalchemy import text
     from app.database import SessionLocal
     db = SessionLocal()
     try:
         for stmt in [
-            "ALTER TABLE vocabulary ADD COLUMN type VARCHAR DEFAULT 'word'",
-            "ALTER TABLE daily_logs ADD COLUMN activities TEXT",
+            "ALTER TABLE daily_matrix_tasks ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 0",
+            "UPDATE daily_matrix_tasks SET order_index = 0 WHERE order_index IS NULL",
             "ALTER TABLE study_goals ADD COLUMN celestial_name VARCHAR",
             "ALTER TABLE notification_settings ADD COLUMN app_public_url VARCHAR",
             "ALTER TABLE notification_settings ADD COLUMN last_morning_sent_date VARCHAR",
