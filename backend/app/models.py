@@ -321,8 +321,13 @@ class StudyGoal(Base):
     user_id = Column(Integer, nullable=True, index=True)
     title = Column(String, nullable=False)
     celestial_name = Column(String, nullable=True)  # Tên chiêm tinh: Polaris, Sirius, Vega...
+    goal_type = Column(String, default="hours")      # 'hours' (theo giờ) hoặc 'deadline' (theo ngày thi)
     target_hours = Column(Float, default=100.0)
     current_hours = Column(Float, default=0.0)
+    target_date = Column(Date, nullable=True)        # Ngày thi hoặc hạn chót hoàn thành
+    parent_id = Column(Integer, ForeignKey("study_goals.id"), nullable=True) # Mục tiêu cha nếu là mục tiêu con
+    planet_type = Column(String, default="earth")    # earth, mars, jupiter, venus, moon, saturn
+    planet_data = Column(Text, nullable=True)        # JSON lưu các công trình đã xây dựng trên hành tinh
     color = Column(String, default="#E24A4A")
     category = Column(String, default="Học tập")
     is_completed = Column(Boolean, default=False)

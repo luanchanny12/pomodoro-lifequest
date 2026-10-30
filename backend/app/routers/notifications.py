@@ -176,6 +176,20 @@ def update_notification_settings(
     db: Session = Depends(get_db)
 ):
     user_id = user.id if user else None
+
+    # Ràng buộc độc quyền: 1 Telegram Chat ID chỉ thuộc 1 tài khoản
+    if data.telegram_chat_id and data.telegram_chat_id.strip():
+        clean_chat_id = data.telegram_chat_id.strip()
+        existing = db.query(NotificationSetting).filter(
+            NotificationSetting.telegram_chat_id == clean_chat_id,
+            NotificationSetting.user_id != user_id
+        ).first()
+        if existing and existing.user_id is not None and user_id is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Mã Telegram Chat ID này đã được liên kết với một tài khoản khác! Mỗi tài khoản chỉ được dùng 1 Telegram duy nhất."
+            )
+
     setting = _get_or_create_settings(db, user_id=user_id)
     for field, val in data.model_dump(exclude_unset=True).items():
         setattr(setting, field, val)

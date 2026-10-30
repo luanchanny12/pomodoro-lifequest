@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Sparkles,
   Orbit,
+  Globe,
   Pause,
   Play,
   RotateCcw,
@@ -31,6 +32,7 @@ import {
 } from '@/services/focusService'
 import { soundManager } from '@/utils/soundEffects'
 import { ConstellationUnlockModal } from './ConstellationUnlockModal'
+import { PlanetBuilderModal } from './PlanetBuilderModal'
 
 interface StarParticle {
   x: number
@@ -52,6 +54,15 @@ export const TopicGalaxyView: React.FC = () => {
 
   // Selected planet or sun for modal details
   const [selectedPlanet, setSelectedPlanet] = useState<TopicPlanet | null>(null)
+  const [buildingGoal, setBuildingGoal] = useState<{
+    id: number
+    title: string
+    current_hours: number
+    target_hours: number
+    planet_type?: string
+    planet_data?: string | null
+    is_completed?: boolean
+  } | null>(null)
   const [isSunModalOpen, setIsSunModalOpen] = useState(false)
 
   // Active Constellation modal (celebration / view reading)
@@ -991,12 +1002,35 @@ export const TopicGalaxyView: React.FC = () => {
               )}
             </div>
 
-            <button
-              onClick={() => setSelectedPlanet(null)}
-              className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-black font-extrabold text-xs rounded-xl transition shadow-lg shadow-cyan-500/25"
-            >
-              Đóng chi tiết
-            </button>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setBuildingGoal({
+                    id: selectedPlanet.goal_id,
+                    title: selectedPlanet.real_title,
+                    current_hours: selectedPlanet.current_hours,
+                    target_hours: selectedPlanet.target_hours,
+                    planet_type: selectedPlanet.planet_type || 'earth',
+                    planet_data: selectedPlanet.planet_data || '[]',
+                    is_completed: selectedPlanet.is_completed,
+                  })
+                  setSelectedPlanet(null)
+                }}
+                className="w-full py-2.5 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 hover:opacity-95 text-black font-black text-xs rounded-xl transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
+              >
+                <Globe className="w-4 h-4" />
+                <span>🌍 Vào Xây Dựng Hành Tinh</span>
+                <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedPlanet(null)}
+                className="w-full py-2 bg-white/10 hover:bg-white/15 text-white/80 font-bold text-xs rounded-xl transition"
+              >
+                Đóng chi tiết
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1064,6 +1098,14 @@ export const TopicGalaxyView: React.FC = () => {
       <ConstellationUnlockModal
         constellation={viewingConstellation}
         onClose={() => setViewingConstellation(null)}
+      />
+
+      {/* ── MODAL 4: PLANET BUILDER MINI-GAME ── */}
+      <PlanetBuilderModal
+        isOpen={Boolean(buildingGoal)}
+        onClose={() => setBuildingGoal(null)}
+        goal={buildingGoal}
+        onSaveSuccess={loadData}
       />
     </div>
   )

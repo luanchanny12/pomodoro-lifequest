@@ -707,8 +707,13 @@ class LifeScoreResponse(BaseModel):
 class StudyGoalCreate(BaseModel):
     title: str
     celestial_name: Optional[str] = None
-    target_hours: float
+    goal_type: Optional[str] = "hours"  # 'hours' or 'deadline'
+    target_hours: float = 100.0
     current_hours: float = 0.0
+    target_date: Optional[datetime.date] = None
+    parent_id: Optional[int] = None
+    planet_type: Optional[str] = "earth"
+    planet_data: Optional[str] = None
     color: str = "#E24A4A"
     category: str = "Học tập"
     notes: Optional[str] = None
@@ -716,19 +721,36 @@ class StudyGoalCreate(BaseModel):
 class StudyGoalUpdate(BaseModel):
     title: Optional[str] = None
     celestial_name: Optional[str] = None
+    goal_type: Optional[str] = None
     target_hours: Optional[float] = None
     current_hours: Optional[float] = None
+    target_date: Optional[datetime.date] = None
+    parent_id: Optional[int] = None
+    planet_type: Optional[str] = None
+    planet_data: Optional[str] = None
     color: Optional[str] = None
     category: Optional[str] = None
     is_completed: Optional[bool] = None
     notes: Optional[str] = None
 
+class PlanetBuildUpdateRequest(BaseModel):
+    planet_data: str
+
 class StudyGoalResponse(BaseModel):
     id: int
     title: str
     celestial_name: Optional[str] = None
+    goal_type: str = "hours"
     target_hours: float
     current_hours: float
+    target_date: Optional[datetime.date] = None
+    parent_id: Optional[int] = None
+    parent_title: Optional[str] = None
+    planet_type: str = "earth"
+    planet_data: Optional[str] = None
+    sub_goals_count: int = 0
+    days_left: Optional[int] = None
+    hours_per_day_needed: Optional[float] = None
     color: str
     category: str
     is_completed: bool
@@ -855,6 +877,12 @@ class TopicPlanetResponse(BaseModel):
     notes: Optional[str] = None
     last_studied: Optional[str] = None
     is_recent: bool = False
+    goal_type: Optional[str] = "hours"
+    target_date: Optional[datetime.date] = None
+    parent_id: Optional[int] = None
+    planet_type: Optional[str] = "earth"
+    planet_data: Optional[str] = "[]"
+    sub_goals_count: int = 0
 
 class ConstellationAchievementResponse(BaseModel):
     id: int
@@ -890,13 +918,21 @@ class TopicGalaxyResponse(BaseModel):
     active_archetype: Optional[str] = None
 
 class TimeWarpOracleResponse(BaseModel):
+    goal_id: Optional[int] = None
+    goal_title: Optional[str] = None
+    goal_type: Optional[str] = "hours"
     target_hours: float
     current_hours: float
     remaining_hours: float
     average_daily_hours: float
     projected_finish_date: Optional[str] = None
     days_remaining: Optional[int] = None
+    target_date: Optional[str] = None
+    days_until_deadline: Optional[int] = None
+    hours_per_day_needed: Optional[float] = None
+    total_user_sessions: int = 0
     hours_warped_recent: float = 0.0
+    scenarios: Optional[dict] = None
 
 class TimeCapsuleCreate(BaseModel):
     goal_id: Optional[int] = None

@@ -20,6 +20,7 @@ from app.schemas import (
     StudyGoalCreate,
     StudyGoalUpdate,
     StudyGoalResponse,
+    PlanetBuildUpdateRequest,
     StudySessionLogCreate,
     StudySessionLogUpdate,
     StudySessionLogResponse,
@@ -63,16 +64,46 @@ DEFAULT_CELESTIALS = [
 ]
 
 
-def _format_goal_response(goal: StudyGoal) -> StudyGoalResponse:
-    target = goal.target_hours if goal.target_hours > 0 else 1.0
+def _format_goal_response(goal: StudyGoal, db: Session = None) -> StudyGoalResponse:
+    target = goal.target_hours if (goal.target_hours and goal.target_hours > 0) else 1.0
     progress = round(min(100.0, (goal.current_hours / target) * 100.0), 1)
     remaining = max(0.0, round(goal.target_hours - goal.current_hours, 2))
+
+    days_left = None
+    hours_needed = None
+    if goal.target_date:
+        today = datetime.date.today()
+        delta = (goal.target_date - today).days
+        days_left = max(0, delta)
+        if days_left > 0 and remaining > 0:
+            hours_needed = round(remaining / float(days_left), 2)
+        elif remaining > 0:
+            hours_needed = remaining
+
+    parent_title = None
+    sub_goals_count = 0
+    if db:
+        if goal.parent_id:
+            parent = db.query(StudyGoal).filter(StudyGoal.id == goal.parent_id).first()
+            if parent:
+                parent_title = parent.title
+        sub_goals_count = db.query(StudyGoal).filter(StudyGoal.parent_id == goal.id).count()
+
     return StudyGoalResponse(
         id=goal.id,
         title=goal.title,
         celestial_name=goal.celestial_name or "Polaris",
-        target_hours=goal.target_hours,
-        current_hours=goal.current_hours,
+        goal_type=goal.goal_type or "hours",
+        target_hours=goal.target_hours or 100.0,
+        current_hours=goal.current_hours or 0.0,
+        target_date=goal.target_date,
+        parent_id=goal.parent_id,
+        parent_title=parent_title,
+        planet_type=goal.planet_type or "earth",
+        planet_data=goal.planet_data,
+        sub_goals_count=sub_goals_count,
+        days_left=days_left,
+        hours_per_day_needed=hours_needed,
         color=goal.color or "#E24A4A",
         category=goal.category or "Học tập",
         is_completed=goal.is_completed,
@@ -119,7 +150,7 @@ def get_goals(
     if is_completed is not None:
         query = query.filter(StudyGoal.is_completed == is_completed)
     goals = query.order_by(StudyGoal.is_completed.asc(), StudyGoal.updated_at.desc()).all()
-    return [_format_goal_response(g) for g in goals]
+    return [_format_goal_response(g, db) for g in goals]
 
 
 @router.post("/goals", response_model=StudyGoalResponse, status_code=201)
@@ -139,8 +170,13 @@ def create_goal(
         user_id=user.id if user else None,
         title=data.title.strip(),
         celestial_name=celestial,
+        goal_type=data.goal_type or "hours",
         target_hours=max(0.1, round(data.target_hours, 2)),
         current_hours=max(0.0, round(data.current_hours, 2)),
+        target_date=data.target_date,
+        parent_id=data.parent_id,
+        planet_type=data.planet_type or "earth",
+        planet_data=data.planet_data,
         color=data.color or "#E24A4A",
         category=data.category or "Học tập",
         is_completed=is_done,
@@ -152,7 +188,7 @@ def create_goal(
     db.add(goal)
     db.commit()
     db.refresh(goal)
-    return _format_goal_response(goal)
+    return _format_goal_response(goal, db)
 
 
 @router.put("/goals/{goal_id}", response_model=StudyGoalResponse)
@@ -177,7 +213,27 @@ def update_goal(goal_id: int, data: StudyGoalUpdate, db: Session = Depends(get_d
     goal.updated_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(goal)
-    return _format_goal_response(goal)
+    return _format_goal_response(goal, db)
+
+
+@router.put("/goals/{goal_id}/planet-build", response_model=StudyGoalResponse)
+def update_planet_build(
+    goal_id: int,
+    data: PlanetBuildUpdateRequest,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    query = db.query(StudyGoal).filter(StudyGoal.id == goal_id)
+    if user:
+        query = query.filter((StudyGoal.user_id == user.id) | (StudyGoal.user_id.is_(None)))
+    goal = query.first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Mục tiêu không tồn tại")
+    goal.planet_data = data.planet_data
+    goal.updated_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(goal)
+    return _format_goal_response(goal, db)
 
 
 @router.delete("/goals/{goal_id}")
@@ -640,6 +696,12 @@ def get_topic_galaxy(db: Session = Depends(get_db)):
                 notes=g.notes,
                 last_studied=last_date_str,
                 is_recent=is_rec,
+                goal_type=getattr(g, 'goal_type', 'hours') or 'hours',
+                target_date=g.target_date,
+                parent_id=g.parent_id,
+                planet_type=getattr(g, 'planet_type', 'earth') or 'earth',
+                planet_data=getattr(g, 'planet_data', '[]') or '[]',
+                sub_goals_count=len(g.sub_goals) if hasattr(g, 'sub_goals') and g.sub_goals else 0,
             )
         )
 
@@ -692,46 +754,122 @@ def get_topic_galaxy(db: Session = Depends(get_db)):
 # -------------------------------------------------------------
 
 @router.get("/oracle", response_model=TimeWarpOracleResponse)
-def get_time_warp_oracle(db: Session = Depends(get_db)):
-    # Find active goal with highest target hours (e.g. 1000h)
-    main_goal = db.query(StudyGoal).order_by(StudyGoal.target_hours.desc()).first()
+def get_time_warp_oracle(
+    goal_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    user_id = user.id if user else None
+
+    # Lọc mục tiêu chuẩn xác của tài khoản hiện tại
+    goal_query = db.query(StudyGoal)
+    if user_id:
+        goal_query = goal_query.filter(StudyGoal.user_id == user_id)
+    else:
+        goal_query = goal_query.filter(StudyGoal.user_id.is_(None))
+
+    if goal_id:
+        main_goal = goal_query.filter(StudyGoal.id == goal_id).first()
+    else:
+        main_goal = goal_query.order_by(StudyGoal.target_hours.desc()).first()
+
     target_hours = main_goal.target_hours if main_goal else 1000.0
     current_hours = main_goal.current_hours if main_goal else 0.0
     remaining_hours = max(0.0, round(target_hours - current_hours, 2))
+    goal_title = main_goal.title if main_goal else "Tập trung 1000h"
+    goal_type = main_goal.goal_type if main_goal else "hours"
+    target_date_str = main_goal.target_date.strftime("%d/%m/%Y") if (main_goal and main_goal.target_date) else None
 
-    # Calculate velocity: last 7 days average
+    # Phân tích dữ liệu học tập THỰC TẾ 100% của User này
+    session_query = db.query(StudySessionLog)
+    if user_id:
+        session_query = session_query.filter(StudySessionLog.user_id == user_id)
+    else:
+        session_query = session_query.filter(StudySessionLog.user_id.is_(None))
+
+    total_user_sessions = session_query.count()
+
     today = datetime.date.today()
     seven_days_ago = today - datetime.timedelta(days=7)
-    recent_sessions = db.query(StudySessionLog).filter(StudySessionLog.session_date >= seven_days_ago).all()
-    recent_sum = sum(s.duration_hours for s in recent_sessions)
-    avg_daily = round(recent_sum / 7.0, 2)
+    thirty_days_ago = today - datetime.timedelta(days=30)
 
-    if avg_daily <= 0.1:
-        # Fallback velocity if user just started
-        all_sessions = db.query(StudySessionLog).all()
-        if all_sessions:
-            first_date = min(s.session_date for s in all_sessions)
-            days_active = max(1, (today - first_date).days + 1)
-            avg_daily = round(sum(s.duration_hours for s in all_sessions) / float(days_active), 2)
-        if avg_daily <= 0.1:
-            avg_daily = 1.0  # Default projection: 1 hour/day
+    recent_7d = session_query.filter(StudySessionLog.session_date >= seven_days_ago).all()
+    sum_7d = sum(s.duration_hours for s in recent_7d)
+    avg_7d = round(sum_7d / 7.0, 2)
+
+    recent_30d = session_query.filter(StudySessionLog.session_date >= thirty_days_ago).all()
+    sum_30d = sum(s.duration_hours for s in recent_30d)
+    avg_30d = round(sum_30d / 30.0, 2)
+
+    # Vận tốc thực tế chính xác (không bịa số)
+    avg_daily = avg_7d if avg_7d > 0.05 else (avg_30d if avg_30d > 0.05 else 0.5)
 
     days_needed = math.ceil(remaining_hours / avg_daily) if avg_daily > 0 else 365
     projected_date = today + datetime.timedelta(days=days_needed)
 
-    # Calculate time warp of the latest session
-    latest_session = db.query(StudySessionLog).order_by(StudySessionLog.created_at.desc()).first()
+    # 3 Kịch bản thực tế dựa trên phong độ
+    relaxed_pace = max(0.5, round(avg_30d if avg_30d > 0.2 else 1.0, 2))
+    days_relaxed = math.ceil(remaining_hours / relaxed_pace)
+    date_relaxed = today + datetime.timedelta(days=days_relaxed)
+
+    days_current = days_needed
+    date_current = projected_date
+
+    speedup_pace = max(1.2, round(avg_daily * 1.35, 2))
+    days_speedup = math.ceil(remaining_hours / speedup_pace)
+    date_speedup = today + datetime.timedelta(days=days_speedup)
+
+    scenarios = {
+        "relaxed": {
+            "label": "Thư thái (Tối thiểu)",
+            "hours_per_day": relaxed_pace,
+            "days_needed": days_relaxed,
+            "finish_date": date_relaxed.strftime("%d/%m/%Y"),
+        },
+        "current": {
+            "label": "Phong độ 7 ngày thực tế",
+            "hours_per_day": avg_daily,
+            "days_needed": days_current,
+            "finish_date": date_current.strftime("%d/%m/%Y"),
+        },
+        "speedup": {
+            "label": "Bứt phá chiến thần (+35%)",
+            "hours_per_day": speedup_pace,
+            "days_needed": days_speedup,
+            "finish_date": date_speedup.strftime("%d/%m/%Y"),
+            "saved_days": max(0, days_current - days_speedup),
+        }
+    }
+
+    days_until_deadline = None
+    hours_per_day_needed = None
+    if main_goal and main_goal.target_date:
+        days_until_deadline = max(0, (main_goal.target_date - today).days)
+        if days_until_deadline > 0:
+            hours_per_day_needed = round(remaining_hours / float(days_until_deadline), 2)
+        else:
+            hours_per_day_needed = remaining_hours
+
+    latest_session = session_query.order_by(StudySessionLog.created_at.desc()).first()
     recent_hours = latest_session.duration_hours if latest_session else 0.5
     hours_warped = round((recent_hours / max(0.5, avg_daily)) * 24.0, 1)
 
     return TimeWarpOracleResponse(
+        goal_id=main_goal.id if main_goal else None,
+        goal_title=goal_title,
+        goal_type=goal_type,
         target_hours=target_hours,
         current_hours=current_hours,
         remaining_hours=remaining_hours,
         average_daily_hours=avg_daily,
         projected_finish_date=projected_date.strftime("%d/%m/%Y"),
         days_remaining=days_needed,
+        target_date=target_date_str,
+        days_until_deadline=days_until_deadline,
+        hours_per_day_needed=hours_per_day_needed,
+        total_user_sessions=total_user_sessions,
         hours_warped_recent=hours_warped,
+        scenarios=scenarios,
     )
 
 

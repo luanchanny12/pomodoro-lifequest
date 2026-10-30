@@ -593,6 +593,14 @@ export default function PomodoroApp() {
 
   // Toggle PiP Floating Window
   const handleTogglePip = async () => {
+    // Tự động phát hiện điện thoại / mobile: PiP từ canvas stream không được hỗ trợ trên mobile và ném AbortError
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    if (isMobile) {
+      setIsZenClockOpen(true)
+      toast.info('📱 Chế độ PiP cửa sổ nổi chỉ hỗ trợ trên Máy tính. Đã tự động bật Đồng hồ để bàn Zen Clock toàn màn hình cho điện thoại của bạn!', { duration: 4500 })
+      return
+    }
+
     try {
       const mins = Math.floor(timeLeft / 60)
       const secs = timeLeft % 60
@@ -624,6 +632,11 @@ export default function PomodoroApp() {
         toast.info('Đã thu hồi cửa sổ nổi')
       }
     } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message?.toLowerCase().includes('aborted') || isMobile) {
+        setIsZenClockOpen(true)
+        toast.info('📱 Trình duyệt điện thoại đã tự động chuyển sang chế độ Đồng hồ Zen Desk Clock toàn màn hình!', { duration: 4500 })
+        return
+      }
       toast.error(err.message || 'Không thể mở cửa sổ nổi')
     }
   }

@@ -3,8 +3,18 @@ import api from './api'
 export interface StudyGoal {
   id: number
   title: string
+  celestial_name?: string | null
+  goal_type?: 'hours' | 'deadline'
   target_hours: number
   current_hours: number
+  target_date?: string | null
+  parent_id?: number | null
+  parent_title?: string | null
+  planet_type?: string
+  planet_data?: string | null
+  sub_goals_count?: number
+  days_left?: number | null
+  hours_per_day_needed?: number | null
   color: string
   category: string
   is_completed: boolean
@@ -90,6 +100,12 @@ export interface TopicPlanet {
   notes?: string | null
   last_studied?: string | null
   is_recent?: boolean
+  goal_type?: 'hours' | 'deadline'
+  target_date?: string | null
+  parent_id?: number | null
+  planet_type?: string
+  planet_data?: string | null
+  sub_goals_count?: number
 }
 
 export interface SunStats {
@@ -132,13 +148,25 @@ export interface TopicGalaxy {
 
 // Time Warp Oracle
 export interface TimeWarpOracle {
+  goal_id?: number | null
+  goal_title?: string | null
+  goal_type?: string
   target_hours: number
   current_hours: number
   remaining_hours: number
   average_daily_hours: number
   projected_finish_date?: string | null
   days_remaining?: number | null
+  target_date?: string | null
+  days_until_deadline?: number | null
+  hours_per_day_needed?: number | null
+  total_user_sessions: number
   hours_warped_recent: number
+  scenarios?: {
+    relaxed: { label: string; hours_per_day: number; days_needed: number; finish_date: string }
+    current: { label: string; hours_per_day: number; days_needed: number; finish_date: string }
+    speedup: { label: string; hours_per_day: number; days_needed: number; finish_date: string; saved_days: number }
+  }
 }
 
 // Time Capsule
@@ -322,8 +350,14 @@ export const focusService = {
   },
 
   // ── Time Warp Oracle ──
-  getOracle: async (): Promise<TimeWarpOracle> => {
-    const res = await api.get('/focus/oracle')
+  getOracle: async (goalId?: number): Promise<TimeWarpOracle> => {
+    const params = goalId ? { goal_id: goalId } : {}
+    const res = await api.get('/focus/oracle', { params })
+    return res.data
+  },
+
+  updatePlanetBuild: async (goalId: number, planetData: string): Promise<StudyGoal> => {
+    const res = await api.put(`/focus/goals/${goalId}/planet-build`, { planet_data: planetData })
     return res.data
   },
 
