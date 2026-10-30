@@ -68,63 +68,72 @@ def check_and_send_scheduled_reminders(db: Session, force: bool = False) -> dict
 
 
 def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False) -> dict:
-    setting = db.query(NotificationSetting).first()
-    if not setting or not setting.telegram_enabled or not setting.telegram_bot_token or not setting.telegram_chat_id:
-        return {"status": "skipped", "reason": "Telegram disabled or credentials missing"}
+    settings = db.query(NotificationSetting).filter(
+        NotificationSetting.telegram_enabled == True,
+        NotificationSetting.telegram_bot_token.isnot(None),
+        NotificationSetting.telegram_chat_id.isnot(None),
+    ).all()
+    if not settings:
+        return {"status": "skipped", "reason": "Không có tài khoản nào bật Telegram nhắc nhở"}
 
     tz_vn = datetime.timezone(datetime.timedelta(hours=7))
     now_vn = datetime.datetime.now(tz_vn)
     today_str = now_vn.strftime("%Y-%m-%d")
     current_time_str = now_vn.strftime("%H:%M")
-    app_url = (setting.app_public_url or os.getenv("APP_PUBLIC_URL") or "https://pomodoro-lifequest.vercel.app").rstrip("/")
-
-    morning_time = setting.morning_reminder_time or "08:00"
-    evening_time = setting.evening_reminder_time or "21:30"
 
     sent_any = False
     details = []
 
-    # Check Morning
-    morning_due = _is_due(now_vn, morning_time, setting.last_morning_sent_date, today_str)
-    if force or morning_due:
-        msg = (
-            "🌅 <b>[Pomodoro Goal Focus] Chào Buổi Sáng!</b>\n\n"
-            "✨ Ngày mới đã bắt đầu! Đã đến lúc xem lại:\n"
-            "🔥 <b>Ô 1:</b> Các việc quan trọng & khẩn cấp cần giải quyết ngay.\n"
-            "⭐ <b>Ô 2:</b> Mục tiêu lớn dài hạn hôm nay.\n\n"
-            f"👉 <a href='{app_url}'>Bấm vào đây để mở ứng dụng</a>"
-        )
-        try:
-            send_telegram_msg(setting.telegram_bot_token.strip(), setting.telegram_chat_id.strip(), msg)
-            # Chỉ đánh dấu đã gửi khi đúng cửa sổ lịch; bấm test (force) không làm mất tin trong ngày.
-            if morning_due:
-                setting.last_morning_sent_date = today_str
-                db.commit()
-            sent_any = True
-            details.append("Đã gửi thông báo buổi sáng")
-        except Exception as e:
-            db.rollback()
-            details.append(f"Lỗi gửi sáng: {str(e)}")
+    for setting in settings:
+        bot_token = (setting.telegram_bot_token or "").strip()
+        chat_id = (setting.telegram_chat_id or "").strip()
+        if not bot_token or not chat_id:
+            continue
 
-    # Check Evening
-    evening_due = _is_due(now_vn, evening_time, setting.last_evening_sent_date, today_str)
-    if force or evening_due:
-        msg = (
-            "🌙 <b>[Pomodoro Goal Focus] Chào Buổi Tối!</b>\n\n"
-            "🎯 Bạn đã hoàn thành các mục tiêu hôm nay chưa?\n"
-            "📋 Hãy dành 5 phút tổng kết thành quả và lên sẵn <b>Ma Trận 4 Ô</b> cho ngày mai nhé!\n\n"
-            f"👉 <a href='{app_url}'>Bấm vào đây để mở ứng dụng</a>"
-        )
-        try:
-            send_telegram_msg(setting.telegram_bot_token.strip(), setting.telegram_chat_id.strip(), msg)
-            if evening_due:
-                setting.last_evening_sent_date = today_str
-                db.commit()
-            sent_any = True
-            details.append("Đã gửi thông báo buổi tối")
-        except Exception as e:
-            db.rollback()
-            details.append(f"Lỗi gửi tối: {str(e)}")
+        app_url = (setting.app_public_url or os.getenv("APP_PUBLIC_URL") or "https://pomodoro-lifequest.vercel.app").rstrip("/")
+        morning_time = setting.morning_reminder_time or "08:00"
+        evening_time = setting.evening_reminder_time or "21:30"
+
+        # Check Morning
+        morning_due = _is_due(now_vn, morning_time, setting.last_morning_sent_date, today_str)
+        if force or morning_due:
+            msg = (
+                "🌅 <b>[Pomodoro Goal Focus] Chào Buổi Sáng!</b>\n\n"
+                "✨ Ngày mới đã bắt đầu! Đã đến lúc xem lại:\n"
+                "🔥 <b>Ô 1:</b> Các việc quan trọng & khẩn cấp cần giải quyết ngay.\n"
+                "⭐ <b>Ô 2:</b> Mục tiêu lớn dài hạn hôm nay.\n\n"
+                f"👉 <a href='{app_url}'>Bấm vào đây để mở ứng dụng</a>"
+            )
+            try:
+                send_telegram_msg(bot_token, chat_id, msg)
+                if morning_due:
+                    setting.last_morning_sent_date = today_str
+                    db.commit()
+                sent_any = True
+                details.append(f"Đã gửi thông báo sáng tới Chat ID {chat_id[:4]}***")
+            except Exception as e:
+                db.rollback()
+                details.append(f"Lỗi gửi sáng (Chat ID {chat_id[:4]}***): {str(e)}")
+
+        # Check Evening
+        evening_due = _is_due(now_vn, evening_time, setting.last_evening_sent_date, today_str)
+        if force or evening_due:
+            msg = (
+                "🌙 <b>[Pomodoro Goal Focus] Chào Buổi Tối!</b>\n\n"
+                "🎯 Bạn đã hoàn thành các mục tiêu hôm nay chưa?\n"
+                "📋 Hãy dành 5 phút tổng kết thành quả và lên sẵn <b>Ma Trận 4 Ô</b> cho ngày mai nhé!\n\n"
+                f"👉 <a href='{app_url}'>Bấm vào đây để mở ứng dụng</a>"
+            )
+            try:
+                send_telegram_msg(bot_token, chat_id, msg)
+                if evening_due:
+                    setting.last_evening_sent_date = today_str
+                    db.commit()
+                sent_any = True
+                details.append(f"Đã gửi thông báo tối tới Chat ID {chat_id[:4]}***")
+            except Exception as e:
+                db.rollback()
+                details.append(f"Lỗi gửi tối (Chat ID {chat_id[:4]}***): {str(e)}")
 
     return {
         "status": "success",
@@ -138,8 +147,9 @@ def _get_or_create_settings(db: Session, user_id: Optional[int] = None) -> Notif
     setting = None
     if user_id:
         setting = db.query(NotificationSetting).filter(NotificationSetting.user_id == user_id).first()
-    if not setting:
-        setting = db.query(NotificationSetting).first()
+    else:
+        setting = db.query(NotificationSetting).filter(NotificationSetting.user_id.is_(None)).first()
+
     if not setting:
         setting = NotificationSetting(
             user_id=user_id,
@@ -155,9 +165,6 @@ def _get_or_create_settings(db: Session, user_id: Optional[int] = None) -> Notif
         db.add(setting)
         db.commit()
         db.refresh(setting)
-    elif user_id and setting.user_id is None:
-        setting.user_id = user_id
-        db.commit()
     return setting
 
 

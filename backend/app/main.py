@@ -51,6 +51,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE study_goals ADD COLUMN parent_id INTEGER",
             "ALTER TABLE study_goals ADD COLUMN planet_type VARCHAR DEFAULT 'earth'",
             "ALTER TABLE study_goals ADD COLUMN planet_data TEXT",
+            "ALTER TABLE reward_items ADD COLUMN user_id INTEGER",
+            "ALTER TABLE reward_redemptions ADD COLUMN user_id INTEGER",
+            "ALTER TABLE time_capsules ADD COLUMN user_id INTEGER",
         ]:
             try:
                 db.execute(text(stmt))

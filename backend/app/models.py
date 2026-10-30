@@ -359,6 +359,7 @@ class StudySessionLog(Base):
 class RewardItem(Base):
     __tablename__ = "reward_items"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
     title = Column(String, nullable=False)
     pearl_cost = Column(Float, default=1.0)
     icon = Column(String, default="🎁")
@@ -371,6 +372,7 @@ class RewardItem(Base):
 class RewardRedemption(Base):
     __tablename__ = "reward_redemptions"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
     reward_id = Column(Integer, ForeignKey("reward_items.id"), nullable=True)
     reward_title = Column(String, nullable=False)
     reward_icon = Column(String, default="🎁")
@@ -382,6 +384,7 @@ class RewardRedemption(Base):
 class TimeCapsule(Base):
     __tablename__ = "time_capsules"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
     goal_id = Column(Integer, ForeignKey("study_goals.id"), nullable=True)
     milestone_hours = Column(Float, nullable=False)
     title = Column(String, default="Thư gửi tương lai")

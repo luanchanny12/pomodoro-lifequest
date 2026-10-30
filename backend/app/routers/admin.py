@@ -8,7 +8,7 @@ from sqlalchemy import func
 
 from app.database import get_db
 from app.models_auth import User, CheerLog, VisitorLog, UserFeedback
-from app.models import Player, StudyGoal, StudySessionLog, DailyMatrixTask, NotificationSetting
+from app.models import Player, StudyGoal, StudySessionLog, DailyMatrixTask, NotificationSetting, TimeCapsule, RewardRedemption
 from app.routers.auth import get_current_admin, hash_password
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Portal & User Management"])
@@ -525,6 +525,9 @@ def admin_delete_user(
         raise HTTPException(status_code=400, detail="Không thể tự xóa tài khoản của chính bạn!")
 
     # Dọn dẹp dữ liệu liên quan
+    db.query(StudyGoal).filter(StudyGoal.user_id == user_id).update({"parent_id": None}, synchronize_session=False)
+    db.query(TimeCapsule).filter(TimeCapsule.user_id == user_id).delete()
+    db.query(RewardRedemption).filter(RewardRedemption.user_id == user_id).delete()
     db.query(StudySessionLog).filter(StudySessionLog.user_id == user_id).delete()
     db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id == user_id).delete()
     db.query(StudyGoal).filter(StudyGoal.user_id == user_id).delete()
@@ -577,8 +580,11 @@ def admin_delete_goal(
     if not goal:
         raise HTTPException(status_code=404, detail="Không tìm thấy mục tiêu này!")
 
-    db.query(StudySessionLog).filter(StudySessionLog.goal_id == goal_id).delete()
-    db.query(DailyMatrixTask).filter(DailyMatrixTask.goal_id == goal_id).delete()
+    # Safe Unlinking: Bảo toàn 100% giờ học lịch sử và công việc ma trận của người dùng
+    db.query(StudySessionLog).filter(StudySessionLog.goal_id == goal_id).update({"goal_id": None}, synchronize_session=False)
+    db.query(DailyMatrixTask).filter(DailyMatrixTask.goal_id == goal_id).update({"goal_id": None}, synchronize_session=False)
+    db.query(StudyGoal).filter(StudyGoal.parent_id == goal_id).update({"parent_id": None}, synchronize_session=False)
+    db.query(TimeCapsule).filter(TimeCapsule.goal_id == goal_id).update({"goal_id": None}, synchronize_session=False)
     db.delete(goal)
     db.commit()
 

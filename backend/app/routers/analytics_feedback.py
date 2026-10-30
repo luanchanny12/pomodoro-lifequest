@@ -126,6 +126,24 @@ def track_visit(
     if dev not in ["mobile", "tablet", "desktop"]:
         dev = ua_info["device_type"]
 
+    clean_visitor_id = data.visitor_id.strip()[:64]
+    # Chống spam / cạn kiệt dung lượng Neon DB:
+    # Nếu cùng visitor_id truy cập lại trong vòng 60 giây, trả về cached=True mà không ghi thêm dòng vào DB
+    recent_visit = (
+        db.query(VisitorLog)
+        .filter(
+            VisitorLog.visitor_id == clean_visitor_id,
+            VisitorLog.visit_date == date.today(),
+        )
+        .order_by(VisitorLog.created_at.desc())
+        .first()
+    )
+    if recent_visit and recent_visit.created_at:
+        diff_sec = (datetime.datetime.utcnow() - recent_visit.created_at).total_seconds()
+        if diff_sec < 60.0:
+            total_visits = db.query(VisitorLog).count()
+            return {"status": "ok", "cached": True, "total_visits": total_visits}
+
     visit = VisitorLog(
         visitor_id=data.visitor_id.strip()[:64],
         user_id=user_id,

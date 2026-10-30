@@ -190,6 +190,12 @@ def create_goal(
     existing_count = db.query(StudyGoal).count()
     celestial = data.celestial_name or DEFAULT_CELESTIALS[existing_count % len(DEFAULT_CELESTIALS)]
 
+    if data.parent_id:
+        parent_goal = db.query(StudyGoal).filter(StudyGoal.id == data.parent_id).first()
+        if not parent_goal:
+            raise HTTPException(status_code=404, detail="Mục tiêu cha không tồn tại")
+        _verify_resource_ownership(parent_goal, user)
+
     goal = StudyGoal(
         user_id=user.id if user else None,
         title=data.title.strip(),
@@ -354,6 +360,9 @@ def create_session(
     # Accumulate into goal if linked
     if data.goal_id:
         goal = db.query(StudyGoal).filter(StudyGoal.id == data.goal_id).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Mục tiêu không tồn tại")
+        _verify_resource_ownership(goal, user)
         if goal:
             goal.current_hours = round(goal.current_hours + duration_hours, 2)
             if goal.current_hours >= goal.target_hours:
@@ -525,10 +534,10 @@ def get_focus_stats(
 def _calculate_pearls(db: Session, user_id: Optional[int] = None) -> PearlsBalanceResponse:
     if user_id:
         all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == user_id).all()
-        redemptions = db.query(RewardRedemption).all()
+        redemptions = db.query(RewardRedemption).filter(RewardRedemption.user_id == user_id).all()
     else:
         all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).all()
-        redemptions = db.query(RewardRedemption).all()
+        redemptions = db.query(RewardRedemption).filter(RewardRedemption.user_id.is_(None)).all()
     total_hours = sum(s.duration_hours for s in all_sessions)
     total_earned = round(total_hours, 2)
 
@@ -546,6 +555,7 @@ def _seed_default_rewards(db: Session):
     if not db.query(RewardItem).first():
         defaults = [
             RewardItem(
+                user_id=None,
                 title="Vé xem 1 bộ phim yêu thích",
                 pearl_cost=2.0,
                 icon="🎬",
@@ -554,6 +564,7 @@ def _seed_default_rewards(db: Session):
                 is_custom=False,
             ),
             RewardItem(
+                user_id=None,
                 title="Vé 1 giờ chơi game xả láng",
                 pearl_cost=1.0,
                 icon="🎮",
@@ -562,6 +573,7 @@ def _seed_default_rewards(db: Session):
                 is_custom=False,
             ),
             RewardItem(
+                user_id=None,
                 title="Vé cà phê / trà sữa đặc biệt",
                 pearl_cost=3.0,
                 icon="🧋",
@@ -570,6 +582,7 @@ def _seed_default_rewards(db: Session):
                 is_custom=False,
             ),
             RewardItem(
+                user_id=None,
                 title="Vé ngủ nướng thêm 1 tiếng",
                 pearl_cost=3.0,
                 icon="🛌",
@@ -578,6 +591,7 @@ def _seed_default_rewards(db: Session):
                 is_custom=False,
             ),
             RewardItem(
+                user_id=None,
                 title="Vé bữa ăn ngon / đi ăn lẩu",
                 pearl_cost=6.0,
                 icon="🍣",
@@ -596,7 +610,12 @@ def get_rewards(
     user: Optional[User] = Depends(get_current_user_optional),
 ):
     _seed_default_rewards(db)
-    items = db.query(RewardItem).order_by(RewardItem.is_custom.asc(), RewardItem.pearl_cost.asc()).all()
+    query = db.query(RewardItem)
+    if user:
+        query = query.filter((RewardItem.user_id == user.id) | (RewardItem.user_id.is_(None)))
+    else:
+        query = query.filter(RewardItem.user_id.is_(None))
+    items = query.order_by(RewardItem.is_custom.asc(), RewardItem.pearl_cost.asc()).all()
     balance = _calculate_pearls(db, user_id=user.id if user else None)
     return {
         "items": [RewardItemResponse.model_validate(it) for it in items],
@@ -605,10 +624,15 @@ def get_rewards(
 
 
 @router.post("/rewards", response_model=RewardItemResponse, status_code=201)
-def create_reward(data: RewardItemCreate, db: Session = Depends(get_db)):
+def create_reward(
+    data: RewardItemCreate,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     if data.pearl_cost <= 0:
         raise HTTPException(status_code=400, detail="Chi phí ngọc phải lớn hơn 0")
     reward = RewardItem(
+        user_id=user.id if user else None,
         title=data.title.strip(),
         pearl_cost=round(data.pearl_cost, 2),
         icon=data.icon or "🎁",
@@ -624,12 +648,17 @@ def create_reward(data: RewardItemCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/rewards/redeem", response_model=RewardRedemptionResponse)
-def redeem_reward(data: RewardRedeemRequest, db: Session = Depends(get_db)):
+def redeem_reward(
+    data: RewardRedeemRequest,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     reward = db.query(RewardItem).filter(RewardItem.id == data.reward_id).first()
     if not reward:
         raise HTTPException(status_code=404, detail="Phần thưởng không tồn tại")
+    _verify_resource_ownership(reward, user)
 
-    balance = _calculate_pearls(db)
+    balance = _calculate_pearls(db, user_id=user.id if user else None)
     if balance.available_pearls < reward.pearl_cost:
         raise HTTPException(
             status_code=400,
@@ -637,6 +666,7 @@ def redeem_reward(data: RewardRedeemRequest, db: Session = Depends(get_db)):
         )
 
     redemption = RewardRedemption(
+        user_id=user.id if user else None,
         reward_id=reward.id,
         reward_title=reward.title,
         reward_icon=reward.icon,
@@ -651,8 +681,16 @@ def redeem_reward(data: RewardRedeemRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/rewards/history", response_model=List[RewardRedemptionResponse])
-def get_redemption_history(db: Session = Depends(get_db)):
-    redemptions = db.query(RewardRedemption).order_by(RewardRedemption.redeemed_at.desc()).limit(50).all()
+def get_redemption_history(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    query = db.query(RewardRedemption)
+    if user:
+        query = query.filter(RewardRedemption.user_id == user.id)
+    else:
+        query = query.filter(RewardRedemption.user_id.is_(None))
+    redemptions = query.order_by(RewardRedemption.redeemed_at.desc()).limit(50).all()
     return [RewardRedemptionResponse.model_validate(r) for r in redemptions]
 
 
@@ -941,12 +979,19 @@ def get_time_warp_oracle(
 # -------------------------------------------------------------
 
 @router.get("/time-capsules", response_model=List[TimeCapsuleResponse])
-def get_time_capsules(db: Session = Depends(get_db)):
-    # Calculate total study hours across all sessions
-    all_sessions = db.query(StudySessionLog).all()
-    total_hours = sum(s.duration_hours for s in all_sessions)
+def get_time_capsules(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    if user:
+        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == user.id).all()
+        query = db.query(TimeCapsule).filter(TimeCapsule.user_id == user.id)
+    else:
+        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).all()
+        query = db.query(TimeCapsule).filter(TimeCapsule.user_id.is_(None))
 
-    capsules = db.query(TimeCapsule).order_by(TimeCapsule.milestone_hours.asc()).all()
+    total_hours = sum(s.duration_hours for s in all_sessions)
+    capsules = query.order_by(TimeCapsule.milestone_hours.asc()).all()
     now = datetime.datetime.utcnow()
 
     # Check auto-unlock
@@ -960,17 +1005,31 @@ def get_time_capsules(db: Session = Depends(get_db)):
 
 
 @router.post("/time-capsules", response_model=TimeCapsuleResponse, status_code=201)
-def create_time_capsule(data: TimeCapsuleCreate, db: Session = Depends(get_db)):
+def create_time_capsule(
+    data: TimeCapsuleCreate,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     if data.milestone_hours <= 0:
         raise HTTPException(status_code=400, detail="Mốc giờ mở khóa phải lớn hơn 0")
 
-    # Check if total study hours already reached milestone
-    all_sessions = db.query(StudySessionLog).all()
+    if data.goal_id:
+        goal = db.query(StudyGoal).filter(StudyGoal.id == data.goal_id).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Mục tiêu không tồn tại")
+        _verify_resource_ownership(goal, user)
+
+    if user:
+        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == user.id).all()
+    else:
+        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).all()
+
     total_hours = sum(s.duration_hours for s in all_sessions)
     now = datetime.datetime.utcnow()
     is_unlocked = total_hours >= data.milestone_hours
 
     capsule = TimeCapsule(
+        user_id=user.id if user else None,
         goal_id=data.goal_id,
         milestone_hours=round(data.milestone_hours, 1),
         title=data.title.strip() if data.title else "Thư gửi tương lai",
@@ -1074,14 +1133,32 @@ def _seed_constellations_if_empty(db: Session):
 
 
 @router.get("/constellations", response_model=List[ConstellationAchievementResponse])
-def get_constellation_achievements(db: Session = Depends(get_db)):
+def get_constellation_achievements(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     _seed_constellations_if_empty(db)
-    completed_goals_count = db.query(StudyGoal).filter(StudyGoal.is_completed == True).count()
+    if user:
+        completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id == user.id, StudyGoal.is_completed == True).all()
+    else:
+        completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None), StudyGoal.is_completed == True).all()
+
+    completed_goals_count = len(completed_goals)
+    completed_titles = [g.title for g in completed_goals]
+    titles_str = ", ".join(f'"{t}"' for t in completed_titles) if completed_titles else None
 
     constellations = db.query(ConstellationAchievement).order_by(ConstellationAchievement.required_completed_goals.asc()).all()
     results = []
     for c in constellations:
+        is_unlocked = completed_goals_count >= c.required_completed_goals
         prog = min(100.0, round((completed_goals_count / c.required_completed_goals) * 100.0, 1))
+
+        ai_interp = c.ai_interpretation
+        narration = c.narration_script
+        if is_unlocked and titles_str:
+            ai_interp = f"{ai_interp} Các vì tinh tú được tôi luyện qua việc chinh phục thành công: {titles_str}."
+            narration = f"{narration} Thành tích này được ghi dấu bằng việc bạn đã hoàn thành xuất sắc các mục tiêu: {titles_str}!"
+
         item = ConstellationAchievementResponse(
             id=c.id,
             code=c.code,
@@ -1090,11 +1167,11 @@ def get_constellation_achievements(db: Session = Depends(get_db)):
             icon=c.icon,
             required_completed_goals=c.required_completed_goals,
             shape_pattern=c.shape_pattern,
-            ai_interpretation=c.ai_interpretation,
-            narration_script=c.narration_script,
-            associated_goal_titles=c.associated_goal_titles,
-            is_unlocked=c.is_unlocked,
-            unlocked_at=c.unlocked_at,
+            ai_interpretation=ai_interp,
+            narration_script=narration,
+            associated_goal_titles=titles_str if is_unlocked else None,
+            is_unlocked=is_unlocked,
+            unlocked_at=None,
             progress_percent=prog,
         )
         results.append(item)
@@ -1102,68 +1179,55 @@ def get_constellation_achievements(db: Session = Depends(get_db)):
 
 
 @router.post("/constellations/check", response_model=ConstellationCheckResponse)
-def check_constellation_unlock(db: Session = Depends(get_db)):
+def check_constellation_unlock(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     _seed_constellations_if_empty(db)
 
-    completed_goals = db.query(StudyGoal).filter(StudyGoal.is_completed == True).all()
-    completed_count = len(completed_goals)
+    if user:
+        completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id == user.id, StudyGoal.is_completed == True).all()
+    else:
+        completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None), StudyGoal.is_completed == True).all()
 
-    locked_constellations = (
-        db.query(ConstellationAchievement)
-        .filter(
-            ConstellationAchievement.is_unlocked == False,
-            ConstellationAchievement.required_completed_goals <= completed_count,
-        )
-        .order_by(ConstellationAchievement.required_completed_goals.asc())
-        .all()
-    )
+    completed_count = len(completed_goals)
+    completed_titles = [g.title for g in completed_goals]
+    titles_str = ", ".join(f'"{t}"' for t in completed_titles) if completed_titles else None
+
+    constellations = db.query(ConstellationAchievement).order_by(ConstellationAchievement.required_completed_goals.asc()).all()
 
     newly_unlocked_response = None
-    if locked_constellations:
-        now = datetime.datetime.utcnow()
-        completed_titles = [g.title for g in completed_goals]
-        titles_str = ", ".join(f'"{t}"' for t in completed_titles)
+    unlocked_count = 0
 
-        for c in locked_constellations:
-            c.is_unlocked = True
-            c.unlocked_at = now
-            c.associated_goal_titles = titles_str
+    for c in constellations:
+        if completed_count >= c.required_completed_goals:
+            unlocked_count += 1
+            ai_interp = c.ai_interpretation
+            narration = c.narration_script
+            if titles_str:
+                ai_interp = f"{ai_interp} Các vì tinh tú được tôi luyện qua việc chinh phục thành công: {titles_str}."
+                narration = f"{narration} Thành tích này được ghi dấu bằng việc bạn đã hoàn thành xuất sắc các mục tiêu: {titles_str}!"
 
-            # Personalize AI interpretation with real completed goal names!
-            c.ai_interpretation = (
-                f"{c.ai_interpretation} Các vì tinh tú được tôi luyện qua việc chinh phục thành công: {titles_str}."
+            newly_unlocked_response = ConstellationAchievementResponse(
+                id=c.id,
+                code=c.code,
+                title=c.title,
+                archetype=c.archetype,
+                icon=c.icon,
+                required_completed_goals=c.required_completed_goals,
+                shape_pattern=c.shape_pattern,
+                ai_interpretation=ai_interp,
+                narration_script=narration,
+                associated_goal_titles=titles_str,
+                is_unlocked=True,
+                unlocked_at=datetime.datetime.utcnow(),
+                progress_percent=100.0,
             )
-            c.narration_script = (
-                f"{c.narration_script} Thành tích này được ghi dấu bằng việc bạn đã hoàn thành xuất sắc các mục tiêu: {titles_str}!"
-            )
-
-        db.commit()
-
-        latest_unlocked = locked_constellations[-1]
-        db.refresh(latest_unlocked)
-        newly_unlocked_response = ConstellationAchievementResponse(
-            id=latest_unlocked.id,
-            code=latest_unlocked.code,
-            title=latest_unlocked.title,
-            archetype=latest_unlocked.archetype,
-            icon=latest_unlocked.icon,
-            required_completed_goals=latest_unlocked.required_completed_goals,
-            shape_pattern=latest_unlocked.shape_pattern,
-            ai_interpretation=latest_unlocked.ai_interpretation,
-            narration_script=latest_unlocked.narration_script,
-            associated_goal_titles=latest_unlocked.associated_goal_titles,
-            is_unlocked=True,
-            unlocked_at=latest_unlocked.unlocked_at,
-            progress_percent=100.0,
-        )
-
-    total_unlocked = db.query(ConstellationAchievement).filter(ConstellationAchievement.is_unlocked == True).count()
-    total_constellations = db.query(ConstellationAchievement).count()
 
     return ConstellationCheckResponse(
         newly_unlocked=newly_unlocked_response,
-        total_unlocked=total_unlocked,
-        total_constellations=total_constellations,
+        total_unlocked=unlocked_count,
+        total_constellations=len(constellations),
     )
 
 
@@ -1180,14 +1244,21 @@ def get_matrix_tasks(
     target_date = task_date or datetime.date.today()
     query = db.query(DailyMatrixTask).filter(DailyMatrixTask.date == target_date)
     if user:
-        query = query.filter((DailyMatrixTask.user_id == user.id) | (DailyMatrixTask.user_id.is_(None)))
+        query = query.filter(DailyMatrixTask.user_id == user.id)
+    else:
+        query = query.filter(DailyMatrixTask.user_id.is_(None))
     tasks = (
         query
         .order_by(DailyMatrixTask.quadrant.asc(), DailyMatrixTask.order_index.asc(), DailyMatrixTask.id.asc())
         .all()
     )
 
-    goals_map = {g.id: g for g in db.query(StudyGoal).all()}
+    goal_query = db.query(StudyGoal)
+    if user:
+        goal_query = goal_query.filter(StudyGoal.user_id == user.id)
+    else:
+        goal_query = goal_query.filter(StudyGoal.user_id.is_(None))
+    goals_map = {g.id: g for g in goal_query.all()}
     result = []
     for t in tasks:
         goal = goals_map.get(t.goal_id) if t.goal_id else None
@@ -1221,6 +1292,12 @@ def create_matrix_task(
     task_date = data.date or datetime.date.today()
     quadrant = max(1, min(4, data.quadrant))
     clean_title = data.title.strip()
+
+    if data.goal_id:
+        target_goal = db.query(StudyGoal).filter(StudyGoal.id == data.goal_id).first()
+        if not target_goal:
+            raise HTTPException(status_code=404, detail="Mục tiêu không tồn tại")
+        _verify_resource_ownership(target_goal, user)
 
     # Chống double click / spam request trùng lặp trong vòng 3 giây
     recent_duplicate = (
@@ -1309,7 +1386,14 @@ def update_matrix_task(
     if data.quadrant is not None:
         task.quadrant = max(1, min(4, data.quadrant))
     if data.goal_id is not None:
-        task.goal_id = data.goal_id if data.goal_id > 0 else None
+        if data.goal_id > 0:
+            target_goal = db.query(StudyGoal).filter(StudyGoal.id == data.goal_id).first()
+            if not target_goal:
+                raise HTTPException(status_code=404, detail="Mục tiêu không tồn tại")
+            _verify_resource_ownership(target_goal, user)
+            task.goal_id = data.goal_id
+        else:
+            task.goal_id = None
     if data.is_completed is not None:
         task.is_completed = data.is_completed
         task.completed_at = datetime.datetime.utcnow() if data.is_completed else None
