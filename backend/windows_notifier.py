@@ -19,17 +19,20 @@ API_BASE_URL = "http://localhost:8000/api"
 def send_windows_toast(title: str, message: str, url: str = APP_URL):
     """
     Sends a native Windows Toast Notification using Windows.UI.Notifications WinRT API via PowerShell.
+    Sử dụng Base64 encoding để triệt tiêu 100% nguy cơ Command Injection / Remote Code Execution.
     """
-    # Clean text of quotes and special characters
-    safe_title = title.replace('"', "'").replace("\n", " ")
-    safe_message = message.replace('"', "'").replace("\n", " ")
+    import base64
+    b64_title = base64.b64encode(str(title).encode("utf-8")).decode("ascii")
+    b64_msg = base64.b64encode(str(message).encode("utf-8")).decode("ascii")
 
     ps_script = f"""
+    $title = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{b64_title}'))
+    $msg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{b64_msg}'))
     [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
     $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
     $textNodes = $template.GetElementsByTagName('text')
-    $textNodes.Item(0).AppendChild($template.CreateTextNode("{safe_title}")) | Out-Null
-    $textNodes.Item(1).AppendChild($template.CreateTextNode("{safe_message}")) | Out-Null
+    $textNodes.Item(0).AppendChild($template.CreateTextNode($title)) | Out-Null
+    $textNodes.Item(1).AppendChild($template.CreateTextNode($msg)) | Out-Null
     $toast = [Windows.UI.Notifications.ToastNotification]::new($template)
     [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Pomodoro Focus Hub').Show($toast)
     """

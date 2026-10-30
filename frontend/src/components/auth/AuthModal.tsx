@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   X,
   User,
@@ -49,6 +49,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   // Field validation errors
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (isOpen) {
+      setPassword('')
+      setConfirmPassword('')
+      setFieldErrors({})
+      setShowPassword(false)
+      setShowConfirmPassword(false)
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 

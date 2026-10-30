@@ -372,6 +372,7 @@ export default function PomodoroApp() {
     }
 
     const handleAuthExpired = () => {
+      if (isExplicitLogoutRef.current) return
       setCurrentUser(null)
       toast.error('Phiên đăng nhập đã hết hạn hoặc không còn tồn tại. Vui lòng đăng nhập lại!')
     }
@@ -408,11 +409,16 @@ export default function PomodoroApp() {
     }
   }
 
+  const isExplicitLogoutRef = useRef(false)
   const handleLogout = () => {
+    isExplicitLogoutRef.current = true
     authService.logout()
     setCurrentUser(null)
     toast.info('Đã đăng xuất tài khoản')
     loadData()
+    setTimeout(() => {
+      isExplicitLogoutRef.current = false
+    }, 1500)
   }
 
   // Save settings
@@ -571,6 +577,8 @@ export default function PomodoroApp() {
     }
   }, [goals])
 
+  const onTimerCompleteRef = useRef<((recordSession?: boolean) => void) | null>(null)
+
   // Timer tick
   useEffect(() => {
     if (isRunning) {
@@ -583,7 +591,9 @@ export default function PomodoroApp() {
           if (timerRef.current) clearInterval(timerRef.current)
           setIsRunning(false)
           endTimeRef.current = null
-          onTimerComplete(true)
+          if (onTimerCompleteRef.current) {
+            onTimerCompleteRef.current(true)
+          }
         }
       }, 500)
     } else {
@@ -593,7 +603,7 @@ export default function PomodoroApp() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [isRunning, mode, settings, selectedGoalId, sessionCount, sessionNote])
+  }, [isRunning])
 
   // Update browser document title
   useEffect(() => {
@@ -744,7 +754,9 @@ export default function PomodoroApp() {
       // Next mode: short break or long break
       const isLongBreak = sessionCount % settings.longBreakInterval === 0
       const nextMode = isLongBreak ? 'longBreak' : 'shortBreak'
-      setSessionCount((prev) => prev + 1)
+      if (recordSession) {
+        setSessionCount((prev) => prev + 1)
+      }
       switchMode(nextMode, settings.autoStartBreaks)
     } else {
       // Finished a break -> back to pomodoro
@@ -753,6 +765,7 @@ export default function PomodoroApp() {
       switchMode('pomodoro', settings.autoStartPomodoro)
     }
   }
+  onTimerCompleteRef.current = onTimerComplete
 
   // ── Ambient sounds handler with automatic background synchronization ──
   const toggleAmbientSound = async (type: 'rain' | 'waves' | 'ticking' | 'fire' | 'binaural' | 'lofi') => {

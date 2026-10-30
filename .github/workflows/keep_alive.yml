@@ -18,14 +18,16 @@ jobs:
     steps:
       - name: Ping Render Backend Trigger Endpoint
         env:
-          # Đặt secret RENDER_BACKEND_URL = https://pomodoro-backend-api.onrender.com
-          BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL || 'https://pomodoro-backend-api.onrender.com' }}
+          # Đặt secret RENDER_BACKEND_URL = https://pomodoro-lifequest.onrender.com
+          BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL || 'https://pomodoro-lifequest.onrender.com' }}
+          PINGER_TOKEN: ${{ secrets.PINGER_SECRET_TOKEN || '' }}
         run: |
           URL="${BACKEND_URL%/}"
           echo "Pinging: $URL/api/notifications/telegram-trigger-check"
           # Render Free cần ~50s để thức dậy sau khi ngủ, nên timeout phải lớn.
           HTTP_CODE=$(curl -sS -o /tmp/ping_body.txt -w '%{http_code}' \
             --max-time 120 --retry 3 --retry-delay 10 --retry-all-errors \
+            -H "X-Pinger-Token: $PINGER_TOKEN" \
             -X POST "$URL/api/notifications/telegram-trigger-check?force=false" || true)
           echo "HTTP status: $HTTP_CODE"
           cat /tmp/ping_body.txt || true

@@ -1,6 +1,7 @@
 import datetime
 import math
 import re
+import threading
 from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -234,6 +235,20 @@ def update_goal(
     _verify_resource_ownership(goal, user)
 
     update_dict = data.model_dump(exclude_unset=True)
+
+    if "target_hours" in update_dict:
+        th = update_dict["target_hours"]
+        if th is None or th <= 0:
+            raise HTTPException(status_code=400, detail="Mục tiêu số giờ (target_hours) phải là số dương lớn hơn 0!")
+
+    if "parent_id" in update_dict and update_dict["parent_id"] is not None:
+        if update_dict["parent_id"] == goal.id:
+            raise HTTPException(status_code=400, detail="Mục tiêu không thể tự làm cha của chính mình!")
+        parent_goal = db.query(StudyGoal).filter(StudyGoal.id == update_dict["parent_id"]).first()
+        if not parent_goal:
+            raise HTTPException(status_code=404, detail="Mục tiêu cha không tồn tại")
+        _verify_resource_ownership(parent_goal, user)
+
     for k, v in update_dict.items():
         setattr(goal, k, v)
 
@@ -411,6 +426,11 @@ def update_session(
         session_log.source = update_dict["source"]
 
     new_goal_id = update_dict.get("goal_id", old_goal_id)
+    if new_goal_id and new_goal_id != old_goal_id:
+        new_g = db.query(StudyGoal).filter(StudyGoal.id == new_goal_id).first()
+        if not new_g:
+            raise HTTPException(status_code=404, detail="Mục tiêu liên kết mới không tồn tại!")
+        _verify_resource_ownership(new_g, user)
 
     # If goal changed or hours changed, reconcile goal hours
     now = datetime.datetime.utcnow()
@@ -551,57 +571,63 @@ def _calculate_pearls(db: Session, user_id: Optional[int] = None) -> PearlsBalan
     )
 
 
+_SEED_LOCK = threading.Lock()
+
 def _seed_default_rewards(db: Session):
-    if not db.query(RewardItem).first():
-        defaults = [
-            RewardItem(
-                user_id=None,
-                title="Vé xem 1 bộ phim yêu thích",
-                pearl_cost=2.0,
-                icon="🎬",
-                category="giải trí",
-                description="Tận hưởng 1 bộ phim rạp hoặc tập phim Netflix dài trọn vẹn không chút mặc cảm!",
-                is_custom=False,
-            ),
-            RewardItem(
-                user_id=None,
-                title="Vé 1 giờ chơi game xả láng",
-                pearl_cost=1.0,
-                icon="🎮",
-                category="giải trí",
-                description="1 tiếng giải trí thỏa thích với trò chơi bạn yêu thích sau giờ học chăm chỉ.",
-                is_custom=False,
-            ),
-            RewardItem(
-                user_id=None,
-                title="Vé cà phê / trà sữa đặc biệt",
-                pearl_cost=3.0,
-                icon="🧋",
-                category="ẩm thực",
-                description="Tự thưởng 1 ly đồ uống thơm ngon tại quán cà phê chill cuối tuần.",
-                is_custom=False,
-            ),
-            RewardItem(
-                user_id=None,
-                title="Vé ngủ nướng thêm 1 tiếng",
-                pearl_cost=3.0,
-                icon="🛌",
-                category="nghỉ ngơi",
-                description="Thức dậy muộn hơn 1 tiếng vào buổi sáng cuối tuần không cần báo thức.",
-                is_custom=False,
-            ),
-            RewardItem(
-                user_id=None,
-                title="Vé bữa ăn ngon / đi ăn lẩu",
-                pearl_cost=6.0,
-                icon="🍣",
-                category="ẩm thực",
-                description="Tự thưởng 1 bữa ăn thịnh soạn cùng bạn bè để ăn mừng tiến độ học tập.",
-                is_custom=False,
-            ),
-        ]
-        db.add_all(defaults)
-        db.commit()
+    with _SEED_LOCK:
+        if not db.query(RewardItem).first():
+            defaults = [
+                RewardItem(
+                    user_id=None,
+                    title="Vé xem 1 bộ phim yêu thích",
+                    pearl_cost=2.0,
+                    icon="🎬",
+                    category="giải trí",
+                    description="Tận hưởng 1 bộ phim rạp hoặc tập phim Netflix dài trọn vẹn không chút mặc cảm!",
+                    is_custom=False,
+                ),
+                RewardItem(
+                    user_id=None,
+                    title="Vé 1 giờ chơi game xả láng",
+                    pearl_cost=1.0,
+                    icon="🎮",
+                    category="giải trí",
+                    description="1 tiếng giải trí thỏa thích với trò chơi bạn yêu thích sau giờ học chăm chỉ.",
+                    is_custom=False,
+                ),
+                RewardItem(
+                    user_id=None,
+                    title="Vé cà phê / trà sữa đặc biệt",
+                    pearl_cost=3.0,
+                    icon="🧋",
+                    category="ẩm thực",
+                    description="Tự thưởng 1 ly đồ uống thơm ngon tại quán cà phê chill cuối tuần.",
+                    is_custom=False,
+                ),
+                RewardItem(
+                    user_id=None,
+                    title="Vé ngủ nướng thêm 1 tiếng",
+                    pearl_cost=3.0,
+                    icon="🛌",
+                    category="nghỉ ngơi",
+                    description="Thức dậy muộn hơn 1 tiếng vào buổi sáng cuối tuần không cần báo thức.",
+                    is_custom=False,
+                ),
+                RewardItem(
+                    user_id=None,
+                    title="Vé bữa ăn ngon / đi ăn lẩu",
+                    pearl_cost=6.0,
+                    icon="🍣",
+                    category="ẩm thực",
+                    description="Tự thưởng 1 bữa ăn thịnh soạn cùng bạn bè để ăn mừng tiến độ học tập.",
+                    is_custom=False,
+                ),
+            ]
+            try:
+                db.add_all(defaults)
+                db.commit()
+            except Exception:
+                db.rollback()
 
 
 @router.get("/rewards")
@@ -647,37 +673,40 @@ def create_reward(
     return RewardItemResponse.model_validate(reward)
 
 
+_REDEEM_LOCK = threading.Lock()
+
 @router.post("/rewards/redeem", response_model=RewardRedemptionResponse)
 def redeem_reward(
     data: RewardRedeemRequest,
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    reward = db.query(RewardItem).filter(RewardItem.id == data.reward_id).first()
-    if not reward:
-        raise HTTPException(status_code=404, detail="Phần thưởng không tồn tại")
-    _verify_resource_ownership(reward, user)
+    with _REDEEM_LOCK:
+        reward = db.query(RewardItem).filter(RewardItem.id == data.reward_id).first()
+        if not reward:
+            raise HTTPException(status_code=404, detail="Phần thưởng không tồn tại")
+        _verify_resource_ownership(reward, user)
 
-    balance = _calculate_pearls(db, user_id=user.id if user else None)
-    if balance.available_pearls < reward.pearl_cost:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Bạn cần {reward.pearl_cost} ngọc nhưng hiện chỉ có {balance.available_pearls} ngọc. Hãy học thêm nhé!",
+        balance = _calculate_pearls(db, user_id=user.id if user else None)
+        if balance.available_pearls < reward.pearl_cost:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bạn cần {reward.pearl_cost} ngọc nhưng hiện chỉ có {balance.available_pearls} ngọc. Hãy học thêm nhé!",
+            )
+
+        redemption = RewardRedemption(
+            user_id=user.id if user else None,
+            reward_id=reward.id,
+            reward_title=reward.title,
+            reward_icon=reward.icon,
+            pearls_spent=reward.pearl_cost,
+            note=data.note.strip() if data.note else None,
+            redeemed_at=datetime.datetime.utcnow(),
         )
-
-    redemption = RewardRedemption(
-        user_id=user.id if user else None,
-        reward_id=reward.id,
-        reward_title=reward.title,
-        reward_icon=reward.icon,
-        pearls_spent=reward.pearl_cost,
-        note=data.note.strip() if data.note else None,
-        redeemed_at=datetime.datetime.utcnow(),
-    )
-    db.add(redemption)
-    db.commit()
-    db.refresh(redemption)
-    return RewardRedemptionResponse.model_validate(redemption)
+        db.add(redemption)
+        db.commit()
+        db.refresh(redemption)
+        return RewardRedemptionResponse.model_validate(redemption)
 
 
 @router.get("/rewards/history", response_model=List[RewardRedemptionResponse])
@@ -727,9 +756,19 @@ def _extract_topic(note: Optional[str]) -> str:
 
 
 @router.get("/galaxy", response_model=TopicGalaxyResponse)
-def get_topic_galaxy(db: Session = Depends(get_db)):
-    goals = db.query(StudyGoal).order_by(StudyGoal.is_completed.desc(), StudyGoal.created_at.asc()).all()
-    sessions = db.query(StudySessionLog).all()
+def get_topic_galaxy(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    if user:
+        goals = db.query(StudyGoal).filter(StudyGoal.user_id == user.id).order_by(StudyGoal.is_completed.desc(), StudyGoal.created_at.asc()).all()
+        sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == user.id).all()
+        latest_session = db.query(StudySessionLog).filter(StudySessionLog.user_id == user.id).order_by(StudySessionLog.created_at.desc()).first()
+    else:
+        goals = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None)).order_by(StudyGoal.is_completed.desc(), StudyGoal.created_at.asc()).all()
+        sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).all()
+        latest_session = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).order_by(StudySessionLog.created_at.desc()).first()
+
     total_study_hours = round(sum(s.duration_hours for s in sessions), 2)
     total_sessions_count = len(sessions)
 
@@ -750,8 +789,6 @@ def get_topic_galaxy(db: Session = Depends(get_db)):
             active_archetype=None,
         )
 
-    # Find the most recently studied goal
-    latest_session = db.query(StudySessionLog).order_by(StudySessionLog.created_at.desc()).first()
     recent_goal_id = latest_session.goal_id if latest_session else None
 
     planets: List[TopicPlanetResponse] = []
@@ -1112,24 +1149,28 @@ DEFAULT_CONSTELLATIONS = [
 ]
 
 def _seed_constellations_if_empty(db: Session):
-    existing = db.query(ConstellationAchievement).count()
-    if existing == 0:
-        now = datetime.datetime.utcnow()
-        for c_data in DEFAULT_CONSTELLATIONS:
-            item = ConstellationAchievement(
-                code=c_data["code"],
-                title=c_data["title"],
-                archetype=c_data["archetype"],
-                icon=c_data["icon"],
-                required_completed_goals=c_data["required_completed_goals"],
-                shape_pattern=c_data["shape_pattern"],
-                ai_interpretation=c_data["ai_interpretation"],
-                narration_script=c_data["narration_script"],
-                is_unlocked=False,
-                created_at=now,
-            )
-            db.add(item)
-        db.commit()
+    with _SEED_LOCK:
+        existing = db.query(ConstellationAchievement).count()
+        if existing == 0:
+            now = datetime.datetime.utcnow()
+            for c_data in DEFAULT_CONSTELLATIONS:
+                item = ConstellationAchievement(
+                    code=c_data["code"],
+                    title=c_data["title"],
+                    archetype=c_data["archetype"],
+                    icon=c_data["icon"],
+                    required_completed_goals=c_data["required_completed_goals"],
+                    shape_pattern=c_data["shape_pattern"],
+                    ai_interpretation=c_data["ai_interpretation"],
+                    narration_script=c_data["narration_script"],
+                    is_unlocked=False,
+                    created_at=now,
+                )
+                db.add(item)
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
 
 
 @router.get("/constellations", response_model=List[ConstellationAchievementResponse])
@@ -1519,20 +1560,32 @@ def rollover_matrix_tasks(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
+    target_user_id = user.id if user else None
     query = db.query(DailyMatrixTask).filter(
         DailyMatrixTask.date == from_date,
         DailyMatrixTask.is_completed == False,
     )
     if user:
-        query = query.filter((DailyMatrixTask.user_id == user.id) | (DailyMatrixTask.user_id.is_(None)))
+        query = query.filter(DailyMatrixTask.user_id == user.id)
     else:
         query = query.filter(DailyMatrixTask.user_id.is_(None))
     uncompleted = query.all()
 
+    # Chống nhân bản trùng lặp khi người dùng bấm chuyển giao việc nhiều lần
+    existing_dest_query = db.query(DailyMatrixTask).filter(DailyMatrixTask.date == to_date)
+    if user:
+        existing_dest_query = existing_dest_query.filter(DailyMatrixTask.user_id == user.id)
+    else:
+        existing_dest_query = existing_dest_query.filter(DailyMatrixTask.user_id.is_(None))
+    existing_titles = {t.title.strip().lower() for t in existing_dest_query.all()}
+
     rolled_count = 0
     for t in uncompleted:
+        clean_t = t.title.strip().lower()
+        if clean_t in existing_titles:
+            continue
         new_task = DailyMatrixTask(
-            user_id=user.id if user else None,
+            user_id=target_user_id,
             title=t.title,
             description=t.description,
             date=to_date,
@@ -1542,6 +1595,7 @@ def rollover_matrix_tasks(
             order_index=0,
         )
         db.add(new_task)
+        existing_titles.add(clean_t)
         rolled_count += 1
 
     db.commit()
@@ -1553,8 +1607,8 @@ def rollover_matrix_tasks(
 
 @router.get("/matrix/monthly-summary", response_model=MonthlyMatrixSummaryResponse)
 def get_monthly_matrix_summary(
-    year: int = Query(..., description="Năm"),
-    month: int = Query(..., description="Tháng 1-12"),
+    year: int = Query(..., description="Năm", ge=2020, le=2100),
+    month: int = Query(..., description="Tháng 1-12", ge=1, le=12),
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -1569,9 +1623,11 @@ def get_monthly_matrix_summary(
         DailyMatrixTask.date < end_date,
     )
     if user:
-        query = query.filter((DailyMatrixTask.user_id == user.id) | (DailyMatrixTask.user_id.is_(None)))
+        query = query.filter(DailyMatrixTask.user_id == user.id)
+        user_goals = db.query(StudyGoal).filter(StudyGoal.user_id == user.id).all()
     else:
         query = query.filter(DailyMatrixTask.user_id.is_(None))
+        user_goals = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None)).all()
     tasks = query.all()
 
     total_tasks = len(tasks)
@@ -1598,12 +1654,11 @@ def get_monthly_matrix_summary(
     q3_percent = round((q3_count / total_tasks * 100.0), 1) if total_tasks > 0 else 0.0
     q4_percent = round((q4_count / total_tasks * 100.0), 1) if total_tasks > 0 else 0.0
 
-    all_goals = db.query(StudyGoal).all()
-    total_big_goals_active = len([g for g in all_goals if not g.is_completed])
-    total_big_goals_completed = len([g for g in all_goals if g.is_completed])
+    total_big_goals_active = len([g for g in user_goals if not g.is_completed])
+    total_big_goals_completed = len([g for g in user_goals if g.is_completed])
 
     reflection_logs = []
-    goals_map = {g.id: g.title for g in all_goals}
+    goals_map = {g.id: g.title for g in user_goals}
     for t in sorted(tasks, key=lambda x: x.date, reverse=True):
         if t.reflection_note and t.reflection_note.strip():
             reflection_logs.append(
@@ -1648,7 +1703,8 @@ def get_ai_buddy_prompt(
     user: Optional[User] = Depends(get_current_user_optional),
 ):
     today = datetime.date.today()
-    current_hour = datetime.datetime.now().hour
+    VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
+    current_hour = datetime.datetime.now(VN_TZ).hour
 
     if not user:
         return AIBuddyPromptResponse(

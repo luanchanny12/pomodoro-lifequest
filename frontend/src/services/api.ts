@@ -46,7 +46,11 @@ api.interceptors.response.use(
       (error.response?.data as { detail?: string })?.detail ||
       error.message ||
       'Đã xảy ra lỗi'
-    return Promise.reject(new Error(message))
+    const customError = new Error(message) as any
+    customError.response = error.response
+    customError.status = error.response?.status
+    customError.code = error.code
+    return Promise.reject(customError)
   }
 )
 

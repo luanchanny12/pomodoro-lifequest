@@ -3,7 +3,7 @@
 # (Nếu tạo Web Service thủ công, chỉ cần đặt Root Directory = backend)
 services:
   - type: web
-    name: pomodoro-backend-api
+    name: pomodoro-lifequest
     runtime: python
     plan: free
     region: singapore
@@ -13,17 +13,19 @@ services:
     healthCheckPath: /
     autoDeploy: true
     envVars:
-      # Ghim Python 3.10 vì pandas/pydantic trong requirements chưa có wheel cho 3.13
       - key: PYTHON_VERSION
         value: 3.10.12
-      # Dán connection string PostgreSQL (Supabase / Neon / Render Postgres) vào khi tạo service.
-      # Bỏ trống = dùng SQLite (dữ liệu sẽ MẤT mỗi lần Render restart/deploy).
       - key: DATABASE_URL
         sync: false
-      # Tùy chọn: nếu dùng các tính năng AI
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_DEFAULT_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        value: "https://pomodoro-lifequest.vercel.app,http://localhost:5173"
+      - key: PINGER_SECRET_TOKEN
+        generateValue: true
       - key: GEMINI_API_KEY
         sync: false
-      # Tùy chọn: link website Vercel để chèn vào tin nhắn Telegram
-      # (có thể lưu trong app ở tab Telegram thay vì biến môi trường)
       - key: APP_PUBLIC_URL
-        sync: false
+        value: "https://pomodoro-lifequest.vercel.app"

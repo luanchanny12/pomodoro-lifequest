@@ -44,10 +44,23 @@ class PipTimerManager {
 
       this.video.addEventListener('leavepictureinpicture', () => {
         this.isPip = false
+        this.stopStream()
         if (this.onExitCallback) {
           this.onExitCallback()
         }
       })
+    }
+  }
+
+  private stopStream() {
+    if (this.video && this.video.srcObject) {
+      try {
+        const stream = this.video.srcObject as MediaStream
+        if (stream.getTracks) {
+          stream.getTracks().forEach((t) => t.stop())
+        }
+      } catch {}
+      this.video.srcObject = null
     }
   }
 
@@ -226,6 +239,7 @@ class PipTimerManager {
         await document.exitPictureInPicture()
       } catch {}
     }
+    this.stopStream()
     this.isPip = false
   }
 }

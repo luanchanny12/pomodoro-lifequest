@@ -5,13 +5,13 @@ import threading
 from typing import Optional
 import urllib.request
 import urllib.parse
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import NotificationSetting
 from app.models_auth import User
-from app.routers.auth import get_current_user_optional
+from app.routers.auth import get_current_user_optional, get_current_user
 from app.schemas import (
     NotificationSettingsResponse,
     NotificationSettingsUpdate,
@@ -144,28 +144,40 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
 
 
 def _get_or_create_settings(db: Session, user_id: Optional[int] = None) -> NotificationSetting:
-    setting = None
     if user_id:
         setting = db.query(NotificationSetting).filter(NotificationSetting.user_id == user_id).first()
-    else:
-        setting = db.query(NotificationSetting).filter(NotificationSetting.user_id.is_(None)).first()
+        if not setting:
+            setting = NotificationSetting(
+                user_id=user_id,
+                web_notifications_enabled=True,
+                pomodoro_end_enabled=True,
+                break_end_enabled=True,
+                inactivity_reminder_minutes=60,
+                morning_reminder_time="08:00",
+                evening_reminder_time="21:30",
+                telegram_enabled=False,
+                updated_at=datetime.datetime.utcnow(),
+            )
+            db.add(setting)
+            db.commit()
+            db.refresh(setting)
+        return setting
 
-    if not setting:
-        setting = NotificationSetting(
-            user_id=user_id,
-            web_notifications_enabled=True,
-            pomodoro_end_enabled=True,
-            break_end_enabled=True,
-            inactivity_reminder_minutes=60,
-            morning_reminder_time="08:00",
-            evening_reminder_time="21:30",
-            telegram_enabled=False,
-            updated_at=datetime.datetime.utcnow(),
-        )
-        db.add(setting)
-        db.commit()
-        db.refresh(setting)
-    return setting
+    # Khách vãng lai: Trả về cài đặt mặc định hoàn toàn an toàn, tuyệt đối không truy cập/tiết lộ bot token của ai
+    return NotificationSetting(
+        id=0,
+        user_id=None,
+        web_notifications_enabled=True,
+        pomodoro_end_enabled=True,
+        break_end_enabled=True,
+        inactivity_reminder_minutes=60,
+        morning_reminder_time="08:00",
+        evening_reminder_time="21:30",
+        telegram_enabled=False,
+        telegram_bot_token=None,
+        telegram_chat_id=None,
+        updated_at=datetime.datetime.utcnow(),
+    )
 
 
 @router.get("/settings", response_model=NotificationSettingsResponse)
@@ -182,7 +194,22 @@ def update_notification_settings(
     user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db)
 ):
+    # Khách vãng lai muốn cấu hình Telegram bắt buộc phải đăng nhập
+    if (data.telegram_enabled or data.telegram_bot_token or data.telegram_chat_id) and not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Vui lòng đăng nhập tài khoản để liên kết Bot Telegram cá nhân an toàn!"
+        )
+
     user_id = user.id if user else None
+
+    # Khách vãng lai: trả về cài đặt client-side
+    if not user_id:
+        dummy = _get_or_create_settings(db, None)
+        for field, val in data.model_dump(exclude_unset=True).items():
+            if hasattr(dummy, field):
+                setattr(dummy, field, val)
+        return dummy
 
     # Ràng buộc độc quyền: 1 Telegram Chat ID chỉ thuộc 1 tài khoản
     if data.telegram_chat_id and data.telegram_chat_id.strip():
@@ -209,7 +236,7 @@ def update_notification_settings(
 
 
 @router.post("/test-windows")
-def test_windows_notification():
+def test_windows_notification(user: User = Depends(get_current_user)):
     """
     Triggers a native Windows Toast notification directly on the host machine.
     """
@@ -233,10 +260,14 @@ def test_windows_notification():
 
 
 @router.post("/send-windows")
-def send_windows_notification(data: WindowsToastRequest):
+def send_windows_notification(
+    data: WindowsToastRequest,
+    user: User = Depends(get_current_user)
+):
     """
     Triggers a native Windows Toast notification directly on the host machine for real app events
     (Pomodoro finished, break ended, study reminders).
+    Yêu cầu xác thực danh tính để chống RCE / Command Injection.
     """
     import sys
     if sys.platform != "win32":
@@ -247,19 +278,40 @@ def send_windows_notification(data: WindowsToastRequest):
 
 
 @router.api_route("/telegram-trigger-check", methods=["GET", "POST"])
-def trigger_telegram_check(force: bool = False, db: Session = Depends(get_db)):
+def trigger_telegram_check(
+    force: bool = False,
+    x_pinger_token: Optional[str] = Header(None, alias="X-Pinger-Token"),
+    token: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     """
     Called periodically by background scheduler or external pingers (Cron-job.org / UptimeRobot)
     to check scheduled notifications and keep cloud backend awake 24/7.
-    Hỗ trợ cả GET và POST để dùng được với mọi dịch vụ uptime monitor.
+    Chống lạm dụng bot: Chỉ chấp nhận force=True khi có token pinger bí mật hoặc quyền Admin.
     """
-    return check_and_send_scheduled_reminders(db, force=force)
+    expected_token = os.getenv("PINGER_SECRET_TOKEN")
+    provided_token = x_pinger_token or token
+    is_authorized_pinger = bool(expected_token and provided_token == expected_token)
+    is_admin = bool(user and getattr(user, "is_admin", False))
+
+    if force and not (is_authorized_pinger or is_admin):
+        raise HTTPException(
+            status_code=403,
+            detail="Bạn không có quyền cưỡng ép (force=true) gửi thông báo Telegram toàn hệ thống!"
+        )
+
+    return check_and_send_scheduled_reminders(db, force=bool(force and (is_authorized_pinger or is_admin)))
 
 
 @router.post("/test-telegram")
-def test_telegram_notification(data: TelegramTestRequest):
+def test_telegram_notification(
+    data: TelegramTestRequest,
+    user: User = Depends(get_current_user)
+):
     """
     Sends a test message to the user's Telegram via Telegram Bot API.
+    Bắt buộc đăng nhập để chống kẻ xấu biến server thành proxy spam tin nhắn ẩn danh.
     """
     token = data.bot_token.strip()
     chat_id = data.chat_id.strip()

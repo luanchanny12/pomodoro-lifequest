@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { X, Lock, ShieldCheck, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { authService } from '@/services/authService'
@@ -18,6 +18,16 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   const [showCurrent, setShowCurrent] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setShowCurrent(false)
+      setShowNew(false)
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 

@@ -139,16 +139,22 @@ class NotificationManager {
       }
     }
 
-    // 2. Morning Reminder (08:00)
-    if (currentTimeStr === this.config.morningTime && this.morningTriggeredDate !== todayStr) {
+    // 2. Morning Reminder (kích hoạt linh hoạt trong vòng 60 phút, tránh bị lỡ khi tab nền bị trình duyệt throttle)
+    const [mH, mM] = (this.config.morningTime || '08:00').split(':').map(Number)
+    const morningMinutes = mH * 60 + mM
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+
+    if (currentMinutes >= morningMinutes && currentMinutes < morningMinutes + 60 && this.morningTriggeredDate !== todayStr) {
       this.morningTriggeredDate = todayStr
       this.sendNotification('🌅 Chào buổi sáng năng lượng!', {
         body: 'Mở Ma Trận 4 Ô xem các việc khẩn cấp (Ô 1) và mục tiêu lớn (Ô 2) hôm nay nào!',
       })
     }
 
-    // 3. Evening Reminder (21:30)
-    if (currentTimeStr === this.config.eveningTime && this.eveningTriggeredDate !== todayStr) {
+    // 3. Evening Reminder (kích hoạt linh hoạt trong vòng 60 phút)
+    const [eH, eM] = (this.config.eveningTime || '21:30').split(':').map(Number)
+    const eveningMinutes = eH * 60 + eM
+    if (currentMinutes >= eveningMinutes && currentMinutes < eveningMinutes + 60 && this.eveningTriggeredDate !== todayStr) {
       this.eveningTriggeredDate = todayStr
       this.sendNotification('🌙 Kế hoạch tối hôm trước!', {
         body: 'Dành 3 phút lên trước Ma Trận 4 Ô cho ngày mai để sáng dậy có lộ trình rõ ràng nha!',

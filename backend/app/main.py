@@ -29,66 +29,93 @@ async def lifespan(app: FastAPI):
     import app.models_auth
     Base.metadata.create_all(bind=engine)
     from app.models import Player, Level
-    from sqlalchemy import text
+    from sqlalchemy import text, inspect
     from app.database import SessionLocal
     db = SessionLocal()
     try:
-        for stmt in [
-            "ALTER TABLE daily_matrix_tasks ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 0",
-            "UPDATE daily_matrix_tasks SET order_index = 0 WHERE order_index IS NULL",
-            "ALTER TABLE study_goals ADD COLUMN celestial_name VARCHAR",
-            "ALTER TABLE notification_settings ADD COLUMN app_public_url VARCHAR",
-            "ALTER TABLE notification_settings ADD COLUMN last_morning_sent_date VARCHAR",
-            "ALTER TABLE notification_settings ADD COLUMN last_evening_sent_date VARCHAR",
-            "ALTER TABLE players ADD COLUMN user_id INTEGER",
-            "ALTER TABLE study_goals ADD COLUMN user_id INTEGER",
-            "ALTER TABLE study_session_logs ADD COLUMN user_id INTEGER",
-            "ALTER TABLE daily_matrix_tasks ADD COLUMN user_id INTEGER",
-            "ALTER TABLE notification_settings ADD COLUMN user_id INTEGER",
-            "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE cheer_logs ADD COLUMN is_read BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE study_goals ADD COLUMN goal_type VARCHAR DEFAULT 'hours'",
-            "ALTER TABLE study_goals ADD COLUMN target_date DATE",
-            "ALTER TABLE study_goals ADD COLUMN parent_id INTEGER",
-            "ALTER TABLE study_goals ADD COLUMN planet_type VARCHAR DEFAULT 'earth'",
-            "ALTER TABLE study_goals ADD COLUMN planet_data TEXT",
-            "ALTER TABLE reward_items ADD COLUMN user_id INTEGER",
-            "ALTER TABLE reward_redemptions ADD COLUMN user_id INTEGER",
-            "ALTER TABLE time_capsules ADD COLUMN user_id INTEGER",
+        inspector = inspect(engine)
+        is_sqlite = engine.dialect.name == "sqlite"
+
+        columns_to_add = [
+            ("daily_matrix_tasks", "order_index", "INTEGER DEFAULT 0"),
+            ("daily_matrix_tasks", "user_id", "INTEGER"),
+            ("study_goals", "celestial_name", "VARCHAR"),
+            ("study_goals", "user_id", "INTEGER"),
+            ("study_goals", "goal_type", "VARCHAR DEFAULT 'hours'"),
+            ("study_goals", "target_date", "DATE"),
+            ("study_goals", "parent_id", "INTEGER"),
+            ("study_goals", "planet_type", "VARCHAR DEFAULT 'earth'"),
+            ("study_goals", "planet_data", "TEXT"),
+            ("notification_settings", "app_public_url", "VARCHAR"),
+            ("notification_settings", "last_morning_sent_date", "VARCHAR"),
+            ("notification_settings", "last_evening_sent_date", "VARCHAR"),
+            ("notification_settings", "user_id", "INTEGER"),
+            ("players", "user_id", "INTEGER"),
+            ("study_session_logs", "user_id", "INTEGER"),
+            ("users", "is_admin", "BOOLEAN DEFAULT FALSE"),
+            ("cheer_logs", "is_read", "BOOLEAN DEFAULT FALSE"),
+            ("reward_items", "user_id", "INTEGER"),
+            ("reward_redemptions", "user_id", "INTEGER"),
+            ("time_capsules", "user_id", "INTEGER"),
+        ]
+
+        for tbl, col, col_def in columns_to_add:
+            try:
+                if is_sqlite:
+                    cols = {c["name"] for c in inspector.get_columns(tbl)}
+                    if col not in cols:
+                        db.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_def}"))
+                        db.commit()
+                else:
+                    db.execute(text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS {col} {col_def}"))
+                    db.commit()
+            except Exception:
+                db.rollback()
+
+        for idx_stmt in [
             "CREATE INDEX IF NOT EXISTS ix_study_session_logs_session_date ON study_session_logs (session_date)",
             "CREATE INDEX IF NOT EXISTS ix_study_session_logs_user_id ON study_session_logs (user_id)",
             "CREATE INDEX IF NOT EXISTS ix_daily_matrix_tasks_user_date ON daily_matrix_tasks (user_id, date)",
         ]:
             try:
-                db.execute(text(stmt))
+                db.execute(text(idx_stmt))
                 db.commit()
             except Exception:
                 db.rollback()
 
-        # Đảm bảo có tài khoản Quản trị viên (Admin)
+        # Khởi tạo tài khoản Quản trị viên (Admin) nếu chưa tồn tại
         from app.models_auth import User as AuthUser
         admin_account = db.query(AuthUser).filter(AuthUser.username == "admin").first()
+        admin_pass_env = os.getenv("ADMIN_DEFAULT_PASSWORD")
+        is_prod = os.getenv("RENDER") is not None or os.getenv("ENVIRONMENT") == "production"
+
         if not admin_account:
+            if is_prod and not admin_pass_env:
+                print("[Security Warning] Production environment detected without ADMIN_DEFAULT_PASSWORD. Auto-admin creation skipped.")
+            else:
+                from app.routers.auth import hash_password
+                pwd_hash, salt = hash_password(admin_pass_env or "Admin@123456")
+                admin_account = AuthUser(
+                    username="admin",
+                    display_name="Quản Trị Viên (Luân)",
+                    password_hash=pwd_hash,
+                    salt=salt,
+                    racer_avatar="rocket",
+                    is_admin=True,
+                )
+                db.add(admin_account)
+                db.commit()
+                db.refresh(admin_account)
+                if not db.query(Player).filter(Player.user_id == admin_account.id).first():
+                    db.add(Player(user_id=admin_account.id, level=1, exp=0, coins=0, streak=0))
+                    db.commit()
+        elif admin_pass_env:
+            # Nếu người quản trị cấu hình ADMIN_DEFAULT_PASSWORD trên Render/môi trường, cập nhật mật khẩu an toàn
             from app.routers.auth import hash_password
-            pwd_hash, salt = hash_password(os.getenv("ADMIN_DEFAULT_PASSWORD", "Admin@123456"))
-            admin_account = AuthUser(
-                username="admin",
-                display_name="Quản Trị Viên (Luân)",
-                password_hash=pwd_hash,
-                salt=salt,
-                racer_avatar="rocket",
-                is_admin=True,
-            )
-            db.add(admin_account)
+            pwd_hash, salt = hash_password(admin_pass_env)
+            admin_account.password_hash = pwd_hash
+            admin_account.salt = salt
             db.commit()
-            db.refresh(admin_account)
-            if not db.query(Player).filter(Player.user_id == admin_account.id).first():
-                db.add(Player(user_id=admin_account.id, level=1, exp=0, coins=0, streak=0))
-                db.commit()
-        else:
-            if not admin_account.is_admin:
-                admin_account.is_admin = True
-                db.commit()
         if not db.query(Level).first():
             levels = [
                 Level(level=1, exp_required=0, title="Tân Thủ"),
@@ -145,7 +172,17 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-app = FastAPI(title="Pomodoro Goal Focus Hub", version="3.0.0", lifespan=lifespan)
+is_prod_env = os.getenv("RENDER") is not None or os.getenv("ENVIRONMENT") == "production"
+enable_docs = not is_prod_env or os.getenv("ENABLE_DOCS", "false").lower() == "true"
+
+app = FastAPI(
+    title="Pomodoro Goal Focus Hub",
+    version="3.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if enable_docs else None,
+    redoc_url="/redoc" if enable_docs else None,
+    openapi_url="/openapi.json" if enable_docs else None,
+)
 
 # Middleware gắn HTTP Security Headers phòng thủ theo chuẩn OWASP
 @app.middleware("http")
@@ -153,8 +190,8 @@ async def add_security_headers(request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 # CORS Configuration
@@ -167,13 +204,14 @@ else:
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
+        "https://pomodoro-lifequest.vercel.app",
         "https://pomodoro-lifequest.onrender.com",
     ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"https://.*\.onrender\.com|https://.*\.vercel\.app" if not allowed_origins_env else None,
+    allow_origin_regex=r"^https:\/\/(pomodoro-lifequest[a-zA-Z0-9-]*\.(vercel\.app|onrender\.com))$" if not allowed_origins_env else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

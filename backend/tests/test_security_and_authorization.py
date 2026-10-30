@@ -17,7 +17,7 @@ def test_security_headers_present_on_all_responses():
     headers = res.headers
     assert headers.get("X-Content-Type-Options") == "nosniff"
     assert headers.get("X-Frame-Options") == "DENY"
-    assert headers.get("X-XSS-Protection") == "1; mode=block"
+    assert "max-age=31536000" in headers.get("Strict-Transport-Security", "")
     assert headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
 
 

@@ -53,38 +53,17 @@ def get_race_track_status(
 
     users = db.query(User).filter(User.is_active == True).all()
 
-    # If no registered users exist yet, create a default host user representation
-    if not users:
-        # Create default host account
-        default_user = User(
-            username="chiến_binh",
-            display_name="Bạn (Chủ Phòng)",
-            password_hash="demo",
-            salt="demo",
-            racer_avatar="cyber_car",
-        )
-        db.add(default_user)
-        db.commit()
-        db.refresh(default_user)
-        users = [default_user]
-
     racers: List[RacerCard] = []
     total_community_hours = 0.0
 
     for user in users:
         player = db.query(Player).filter(Player.user_id == user.id).first()
-        if not player:
-            player = db.query(Player).first()  # Fallback to general player
+        player_level = player.level if player else 1
+        player_exp = player.exp if player else 0
+        player_streak = player.streak if player else 0
 
         # 1. Tính số giờ hôm nay
         today_sessions = (
-            db.query(StudySessionLog)
-            .filter(
-                (StudySessionLog.user_id == user.id) | (StudySessionLog.user_id == None),
-                StudySessionLog.session_date == today
-            )
-            .all()
-        ) if len(users) == 1 else (
             db.query(StudySessionLog)
             .filter(StudySessionLog.user_id == user.id, StudySessionLog.session_date == today)
             .all()
@@ -96,13 +75,6 @@ def get_race_track_status(
         # 2. Tính số giờ 7 ngày gần nhất
         weekly_sessions = (
             db.query(StudySessionLog)
-            .filter(
-                (StudySessionLog.user_id == user.id) | (StudySessionLog.user_id == None),
-                StudySessionLog.session_date >= seven_days_ago
-            )
-            .all()
-        ) if len(users) == 1 else (
-            db.query(StudySessionLog)
             .filter(StudySessionLog.user_id == user.id, StudySessionLog.session_date >= seven_days_ago)
             .all()
         )
@@ -112,7 +84,7 @@ def get_race_track_status(
         # 3. Mục tiêu hiện tại
         active_goal = (
             db.query(StudyGoal)
-            .filter((StudyGoal.user_id == user.id) | (StudyGoal.user_id == None))
+            .filter(StudyGoal.user_id == user.id)
             .order_by(StudyGoal.updated_at.desc())
             .first()
         )
@@ -127,7 +99,6 @@ def get_race_track_status(
         is_racing_now = recent_log is not None
 
         # 5. Tiến trình trên đường đua: 5 giờ = 100%, 0 giờ = 5%
-        # Công thức: min(100.0, max(5.0, (today_hours / 5.0) * 100.0))
         progress = round(min(100.0, max(6.0, (today_hours / 5.0) * 100.0)), 1)
 
         racers.append(
@@ -136,9 +107,9 @@ def get_race_track_status(
                 username=user.username,
                 display_name=user.display_name,
                 racer_avatar=user.racer_avatar or "rocket",
-                level=player.level if player else 1,
-                exp=player.exp if player else 0,
-                streak=player.streak if player else 0,
+                level=player_level,
+                exp=player_exp,
+                streak=player_streak,
                 today_hours=today_hours,
                 weekly_hours=weekly_hours,
                 current_goal_title=goal_title,
@@ -225,15 +196,40 @@ def cheer_racer(
             "new_cheer_count": 99,
         }
 
+    # Chống tự cổ vũ chính mình
+    if current_user and current_user.id == data.target_user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Bạn không thể tự gửi năng lượng cổ vũ cho chính mình! Hãy để cộng đồng tiếp sức cho bạn nhé! 🔥"
+        )
+
     target_user = db.query(User).filter(User.id == data.target_user_id).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Không tìm thấy tay đua này!")
 
-    target_user.cheer_count = (target_user.cheer_count or 0) + 1
+    # Giới hạn tần suất gửi cổ vũ (Rate limit: 1 lượt mỗi 30 giây giữa cùng cặp người gửi - người nhận)
+    sender_id = current_user.id if current_user else None
+    thirty_secs_ago = datetime.datetime.utcnow() - datetime.timedelta(seconds=30)
+    recent_cheer = db.query(CheerLog).filter(
+        CheerLog.target_user_id == data.target_user_id,
+        CheerLog.sender_id == sender_id,
+        CheerLog.created_at >= thirty_secs_ago,
+    ).first()
+    if recent_cheer:
+        raise HTTPException(
+            status_code=429,
+            detail="Bạn vừa gửi cổ vũ tới bạn này rồi! Vui lòng đợi 30 giây để gửi đợt năng lượng tiếp theo nhé!"
+        )
+
+    # Cập nhật nguyên tử tránh lost update race condition
+    db.query(User).filter(User.id == target_user.id).update(
+        {User.cheer_count: func.coalesce(User.cheer_count, 0) + 1},
+        synchronize_session=False,
+    )
 
     sender_name = current_user.display_name if current_user else "Một người bạn bí ẩn"
     cheer_log = CheerLog(
-        sender_id=current_user.id if current_user else None,
+        sender_id=sender_id,
         sender_name=sender_name,
         target_user_id=target_user.id,
         emoji=data.emoji or "🔥",
@@ -241,11 +237,12 @@ def cheer_racer(
     )
     db.add(cheer_log)
     db.commit()
+    db.refresh(target_user)
 
     return {
         "success": True,
         "message": f"Đã gửi cổ vũ {data.emoji} thành công tới {target_user.display_name}!",
-        "new_cheer_count": target_user.cheer_count,
+        "new_cheer_count": target_user.cheer_count or 0,
     }
 
 @router.get("/cheers/my")

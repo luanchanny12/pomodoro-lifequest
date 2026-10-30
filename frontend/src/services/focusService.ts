@@ -300,7 +300,11 @@ export const syncOfflinePendingSessions = async () => {
         source: s.source || 'pomodoro',
       })
     } catch (err: any) {
-      if (typeof navigator !== 'undefined' && (!navigator.onLine || err.code === 'ERR_NETWORK' || !err.response)) {
+      const isGenuineOffline =
+        (typeof navigator !== 'undefined' && !navigator.onLine) ||
+        err.code === 'ERR_NETWORK' ||
+        (!err.response && !err.status && String(err.message || '').includes('Network'))
+      if (isGenuineOffline) {
         remaining.push(s)
       }
     }
@@ -372,7 +376,12 @@ export const focusService = {
       syncOfflinePendingSessions().catch(() => {})
       return res.data
     } catch (err: any) {
-      if (typeof navigator !== 'undefined' && (!navigator.onLine || err.code === 'ERR_NETWORK' || !err.response)) {
+      const isGenuineOffline =
+        (typeof navigator !== 'undefined' && !navigator.onLine) ||
+        err.code === 'ERR_NETWORK' ||
+        (!err.response && !err.status && String(err.message || '').includes('Network'))
+
+      if (isGenuineOffline) {
         console.warn('[FocusService] Network error or offline; queued Pomodoro session locally.')
         queueOfflineSession(data)
         return {
@@ -388,6 +397,7 @@ export const focusService = {
           created_at: new Date().toISOString(),
         }
       }
+      // Lỗi từ server thực sự (400, 403, 500) -> ném lỗi để hiển thị đúng cho người dùng, không báo thành công ảo
       throw err
     }
   },

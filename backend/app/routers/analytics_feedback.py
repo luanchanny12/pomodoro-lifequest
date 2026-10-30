@@ -99,17 +99,13 @@ def track_visit(
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Ghi nhận lượt truy cập (Pageview) và phân loại Khách vãng lai vs Thành viên."""
-    is_member = bool(current_user is not None or data.is_member or data.user_id)
-    user_id = current_user.id if current_user else data.user_id
-
-    # Đảm bảo user_id hợp lệ
-    if user_id:
-        user_check = db.query(User).filter(User.id == user_id).first()
-        if not user_check:
-            user_id = None
-            is_member = False
-        else:
-            is_member = True
+    # Phân loại danh tính nghiêm ngặt từ token xác thực server-side, không tin tưởng client tự khai báo
+    if current_user:
+        is_member = True
+        user_id = current_user.id
+    else:
+        is_member = False
+        user_id = None
 
     # Lấy IP client từ các proxy headers phổ biến
     client_ip = (

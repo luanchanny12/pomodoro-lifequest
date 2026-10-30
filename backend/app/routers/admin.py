@@ -49,7 +49,8 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
     total_study_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).scalar()
     total_sessions = db.query(StudySessionLog).count()
 
-    today = date.today()
+    VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
+    today = datetime.datetime.now(VN_TZ).date()
     today_sessions = db.query(StudySessionLog).filter(StudySessionLog.session_date == today).count()
     today_study_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).filter(
         StudySessionLog.session_date == today
@@ -311,7 +312,8 @@ def get_admin_users(
     total_count = query.count()
     users = query.order_by(User.id.desc()).offset(skip).limit(limit).all()
 
-    today = date.today()
+    VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
+    today = datetime.datetime.now(VN_TZ).date()
     results = []
     for u in users:
         total_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).filter(
@@ -525,6 +527,8 @@ def admin_delete_user(
         raise HTTPException(status_code=400, detail="Không thể tự xóa tài khoản của chính bạn!")
 
     # Dọn dẹp dữ liệu liên quan
+    db.query(VisitorLog).filter(VisitorLog.user_id == user_id).update({"user_id": None}, synchronize_session=False)
+    db.query(UserFeedback).filter(UserFeedback.user_id == user_id).update({"user_id": None}, synchronize_session=False)
     db.query(StudyGoal).filter(StudyGoal.user_id == user_id).update({"parent_id": None}, synchronize_session=False)
     db.query(TimeCapsule).filter(TimeCapsule.user_id == user_id).delete()
     db.query(RewardRedemption).filter(RewardRedemption.user_id == user_id).delete()

@@ -7,7 +7,7 @@ import base64
 import hashlib
 import secrets
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+from fastapi import APIRouter, Depends, HTTPException, Header, status, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -15,11 +15,33 @@ from app.database import get_db
 from app.models_auth import User
 from app.models import Player, StudyGoal, NotificationSetting
 
-SECRET_KEY = os.getenv("SECRET_KEY", "pomodoro-cosmic-secret-key-super-safe-2026")
+RAW_SECRET_KEY = os.getenv("SECRET_KEY")
+INSECURE_SECRETS = {
+    "pomodoro-cosmic-secret-key-super-safe-2026",
+    "secret",
+    "secret-key",
+    "change-me",
+    "123456",
+}
+is_production = os.getenv("RENDER") is not None or os.getenv("ENVIRONMENT") == "production"
+
+if not RAW_SECRET_KEY or RAW_SECRET_KEY.strip() in INSECURE_SECRETS:
+    if is_production:
+        raise RuntimeError("CRITICAL SECURITY ERROR: Strong SECRET_KEY must be configured in environment on production!")
+    # Sinh secret ngẫu nhiên bảo mật cao per-process trong môi trường phát triển nếu chưa cấu hình .env
+    SECRET_KEY = secrets.token_hex(32)
+else:
+    SECRET_KEY = RAW_SECRET_KEY.strip()
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication & Multi-User"])
 
 # --- Security Helpers ---
+
+def get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 def hash_password(password: str, salt: Optional[str] = None) -> tuple:
     if not salt:
@@ -31,11 +53,12 @@ def verify_password(password: str, salt: str, expected_hash: str) -> bool:
     calc_hash, _ = hash_password(password, salt)
     return hmac.compare_digest(calc_hash, expected_hash)
 
-def create_access_token(user_id: int, username: str) -> str:
+def create_access_token(user_id: int, username: str, salt: Optional[str] = None) -> str:
     payload = {
         "sub": user_id,
         "username": username,
-        "exp": int(time.time()) + (60 * 24 * 3600),  # 60 days
+        "pv": salt[:8] if salt else None,
+        "exp": int(time.time()) + (14 * 24 * 3600),  # 14 ngày
     }
     payload_bytes = json.dumps(payload).encode("utf-8")
     b64_payload = base64.urlsafe_b64encode(payload_bytes).decode("utf-8")
@@ -74,7 +97,19 @@ def get_current_user_optional(authorization: Optional[str] = Header(None), db: S
     user_id = payload.get("sub")
     if not user_id:
         return None
-    return db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tài khoản của bạn đã bị tạm khóa bởi Quản trị viên!",
+        )
+    # Thu hồi token cũ nếu mật khẩu đã được đổi sau thời điểm cấp token
+    if payload.get("pv") and getattr(user, "salt", None):
+        if payload["pv"] != user.salt[:8]:
+            return None
+    return user
 
 def get_current_user(user: Optional[User] = Depends(get_current_user_optional)) -> User:
     if not user:
@@ -100,7 +135,6 @@ class RegisterRequest(BaseModel):
     display_name: str = Field(..., min_length=2, max_length=50)
     password: str = Field(..., min_length=6)
     racer_avatar: Optional[str] = "rocket"
-    admin_secret: Optional[str] = None
 
 class LoginRequest(BaseModel):
     username: str
@@ -155,7 +189,10 @@ def _build_user_response(user: User, db: Session) -> UserResponse:
     )
 
 @router.post("/register", response_model=AuthResponse)
-def register(data: RegisterRequest, db: Session = Depends(get_db)):
+def register(data: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = get_client_ip(request)
+    _check_rate_limit(f"reg:{client_ip}", max_attempts=5, window_seconds=600, message="Bạn đã đăng ký tài khoản quá nhiều lần.")
+
     clean_username = data.username.strip().lower()
     if not re.match(r"^[a-zA-Z0-9_]{3,30}$", clean_username):
         raise HTTPException(
@@ -228,51 +265,59 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
             detail="Không thể tạo tài khoản. Vui lòng thử lại sau hoặc liên hệ quản trị viên."
         )
 
-    token = create_access_token(user.id, user.username)
+    token = create_access_token(user.id, user.username, user.salt)
     return AuthResponse(
         access_token=token,
         user=_build_user_response(user, db)
     )
 
-# In-memory sliding window rate limiter against brute-force attacks
-_LOGIN_ATTEMPTS = {}
+# In-memory sliding window rate limiter against brute-force attacks and DoS
+_RATE_LIMIT_STORE = {}
 
 
-def _check_login_rate_limit(key: str, max_attempts: int = 10, window_seconds: int = 300):
+def _check_rate_limit(key: str, max_attempts: int, window_seconds: int, message: str = "Quá nhiều yêu cầu. Vui lòng thử lại sau!"):
     now = time.time()
-    attempts = [t for t in _LOGIN_ATTEMPTS.get(key, []) if now - t < window_seconds]
-    _LOGIN_ATTEMPTS[key] = attempts
+    attempts = [t for t in _RATE_LIMIT_STORE.get(key, []) if now - t < window_seconds]
+    _RATE_LIMIT_STORE[key] = attempts
     if len(attempts) >= max_attempts:
         retry_after = int(window_seconds - (now - attempts[0]))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Đăng nhập thất bại quá nhiều lần. Vui lòng thử lại sau {max(1, retry_after)} giây!"
+            detail=f"{message} (Vui lòng thử lại sau {max(1, retry_after)} giây)",
         )
 
 
-def _record_failed_login(key: str):
+def _record_failed_attempt(key: str):
     now = time.time()
-    if key not in _LOGIN_ATTEMPTS:
-        _LOGIN_ATTEMPTS[key] = []
-    _LOGIN_ATTEMPTS[key].append(now)
+    if key not in _RATE_LIMIT_STORE:
+        _RATE_LIMIT_STORE[key] = []
+    _RATE_LIMIT_STORE[key].append(now)
 
 
-def _reset_login_attempts(key: str):
-    _LOGIN_ATTEMPTS.pop(key, None)
+def _reset_attempts(key: str):
+    _RATE_LIMIT_STORE.pop(key, None)
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(data: LoginRequest, db: Session = Depends(get_db)):
+def login(data: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    client_ip = get_client_ip(request)
     clean_username = data.username.strip().lower()
-    _check_login_rate_limit(clean_username)
+
+    # Rate limit by IP and (IP + username)
+    _check_rate_limit(f"login_ip:{client_ip}", max_attempts=30, window_seconds=300, message="Quá nhiều lần thử đăng nhập từ thiết bị của bạn.")
+    _check_rate_limit(f"login_pair:{client_ip}:{clean_username}", max_attempts=10, window_seconds=300, message="Đăng nhập tài khoản này thất bại quá nhiều lần.")
 
     user = db.query(User).filter(User.username == clean_username).first()
     if not user or not verify_password(data.password, user.salt, user.password_hash):
-        _record_failed_login(clean_username)
+        _record_failed_attempt(f"login_ip:{client_ip}")
+        _record_failed_attempt(f"login_pair:{client_ip}:{clean_username}")
         raise HTTPException(status_code=400, detail="Tên đăng nhập hoặc mật khẩu không chính xác!")
 
-    _reset_login_attempts(clean_username)
-    token = create_access_token(user.id, user.username)
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Tài khoản của bạn đã bị tạm khóa bởi Quản trị viên!")
+
+    _reset_attempts(f"login_pair:{client_ip}:{clean_username}")
+    token = create_access_token(user.id, user.username, user.salt)
     return AuthResponse(
         access_token=token,
         user=_build_user_response(user, db)

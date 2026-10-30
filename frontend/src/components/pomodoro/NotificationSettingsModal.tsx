@@ -69,6 +69,11 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
           if (s.app_public_url) setAppPublicUrl(s.app_public_url)
         })
         .catch(() => {})
+    } else {
+      setCopiedText(null)
+      setIsTestingTelegram(false)
+      setIsTestingWindows(false)
+      setIsTriggeringCloud(false)
     }
   }, [isOpen])
 
