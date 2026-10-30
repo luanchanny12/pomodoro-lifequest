@@ -95,27 +95,10 @@ async def lifespan(app: FastAPI):
             db.add_all(levels)
         if not db.query(Player).first():
             db.add(Player(level=1, exp=0, coins=0, streak=0))
-        from app.ai.knowledge_graph import seed_knowledge_graph
-        seed_knowledge_graph(db)
-        from app.ai.quest_system import seed_quests
-        seed_quests(db)
-        from app.ai.shop import seed_shop
-        seed_shop(db)
-        from app.ai.avatar_evolution import get_or_create_avatar
-        player = db.query(Player).first()
-        if player:
-            get_or_create_avatar(db, player.id)
-
-        # Clean up old seed data so new users start fresh.
-        # CHỈ chạy khi bật rõ ràng RESET_SEED_DATA_ON_START=true, tránh xoá dữ liệu
-        # người dùng mỗi lần Render restart/deploy.
-        if os.getenv("RESET_SEED_DATA_ON_START", "false").strip().lower() in ("1", "true", "yes"):
-            for table in ["roadmap_lessons", "current_positions", "brain_memory", "roadmap_items", "predictions", "weekly_reports", "user_statistics", "v1_learning_history", "life_score_history"]:
-                try:
-                    db.execute(text(f"DELETE FROM {table}"))
-                except Exception:
-                    db.rollback()
             db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"[Lifespan Warning] Non-critical startup error: {e}")
     finally:
         db.close()
 

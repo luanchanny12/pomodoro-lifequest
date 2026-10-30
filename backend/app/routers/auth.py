@@ -118,8 +118,8 @@ class UserResponse(BaseModel):
     id: int
     username: str
     display_name: str
-    racer_avatar: str
-    cheer_count: int
+    racer_avatar: Optional[str] = "rocket"
+    cheer_count: Optional[int] = 0
     is_admin: bool = False
     level: int = 1
     exp: int = 0

@@ -328,6 +328,7 @@ export default function PomodoroApp() {
 
   useEffect(() => {
     loadData()
+    focusService.syncPendingSessions().catch(() => {})
   }, [currentUser])
 
   // Track visit for analytics

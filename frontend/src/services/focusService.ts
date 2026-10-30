@@ -250,6 +250,76 @@ export interface AIBuddyPrompt {
   mood: 'friendly' | 'urgent' | 'celebrating' | 'cozy'
 }
 
+const OFFLINE_SESSIONS_KEY = 'pending_pomodoro_sessions'
+
+export const getOfflinePendingSessions = (): Array<{
+  goal_id?: number | null
+  duration_minutes: number
+  session_date?: string
+  topic_note?: string
+  source?: 'pomodoro' | 'manual'
+  timestamp: number
+}> => {
+  try {
+    if (typeof localStorage === 'undefined') return []
+    const raw = localStorage.getItem(OFFLINE_SESSIONS_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+export const queueOfflineSession = (data: {
+  goal_id?: number | null
+  duration_minutes: number
+  session_date?: string
+  topic_note?: string
+  source?: 'pomodoro' | 'manual'
+}) => {
+  try {
+    if (typeof localStorage === 'undefined') return
+    const current = getOfflinePendingSessions()
+    current.push({ ...data, timestamp: Date.now() })
+    localStorage.setItem(OFFLINE_SESSIONS_KEY, JSON.stringify(current))
+  } catch (e) {
+    console.error('Failed to store offline session', e)
+  }
+}
+
+export const syncOfflinePendingSessions = async () => {
+  const pending = getOfflinePendingSessions()
+  if (!pending.length) return
+  const remaining = []
+  for (const s of pending) {
+    try {
+      await api.post('/focus/sessions', {
+        goal_id: s.goal_id,
+        duration_minutes: s.duration_minutes,
+        session_date: s.session_date,
+        topic_note: s.topic_note,
+        source: s.source || 'pomodoro',
+      })
+    } catch (err: any) {
+      if (typeof navigator !== 'undefined' && (!navigator.onLine || err.code === 'ERR_NETWORK' || !err.response)) {
+        remaining.push(s)
+      }
+    }
+  }
+  if (typeof localStorage !== 'undefined') {
+    if (remaining.length) {
+      localStorage.setItem(OFFLINE_SESSIONS_KEY, JSON.stringify(remaining))
+    } else {
+      localStorage.removeItem(OFFLINE_SESSIONS_KEY)
+    }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    syncOfflinePendingSessions().catch(() => {})
+  })
+}
+
 export const focusService = {
   // Goals
   getGoals: async (isCompleted?: boolean): Promise<StudyGoal[]> => {
@@ -297,8 +367,29 @@ export const focusService = {
     topic_note?: string
     source?: 'pomodoro' | 'manual'
   }): Promise<StudySessionLog> => {
-    const res = await api.post('/focus/sessions', data)
-    return res.data
+    try {
+      const res = await api.post('/focus/sessions', data)
+      syncOfflinePendingSessions().catch(() => {})
+      return res.data
+    } catch (err: any) {
+      if (typeof navigator !== 'undefined' && (!navigator.onLine || err.code === 'ERR_NETWORK' || !err.response)) {
+        console.warn('[FocusService] Network error or offline; queued Pomodoro session locally.')
+        queueOfflineSession(data)
+        return {
+          id: Date.now(),
+          goal_id: data.goal_id ?? null,
+          goal_title: undefined,
+          goal_color: undefined,
+          duration_minutes: data.duration_minutes,
+          duration_hours: Number((data.duration_minutes / 60).toFixed(2)),
+          session_date: data.session_date || new Date().toISOString().split('T')[0],
+          topic_note: data.topic_note,
+          source: data.source || 'pomodoro',
+          created_at: new Date().toISOString(),
+        }
+      }
+      throw err
+    }
   },
 
   updateSession: async (id: number, data: Partial<StudySessionLog>): Promise<StudySessionLog> => {
@@ -390,9 +481,28 @@ export const focusService = {
 
   // ── Daily 4-Quadrant Matrix (Eisenhower) ──
   getMatrixTasks: async (date?: string): Promise<DailyMatrixTask[]> => {
+    const cacheKey = `matrix_tasks_cache_${date || 'today'}`
     const params = date ? { date } : {}
-    const res = await api.get('/focus/matrix', { params })
-    return res.data
+    try {
+      const res = await api.get('/focus/matrix', { params })
+      if (Array.isArray(res.data) && typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(res.data))
+        } catch (_) {}
+      }
+      return res.data
+    } catch (err) {
+      if (typeof localStorage !== 'undefined') {
+        const cached = localStorage.getItem(cacheKey)
+        if (cached) {
+          try {
+            console.warn('[FocusService] Network error loading matrix tasks. Serving cached tasks.')
+            return JSON.parse(cached)
+          } catch (_) {}
+        }
+      }
+      throw err
+    }
   },
 
   createMatrixTask: async (data: DailyMatrixTaskCreateInput): Promise<DailyMatrixTask> => {
@@ -441,4 +551,6 @@ export const focusService = {
     const res = await api.get('/focus/ai-buddy/prompt')
     return res.data
   },
+
+  syncPendingSessions: syncOfflinePendingSessions,
 }

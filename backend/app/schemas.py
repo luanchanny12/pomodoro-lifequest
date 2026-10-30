@@ -739,25 +739,25 @@ class PlanetBuildUpdateRequest(BaseModel):
 class StudyGoalResponse(BaseModel):
     id: int
     title: str
-    celestial_name: Optional[str] = None
-    goal_type: str = "hours"
-    target_hours: float
-    current_hours: float
+    celestial_name: Optional[str] = "Polaris"
+    goal_type: Optional[str] = "hours"
+    target_hours: float = 0.0
+    current_hours: float = 0.0
     target_date: Optional[datetime.date] = None
     parent_id: Optional[int] = None
     parent_title: Optional[str] = None
-    planet_type: str = "earth"
+    planet_type: Optional[str] = "earth"
     planet_data: Optional[str] = None
     sub_goals_count: int = 0
     days_left: Optional[int] = None
     hours_per_day_needed: Optional[float] = None
-    color: str
-    category: str
-    is_completed: bool
+    color: Optional[str] = "#E24A4A"
+    category: Optional[str] = "Học tập"
+    is_completed: bool = False
     completed_at: Optional[datetime.datetime] = None
     notes: Optional[str] = None
-    created_at: datetime.datetime
-    updated_at: datetime.datetime
+    created_at: Optional[datetime.datetime] = None
+    updated_at: Optional[datetime.datetime] = None
     progress_percent: float = 0.0
     remaining_hours: float = 0.0
 
@@ -785,12 +785,12 @@ class StudySessionLogResponse(BaseModel):
     goal_id: Optional[int] = None
     goal_title: Optional[str] = None
     goal_color: Optional[str] = None
-    duration_minutes: int
-    duration_hours: float
-    session_date: datetime.date
+    duration_minutes: int = 0
+    duration_hours: float = 0.0
+    session_date: Optional[datetime.date] = None
     topic_note: Optional[str] = None
-    source: str
-    created_at: datetime.datetime
+    source: Optional[str] = "manual"
+    created_at: Optional[datetime.datetime] = None
 
     class Config:
         from_attributes = True
@@ -888,14 +888,14 @@ class ConstellationAchievementResponse(BaseModel):
     id: int
     code: str
     title: str
-    archetype: str
-    icon: str
-    required_completed_goals: int
-    shape_pattern: str
-    ai_interpretation: str
-    narration_script: str
+    archetype: Optional[str] = "Học giả"
+    icon: Optional[str] = "Sparkles"
+    required_completed_goals: int = 1
+    shape_pattern: Optional[str] = "triangle"
+    ai_interpretation: Optional[str] = ""
+    narration_script: Optional[str] = ""
     associated_goal_titles: Optional[str] = None
-    is_unlocked: bool
+    is_unlocked: bool = False
     unlocked_at: Optional[datetime.datetime] = None
     progress_percent: float = 0.0
 
@@ -981,12 +981,12 @@ class DailyMatrixTaskResponse(BaseModel):
     id: int
     title: str
     description: Optional[str] = None
-    date: datetime.date
-    quadrant: int
+    date: Optional[datetime.date] = None
+    quadrant: int = 1
     goal_id: Optional[int] = None
     goal_title: Optional[str] = None
     goal_color: Optional[str] = None
-    is_completed: bool
+    is_completed: bool = False
     completed_at: Optional[datetime.datetime] = None
     reflection_note: Optional[str] = None
     order_index: Optional[int] = 0

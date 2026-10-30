@@ -124,11 +124,11 @@ def _format_session_response(s: StudySessionLog) -> StudySessionLogResponse:
         goal_id=s.goal_id,
         goal_title=goal_title,
         goal_color=goal_color,
-        duration_minutes=s.duration_minutes,
-        duration_hours=s.duration_hours,
+        duration_minutes=s.duration_minutes or 0,
+        duration_hours=s.duration_hours or 0.0,
         session_date=s.session_date,
         topic_note=s.topic_note,
-        source=s.source,
+        source=s.source or "manual",
         created_at=s.created_at,
     )
 
@@ -241,9 +241,27 @@ def delete_goal(goal_id: int, db: Session = Depends(get_db)):
     goal = db.query(StudyGoal).filter(StudyGoal.id == goal_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="Mục tiêu không tồn tại")
-    db.delete(goal)
-    db.commit()
-    return {"message": "Đã xóa mục tiêu thành công"}
+
+    try:
+        # 1. Gỡ liên kết các mục tiêu con để trở thành mục tiêu độc lập, tránh crash khóa ngoại
+        db.query(StudyGoal).filter(StudyGoal.parent_id == goal_id).update({StudyGoal.parent_id: None})
+
+        # 2. Gỡ liên kết các phiên học đã hoàn thành -> BẢO TOÀN 100% GIỜ HỌC LỊCH SỬ CỦA NGƯỜI DÙNG
+        db.query(StudySessionLog).filter(StudySessionLog.goal_id == goal_id).update({StudySessionLog.goal_id: None})
+
+        # 3. Gỡ liên kết các công việc trong ma trận 4 ô -> KHÔNG BAO GIỜ MẤT NHIỆM VỤ ĐÃ TẠO
+        db.query(DailyMatrixTask).filter(DailyMatrixTask.goal_id == goal_id).update({DailyMatrixTask.goal_id: None})
+
+        # 4. Gỡ liên kết TimeCapsule
+        db.query(TimeCapsule).filter(TimeCapsule.goal_id == goal_id).update({TimeCapsule.goal_id: None})
+
+        db.delete(goal)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Lỗi khi xóa mục tiêu an toàn: {str(e)}")
+
+    return {"message": "Đã xóa mục tiêu thành công (bảo toàn toàn bộ giờ học và công việc)"}
 
 
 # -------------------------------------------------------------
