@@ -2,7 +2,7 @@ import datetime
 import math
 import re
 from typing import List, Optional, Dict
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -62,6 +62,30 @@ DEFAULT_CELESTIALS = [
     "Betelgeuse (Sâm Tú)",
     "Aldebaran (Tất Tú)",
 ]
+
+
+def _verify_resource_ownership(resource, current_user: Optional[User]):
+    """
+    OWASP API1 (IDOR) Security Guard:
+    Ngăn chặn người dùng can thiệp vào tài nguyên của người dùng khác.
+    - Nếu tài nguyên thuộc về một user_id cụ thể:
+      - Bắt buộc người gọi phải đăng nhập.
+      - Người gọi phải đúng là chủ sở hữu, hoặc có quyền Quản trị viên (Admin).
+    """
+    if not resource:
+        return
+    res_user_id = getattr(resource, "user_id", None)
+    if res_user_id is not None:
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Vui lòng đăng nhập để thao tác trên tài nguyên này."
+            )
+        if res_user_id != current_user.id and not getattr(current_user, "is_admin", False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bạn không có quyền thao tác trên tài nguyên của người dùng khác!"
+            )
 
 
 def _format_goal_response(goal: StudyGoal, db: Session = None) -> StudyGoalResponse:
@@ -192,10 +216,16 @@ def create_goal(
 
 
 @router.put("/goals/{goal_id}", response_model=StudyGoalResponse)
-def update_goal(goal_id: int, data: StudyGoalUpdate, db: Session = Depends(get_db)):
+def update_goal(
+    goal_id: int,
+    data: StudyGoalUpdate,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     goal = db.query(StudyGoal).filter(StudyGoal.id == goal_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="Mục tiêu không tồn tại")
+    _verify_resource_ownership(goal, user)
 
     update_dict = data.model_dump(exclude_unset=True)
     for k, v in update_dict.items():
@@ -223,12 +253,11 @@ def update_planet_build(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    query = db.query(StudyGoal).filter(StudyGoal.id == goal_id)
-    if user:
-        query = query.filter((StudyGoal.user_id == user.id) | (StudyGoal.user_id.is_(None)))
-    goal = query.first()
+    goal = db.query(StudyGoal).filter(StudyGoal.id == goal_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="Mục tiêu không tồn tại")
+    _verify_resource_ownership(goal, user)
+
     goal.planet_data = data.planet_data
     goal.updated_at = datetime.datetime.utcnow()
     db.commit()
@@ -237,10 +266,15 @@ def update_planet_build(
 
 
 @router.delete("/goals/{goal_id}")
-def delete_goal(goal_id: int, db: Session = Depends(get_db)):
+def delete_goal(
+    goal_id: int,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     goal = db.query(StudyGoal).filter(StudyGoal.id == goal_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="Mục tiêu không tồn tại")
+    _verify_resource_ownership(goal, user)
 
     try:
         # 1. Gỡ liên kết các mục tiêu con để trở thành mục tiêu độc lập, tránh crash khóa ngoại
@@ -334,10 +368,16 @@ def create_session(
 
 
 @router.put("/sessions/{session_id}", response_model=StudySessionLogResponse)
-def update_session(session_id: int, data: StudySessionLogUpdate, db: Session = Depends(get_db)):
+def update_session(
+    session_id: int,
+    data: StudySessionLogUpdate,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     session_log = db.query(StudySessionLog).filter(StudySessionLog.id == session_id).first()
     if not session_log:
         raise HTTPException(status_code=404, detail="Bản ghi học tập không tồn tại")
+    _verify_resource_ownership(session_log, user)
 
     old_minutes = session_log.duration_minutes
     old_hours = session_log.duration_hours
@@ -401,10 +441,15 @@ def update_session(session_id: int, data: StudySessionLogUpdate, db: Session = D
 
 
 @router.delete("/sessions/{session_id}")
-def delete_session(session_id: int, db: Session = Depends(get_db)):
+def delete_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     session_log = db.query(StudySessionLog).filter(StudySessionLog.id == session_id).first()
     if not session_log:
         raise HTTPException(status_code=404, detail="Bản ghi học tập không tồn tại")
+    _verify_resource_ownership(session_log, user)
 
     if session_log.goal_id:
         goal = db.query(StudyGoal).filter(StudyGoal.id == session_log.goal_id).first()
@@ -1244,10 +1289,16 @@ def create_matrix_task(
 
 
 @router.put("/matrix/{task_id}", response_model=DailyMatrixTaskResponse)
-def update_matrix_task(task_id: int, data: DailyMatrixTaskUpdate, db: Session = Depends(get_db)):
+def update_matrix_task(
+    task_id: int,
+    data: DailyMatrixTaskUpdate,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     task = db.query(DailyMatrixTask).filter(DailyMatrixTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Không tìm thấy công việc")
+    _verify_resource_ownership(task, user)
 
     if data.title is not None:
         task.title = data.title
@@ -1291,10 +1342,15 @@ def update_matrix_task(task_id: int, data: DailyMatrixTaskUpdate, db: Session = 
 
 
 @router.patch("/matrix/{task_id}/toggle", response_model=DailyMatrixTaskResponse)
-def toggle_matrix_task(task_id: int, db: Session = Depends(get_db)):
+def toggle_matrix_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     task = db.query(DailyMatrixTask).filter(DailyMatrixTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Không tìm thấy công việc")
+    _verify_resource_ownership(task, user)
 
     task.is_completed = not task.is_completed
     task.completed_at = datetime.datetime.utcnow() if task.is_completed else None
@@ -1322,10 +1378,16 @@ def toggle_matrix_task(task_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/matrix/{task_id}/reflection", response_model=DailyMatrixTaskResponse)
-def update_matrix_task_reflection(task_id: int, data: DailyMatrixTaskReflectionUpdate, db: Session = Depends(get_db)):
+def update_matrix_task_reflection(
+    task_id: int,
+    data: DailyMatrixTaskReflectionUpdate,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     task = db.query(DailyMatrixTask).filter(DailyMatrixTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Không tìm thấy công việc")
+    _verify_resource_ownership(task, user)
 
     task.reflection_note = data.reflection_note
     task.updated_at = datetime.datetime.utcnow()
@@ -1352,10 +1414,15 @@ def update_matrix_task_reflection(task_id: int, data: DailyMatrixTaskReflectionU
 
 
 @router.delete("/matrix/{task_id}")
-def delete_matrix_task(task_id: int, db: Session = Depends(get_db)):
+def delete_matrix_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
     task = db.query(DailyMatrixTask).filter(DailyMatrixTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Không tìm thấy công việc")
+    _verify_resource_ownership(task, user)
     db.delete(task)
     db.commit()
     return {"message": "Đã xóa công việc", "id": task_id}
@@ -1366,25 +1433,29 @@ def rollover_matrix_tasks(
     from_date: datetime.date = Query(..., description="Ngày cần chuyển các việc chưa xong"),
     to_date: datetime.date = Query(..., description="Ngày đích nhận việc"),
     db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
 ):
-    uncompleted = (
-        db.query(DailyMatrixTask)
-        .filter(
-            DailyMatrixTask.date == from_date,
-            DailyMatrixTask.is_completed == False,
-        )
-        .all()
+    query = db.query(DailyMatrixTask).filter(
+        DailyMatrixTask.date == from_date,
+        DailyMatrixTask.is_completed == False,
     )
+    if user:
+        query = query.filter((DailyMatrixTask.user_id == user.id) | (DailyMatrixTask.user_id.is_(None)))
+    else:
+        query = query.filter(DailyMatrixTask.user_id.is_(None))
+    uncompleted = query.all()
 
     rolled_count = 0
     for t in uncompleted:
         new_task = DailyMatrixTask(
+            user_id=user.id if user else None,
             title=t.title,
             description=t.description,
             date=to_date,
             quadrant=t.quadrant,
             goal_id=t.goal_id,
             reflection_note=f"Chuyển từ {from_date.strftime('%d/%m')}: {t.reflection_note or 'chưa hoàn thành'}",
+            order_index=0,
         )
         db.add(new_task)
         rolled_count += 1
@@ -1401,6 +1472,7 @@ def get_monthly_matrix_summary(
     year: int = Query(..., description="Năm"),
     month: int = Query(..., description="Tháng 1-12"),
     db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
 ):
     start_date = datetime.date(year, month, 1)
     if month == 12:
@@ -1408,14 +1480,15 @@ def get_monthly_matrix_summary(
     else:
         end_date = datetime.date(year, month + 1, 1)
 
-    tasks = (
-        db.query(DailyMatrixTask)
-        .filter(
-            DailyMatrixTask.date >= start_date,
-            DailyMatrixTask.date < end_date,
-        )
-        .all()
+    query = db.query(DailyMatrixTask).filter(
+        DailyMatrixTask.date >= start_date,
+        DailyMatrixTask.date < end_date,
     )
+    if user:
+        query = query.filter((DailyMatrixTask.user_id == user.id) | (DailyMatrixTask.user_id.is_(None)))
+    else:
+        query = query.filter(DailyMatrixTask.user_id.is_(None))
+    tasks = query.all()
 
     total_tasks = len(tasks)
     completed_tasks = len([t for t in tasks if t.is_completed])

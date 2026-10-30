@@ -1,5 +1,5 @@
 """
-Tests cho API endpoints
+Tests cho API endpoints cốt lõi đang hoạt động
 """
 from fastapi.testclient import TestClient
 from app.main import app
@@ -13,45 +13,47 @@ def test_root():
     assert "LIFE QUEST" in r.text
 
 
-def test_goals():
-    r = client.get("/api/goals")
+def test_health():
+    r = client.get("/api/health")
     assert r.status_code == 200
+    assert r.json().get("status") == "ok"
 
 
-def test_player():
-    r = client.get("/api/player")
+def test_focus_goals():
+    r = client.get("/api/focus/goals")
     assert r.status_code == 200
-    data = r.json()
-    assert "level" in data
+    assert isinstance(r.json(), list)
 
 
-def test_ai_planner():
-    r = client.post("/api/ai/planner", json={})
+def test_focus_matrix():
+    r = client.get("/api/focus/matrix")
     assert r.status_code == 200
-    data = r.json()
-    assert "summary" in data
-    assert "blocks" in data
+    assert isinstance(r.json(), list)
 
 
-def test_ai_life_score():
-    r = client.get("/api/ai/life-score")
-    assert r.status_code == 200
-    assert "score" in r.json()
-
-
-def test_ai_predictions():
-    r = client.get("/api/ai/predictions")
-    assert r.status_code == 200
-
-
-def test_ai_review():
-    r = client.get("/api/ai/review/daily")
-    assert r.status_code == 200
-
-
-def test_ai_chat():
-    r = client.post("/api/ai/chat", json={"message": "Hôm nay tôi mệt", "session_id": "test-1"})
+def test_focus_galaxy():
+    r = client.get("/api/focus/galaxy")
     assert r.status_code == 200
     data = r.json()
-    assert "reply" in data
-    assert "session_id" in data
+    assert "planets" in data
+
+
+def test_focus_oracle():
+    r = client.get("/api/focus/oracle")
+    assert r.status_code == 200
+    data = r.json()
+    assert "projected_finish_date" in data or "target_hours" in data
+
+
+def test_notifications_settings():
+    r = client.get("/api/notifications/settings")
+    assert r.status_code == 200
+    data = r.json()
+    assert "web_notifications_enabled" in data
+
+
+def test_race_track():
+    r = client.get("/api/race/track")
+    assert r.status_code == 200
+    data = r.json()
+    assert "racers" in data

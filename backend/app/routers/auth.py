@@ -234,13 +234,44 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
         user=_build_user_response(user, db)
     )
 
+# In-memory sliding window rate limiter against brute-force attacks
+_LOGIN_ATTEMPTS = {}
+
+
+def _check_login_rate_limit(key: str, max_attempts: int = 10, window_seconds: int = 300):
+    now = time.time()
+    attempts = [t for t in _LOGIN_ATTEMPTS.get(key, []) if now - t < window_seconds]
+    _LOGIN_ATTEMPTS[key] = attempts
+    if len(attempts) >= max_attempts:
+        retry_after = int(window_seconds - (now - attempts[0]))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Đăng nhập thất bại quá nhiều lần. Vui lòng thử lại sau {max(1, retry_after)} giây!"
+        )
+
+
+def _record_failed_login(key: str):
+    now = time.time()
+    if key not in _LOGIN_ATTEMPTS:
+        _LOGIN_ATTEMPTS[key] = []
+    _LOGIN_ATTEMPTS[key].append(now)
+
+
+def _reset_login_attempts(key: str):
+    _LOGIN_ATTEMPTS.pop(key, None)
+
+
 @router.post("/login", response_model=AuthResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
     clean_username = data.username.strip().lower()
+    _check_login_rate_limit(clean_username)
+
     user = db.query(User).filter(User.username == clean_username).first()
     if not user or not verify_password(data.password, user.salt, user.password_hash):
+        _record_failed_login(clean_username)
         raise HTTPException(status_code=400, detail="Tên đăng nhập hoặc mật khẩu không chính xác!")
 
+    _reset_login_attempts(clean_username)
     token = create_access_token(user.id, user.username)
     return AuthResponse(
         access_token=token,

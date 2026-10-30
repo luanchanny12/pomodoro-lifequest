@@ -10,10 +10,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app.routers import (
-    goals, roadmaps, courses, tasks, sprints, daily_logs, study_hours,
-    gamification, vocabulary, ipa, exports, backlog, ai, ai_v2, ai_v3,
-    knowledge, learning, daily_coach, schedule, focus_hub, notifications,
-    calendar_sync, auth, race_track, admin, analytics_feedback
+    auth,
+    race_track,
+    admin,
+    analytics_feedback,
+    focus_hub,
+    notifications,
+    calendar_sync,
 )
 import app.models
 import app.models_auth
@@ -137,14 +140,39 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Pomodoro Goal Focus Hub", version="3.0.0", lifespan=lifespan)
 
+# Middleware gắn HTTP Security Headers phòng thủ theo chuẩn OWASP
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+# CORS Configuration
+allowed_origins_env = os.getenv("CORS_ORIGINS", "")
+if allowed_origins_env.strip():
+    allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+else:
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+        "https://pomodoro-lifequest.onrender.com",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.onrender\.com|https://.*\.vercel\.app" if not allowed_origins_env else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Chỉ mount đúng 7 router lõi thực tế đang hoạt động
 app.include_router(auth.router)
 app.include_router(race_track.router)
 app.include_router(admin.router)
@@ -152,25 +180,6 @@ app.include_router(analytics_feedback.router)
 app.include_router(focus_hub.router)
 app.include_router(notifications.router)
 app.include_router(calendar_sync.router)
-app.include_router(goals.router)
-app.include_router(roadmaps.router)
-app.include_router(courses.router)
-app.include_router(tasks.router)
-app.include_router(sprints.router)
-app.include_router(daily_logs.router)
-app.include_router(study_hours.router)
-app.include_router(gamification.router)
-app.include_router(vocabulary.router)
-app.include_router(ipa.router)
-app.include_router(exports.router)
-app.include_router(backlog.router)
-app.include_router(ai.router)
-app.include_router(ai_v2.router)
-app.include_router(ai_v3.router)
-app.include_router(knowledge.router)
-app.include_router(learning.router)
-app.include_router(daily_coach.router)
-app.include_router(schedule.router)
 
 @app.get("/")
 def root():
