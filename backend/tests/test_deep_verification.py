@@ -10,6 +10,7 @@ from app.models import (
     RewardRedemption,
     TimeCapsule,
     ConstellationAchievement,
+    UserConstellationUnlock,
     DailyMatrixTask,
 )
 
@@ -23,6 +24,7 @@ def clean_database():
     db.query(RewardRedemption).delete()
     db.query(TimeCapsule).delete()
     db.query(StudySessionLog).delete()
+    db.query(UserConstellationUnlock).delete()
     db.query(StudyGoal).delete()
     db.commit()
     db.close()
@@ -32,6 +34,7 @@ def clean_database():
     db.query(RewardRedemption).delete()
     db.query(TimeCapsule).delete()
     db.query(StudySessionLog).delete()
+    db.query(UserConstellationUnlock).delete()
     db.query(StudyGoal).delete()
     db.commit()
     db.close()

@@ -5,6 +5,7 @@ import pytest
 from datetime import date, timedelta
 from app.database import SessionLocal, engine, Base
 from app.models import *
+from app.models import LegacyBase
 from app.ai.ai_brain import track_learning, get_next_lesson
 from app.ai.ai_planner import generate_daily_plan
 from app.ai.ai_predictor import predict_goal_completion, calculate_pace
@@ -15,6 +16,10 @@ from app.ai.energy_manager import get_energy_for_task, get_max_energy, can_do_ta
 @pytest.fixture
 def db():
     Base.metadata.create_all(bind=engine)
+    # StudyHour/Goal/RoadmapLesson... đã chuyển sang LegacyBase (b06fda7) và
+    # router AI đã unmount nên các bảng này không được tạo ở production.
+    # Tạo chúng ở đây chỉ để các test AI cũ (test module trực tiếp) vẫn chạy được trên DB sqlite tạm.
+    LegacyBase.metadata.create_all(bind=engine)
     session = SessionLocal()
     yield session
     session.close()

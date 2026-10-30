@@ -411,6 +411,17 @@ class ConstellationAchievement(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class UserConstellationUnlock(Base):
+    """Theo dõi chòm sao đã khai mở cho TỪNG người dùng (user_id NULL = khách).
+    Bảng toàn cục ConstellationAchievement chỉ lưu định nghĩa chòm sao; trạng thái unlock
+    phải tách theo user để tránh việc 'khai mở' bị chia sẻ giữa các người dùng."""
+    __tablename__ = "user_constellation_unlocks"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)  # NULL = khách (guest)
+    constellation_id = Column(Integer, ForeignKey("constellation_achievements.id"), nullable=False, index=True)
+    unlocked_at = Column(DateTime, default=datetime.utcnow)
+
+
 class DailyMatrixTask(Base):
     __tablename__ = "daily_matrix_tasks"
     id = Column(Integer, primary_key=True, index=True)

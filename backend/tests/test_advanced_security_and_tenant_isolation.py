@@ -47,6 +47,34 @@ def clean_db():
         db.close()
 
 
+@pytest.fixture(autouse=True)
+def ensure_admin():
+    # TestClient(app) không chạy lifespan nên admin mặc định không được seed vào DB test.
+    # Tạo sẵn tài khoản admin với mật khẩu mặc định để các test đăng nhập admin hoạt động.
+    from app.routers.auth import hash_password
+    db = SessionLocal()
+    try:
+        admin = db.query(User).filter(User.username == "admin").first()
+        if not admin:
+            pwd_hash, salt = hash_password("Admin@123456")
+            admin = User(
+                username="admin",
+                display_name="Quản Trị Viên",
+                password_hash=pwd_hash,
+                salt=salt,
+                is_admin=True,
+                is_active=True,
+            )
+            db.add(admin)
+        else:
+            admin.is_admin = True
+            admin.is_active = True
+        db.commit()
+    finally:
+        db.close()
+    yield
+
+
 def _register(username, display_name, password="Password123!"):
     res = client.post(
         "/api/auth/register",

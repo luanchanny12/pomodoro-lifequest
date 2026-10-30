@@ -15,6 +15,7 @@ from app.models import (
     RewardRedemption,
     TimeCapsule,
     ConstellationAchievement,
+    UserConstellationUnlock,
     DailyMatrixTask,
 )
 from app.schemas import (
@@ -1239,31 +1240,48 @@ def check_constellation_unlock(
 
     newly_unlocked_response = None
     unlocked_count = 0
+    uid = user.id if user else None
+    now = datetime.datetime.utcnow()
 
     for c in constellations:
         if completed_count >= c.required_completed_goals:
             unlocked_count += 1
-            ai_interp = c.ai_interpretation
-            narration = c.narration_script
-            if titles_str:
-                ai_interp = f"{ai_interp} Các vì tinh tú được tôi luyện qua việc chinh phục thành công: {titles_str}."
-                narration = f"{narration} Thành tích này được ghi dấu bằng việc bạn đã hoàn thành xuất sắc các mục tiêu: {titles_str}!"
 
-            newly_unlocked_response = ConstellationAchievementResponse(
-                id=c.id,
-                code=c.code,
-                title=c.title,
-                archetype=c.archetype,
-                icon=c.icon,
-                required_completed_goals=c.required_completed_goals,
-                shape_pattern=c.shape_pattern,
-                ai_interpretation=ai_interp,
-                narration_script=narration,
-                associated_goal_titles=titles_str,
-                is_unlocked=True,
-                unlocked_at=datetime.datetime.utcnow(),
-                progress_percent=100.0,
-            )
+            # Chỉ coi là "mới khai mở" nếu TỪNG người dùng này chưa có record unlock.
+            q = db.query(UserConstellationUnlock).filter(UserConstellationUnlock.constellation_id == c.id)
+            if uid is None:
+                q = q.filter(UserConstellationUnlock.user_id.is_(None))
+            else:
+                q = q.filter(UserConstellationUnlock.user_id == uid)
+
+            if q.first() is None:
+                db.add(UserConstellationUnlock(user_id=uid, constellation_id=c.id, unlocked_at=now))
+                ai_interp = c.ai_interpretation
+                narration = c.narration_script
+                if titles_str:
+                    ai_interp = f"{ai_interp} Các vì tinh tú được tôi luyện qua việc chinh phục thành công: {titles_str}."
+                    narration = f"{narration} Thành tích này được ghi dấu bằng việc bạn đã hoàn thành xuất sắc các mục tiêu: {titles_str}!"
+
+                newly_unlocked_response = ConstellationAchievementResponse(
+                    id=c.id,
+                    code=c.code,
+                    title=c.title,
+                    archetype=c.archetype,
+                    icon=c.icon,
+                    required_completed_goals=c.required_completed_goals,
+                    shape_pattern=c.shape_pattern,
+                    ai_interpretation=ai_interp,
+                    narration_script=narration,
+                    associated_goal_titles=titles_str,
+                    is_unlocked=True,
+                    unlocked_at=now,
+                    progress_percent=100.0,
+                )
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
 
     return ConstellationCheckResponse(
         newly_unlocked=newly_unlocked_response,
