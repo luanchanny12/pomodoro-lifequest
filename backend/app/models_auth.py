@@ -26,6 +26,7 @@ class CheerLog(Base):
     target_user_id = Column(Integer, index=True, nullable=False)
     emoji = Column(String, default="🔥")
     message = Column(String, nullable=True)
+    is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class VisitorLog(Base):

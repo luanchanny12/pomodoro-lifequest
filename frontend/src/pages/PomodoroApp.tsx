@@ -38,6 +38,7 @@ import {
   Brain,
   Radio,
   ChevronDown,
+  Flame,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -81,6 +82,8 @@ import { NotificationSettingsModal } from '@/components/pomodoro/NotificationSet
 import { AuthModal } from '@/components/auth/AuthModal'
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { CosmicRaceTrackModal } from '@/components/race/CosmicRaceTrackModal'
+import { CheerCelebrationModal } from '@/components/race/CheerCelebrationModal'
+import { raceService, CheerItem } from '@/services/raceService'
 import { DonateModal } from '@/components/common/DonateModal'
 import { FeedbackModal } from '@/components/common/FeedbackModal'
 import { Footer } from '@/components/common/Footer'
@@ -273,6 +276,11 @@ export default function PomodoroApp() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authService.getCurrentUser())
   const [goalToEdit, setGoalToEdit] = useState<StudyGoal | null>(null)
 
+  // Cheer Delivery & Anti-Double-Click state
+  const [unreadCheers, setUnreadCheers] = useState<CheerItem[]>([])
+  const [isCheerModalOpen, setIsCheerModalOpen] = useState<boolean>(false)
+  const [isTimerToggling, setIsTimerToggling] = useState<boolean>(false)
+
   // Data
   const [goals, setGoals] = useState<StudyGoal[]>([])
   const [selectedGoalId, setSelectedGoalId] = useState<number | null>(null)
@@ -367,6 +375,34 @@ export default function PomodoroApp() {
     return () => window.removeEventListener('pomodoro_auth_expired', handleAuthExpired)
   }, [])
 
+  // Check unread cheers from admin/friends
+  useEffect(() => {
+    if (currentUser) {
+      raceService
+        .getUnreadCheers()
+        .then((res) => {
+          if (res && res.unread_count > 0) {
+            setUnreadCheers(res.cheers)
+            setIsCheerModalOpen(true)
+          }
+        })
+        .catch(() => {})
+    } else {
+      setUnreadCheers([])
+    }
+  }, [currentUser])
+
+  const handleAcknowledgeAllCheers = async () => {
+    try {
+      await raceService.markAllCheersAsRead()
+      setUnreadCheers([])
+      setIsCheerModalOpen(false)
+      toast.success('Đã tiếp nhận toàn bộ năng lượng cổ vũ! Chúc bạn học tốt! 🔥')
+    } catch {
+      setIsCheerModalOpen(false)
+    }
+  }
+
   const handleLogout = () => {
     authService.logout()
     setCurrentUser(null)
@@ -453,7 +489,12 @@ export default function PomodoroApp() {
     }
   }
 
+  const lastTimerToggleRef = useRef<number>(0)
   const handleStartPause = () => {
+    const now = Date.now()
+    if (now - lastTimerToggleRef.current < 350) return // Chống nhấp đúp
+    lastTimerToggleRef.current = now
+
     soundManager.playClick()
     if (isRunning) {
       // Pause
@@ -811,6 +852,35 @@ export default function PomodoroApp() {
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               <span className="hidden md:inline">Khoe Bảng Vàng</span>
             </button>
+
+            {/* Cheer Messages Bell/Flame */}
+            {currentUser && (
+              <button
+                onClick={() => {
+                  if (unreadCheers.length > 0) {
+                    setIsCheerModalOpen(true)
+                  } else {
+                    raceService.getMyRecentCheers().then((logs) => {
+                      if (logs && logs.length > 0) {
+                        setUnreadCheers(logs)
+                        setIsCheerModalOpen(true)
+                      } else {
+                        toast.info(`Bạn đã nhận ${currentUser.cheer_count || 0} lượt cổ vũ! 🔥 Tiếp tục giữ vững phong độ nhé!`)
+                      }
+                    })
+                  }
+                }}
+                className="relative p-2 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/30 text-amber-300 transition active:scale-95 flex items-center justify-center min-w-[36px] min-h-[36px]"
+                title="Lời cổ vũ & Tiếp lửa từ Admin / Bạn bè"
+              >
+                <Flame className="w-4 h-4 fill-amber-400 text-amber-400" />
+                {unreadCheers.length > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white font-black text-[10px] flex items-center justify-center animate-bounce shadow">
+                    {unreadCheers.length}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Cosmic Race Track Button (Main CTA) */}
             <button
@@ -1181,37 +1251,37 @@ export default function PomodoroApp() {
             </span>
             <button
               onClick={() => toggleAmbientSound('rain')}
-              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 transition ${
+              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
                 ambientSound === 'rain'
                   ? 'bg-amber-400 text-black font-bold shadow'
                   : 'text-white/70 hover:bg-white/15'
               }`}
             >
-              <CloudRain className="w-3.5 h-3.5" /> Mưa
+              <CloudRain className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> Mưa
             </button>
             <button
               onClick={() => toggleAmbientSound('waves')}
-              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 transition ${
+              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
                 ambientSound === 'waves'
                   ? 'bg-amber-400 text-black font-bold shadow'
                   : 'text-white/70 hover:bg-white/15'
               }`}
             >
-              <Waves className="w-3.5 h-3.5" /> Sóng
+              <Waves className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> Sóng
             </button>
             <button
               onClick={() => toggleAmbientSound('ticking')}
-              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 transition ${
+              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
                 ambientSound === 'ticking'
                   ? 'bg-amber-400 text-black font-bold shadow'
                   : 'text-white/70 hover:bg-white/15'
               }`}
             >
-              <TimerIcon className="w-3.5 h-3.5" /> Tích tắc
+              <TimerIcon className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> Tích tắc
             </button>
             <button
               onClick={() => toggleAmbientSound('fire')}
-              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 transition ${
+              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
                 ambientSound === 'fire'
                   ? 'bg-amber-400 text-black font-bold shadow'
                   : 'text-white/70 hover:bg-white/15'
@@ -1221,25 +1291,25 @@ export default function PomodoroApp() {
             </button>
             <button
               onClick={() => toggleAmbientSound('binaural')}
-              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 transition ${
+              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
                 ambientSound === 'binaural'
                   ? 'bg-cyan-400 text-black font-bold shadow'
                   : 'text-white/70 hover:bg-white/15'
               }`}
               title="Sóng não Gamma 40Hz kích hoạt tập trung sâu & trí nhớ"
             >
-              <Brain className="w-3.5 h-3.5 text-cyan-300" /> Sóng 40Hz
+              <Brain className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-cyan-300" /> Sóng 40Hz
             </button>
             <button
               onClick={() => toggleAmbientSound('lofi')}
-              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 transition ${
+              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
                 ambientSound === 'lofi'
                   ? 'bg-amber-400 text-black font-bold shadow'
                   : 'text-white/70 hover:bg-white/15'
               }`}
               title="Lo-Fi Chill Cozy thư giãn với tiếng đĩa than"
             >
-              <Radio className="w-3.5 h-3.5 text-amber-300" /> Lo-Fi Chill
+              <Radio className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-amber-300" /> Lo-Fi Chill
             </button>
 
             {ambientSound !== 'none' && (
@@ -1334,9 +1404,9 @@ export default function PomodoroApp() {
                     </span>
                     <button
                       onClick={() => setIsManualModalOpen(true)}
-                      className="text-cyan-300 hover:underline flex items-center gap-1 font-medium"
+                      className="text-cyan-300 hover:underline flex items-center gap-1.5 font-medium py-1.5 px-2 rounded-lg hover:bg-white/5 active:scale-95 transition"
                     >
-                      <Plus className="w-3 h-3" /> Ghi thêm giờ offline
+                      <Plus className="w-4 h-4" /> Ghi thêm giờ offline
                     </button>
                   </div>
                 </div>
@@ -1583,9 +1653,9 @@ export default function PomodoroApp() {
                   setGoalToEdit(null)
                   setIsGoalModalOpen(true)
                 }}
-                className="text-xs bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-xl font-medium flex items-center gap-1 transition"
+                className="text-xs sm:text-sm bg-white/20 hover:bg-white/30 text-white px-3.5 py-2.5 sm:py-1.5 min-h-[42px] sm:min-h-0 rounded-xl font-bold flex items-center justify-center gap-1.5 active:scale-95 transition shadow-sm"
               >
-                <Plus className="w-3.5 h-3.5" /> Thêm mục tiêu
+                <Plus className="w-4 h-4 text-emerald-400" /> Thêm mục tiêu
               </button>
             </div>
 
@@ -1616,16 +1686,16 @@ export default function PomodoroApp() {
                       {g.notes && <p className="text-xs text-white/70 mt-1">{g.notes}</p>}
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => {
                           setSelectedGoalId(g.id)
                           setIsManualModalOpen(true)
                         }}
-                        className="p-1.5 text-white/80 hover:text-white bg-white/10 rounded-lg text-xs flex items-center gap-1"
+                        className="p-2 sm:p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center text-white/80 hover:text-white bg-white/10 active:scale-95 rounded-xl text-xs gap-1 transition"
                         title="Thêm giờ cho mục tiêu này"
                       >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-4 h-4 text-emerald-400" />
                         <span className="hidden sm:inline">Ghi giờ</span>
                       </button>
                       <button
@@ -1633,10 +1703,10 @@ export default function PomodoroApp() {
                           setGoalToEdit(g)
                           setIsGoalModalOpen(true)
                         }}
-                        className="p-1.5 text-white/60 hover:text-white rounded-lg"
+                        className="p-2 sm:p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center text-white/60 hover:text-white active:scale-95 rounded-xl transition"
                         title="Chỉnh sửa"
                       >
-                        <Edit2 className="w-3.5 h-3.5" />
+                        <Edit2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -1979,6 +2049,14 @@ export default function PomodoroApp() {
 
       {/* ── CLOUD COLD-START INDICATOR ── */}
       <CloudStatusBanner />
+
+      {/* ── CHEER CELEBRATION MODAL ── */}
+      <CheerCelebrationModal
+        isOpen={isCheerModalOpen}
+        cheers={unreadCheers}
+        onClose={() => setIsCheerModalOpen(false)}
+        onAcknowledgeAll={handleAcknowledgeAllCheers}
+      />
 
       {/* ── AI FLOATING BUDDY COMPANION ── */}
       <AIFloatingBuddy

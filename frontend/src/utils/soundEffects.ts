@@ -8,6 +8,7 @@ class SoundManager {
   private lfoOsc: OscillatorNode | null = null
   private currentAmbientType: string | null = null
   private extraOscs: OscillatorNode[] = []
+  private isUnlocked: boolean = false
 
   async ensureContext(): Promise<AudioContext> {
     if (!this.ctx) {
@@ -15,9 +16,40 @@ class SoundManager {
       this.ctx = new AudioCtx()
     }
     if (this.ctx.state === 'suspended') {
-      await this.ctx.resume()
+      try {
+        await this.ctx.resume()
+      } catch (err) {
+        // Ignored if user hasn't interacted yet
+      }
     }
     return this.ctx
+  }
+
+  // Mobile WebKit / Android Audio Unlocker
+  async unlockAudio(): Promise<boolean> {
+    if (this.isUnlocked && this.ctx && this.ctx.state === 'running') {
+      return true
+    }
+    try {
+      const ctx = await this.ensureContext()
+      if (ctx.state === 'suspended') {
+        await ctx.resume()
+      }
+      // Play 1-frame silent buffer to satisfy iOS WebKit restriction
+      const buffer = ctx.createBuffer(1, 1, 22050)
+      const source = ctx.createBufferSource()
+      source.buffer = buffer
+      source.connect(ctx.destination)
+      source.start(0)
+
+      if (ctx.state === 'running') {
+        this.isUnlocked = true
+        return true
+      }
+    } catch (e) {
+      console.warn('[SoundManager] Audio unlock attempt failed:', e)
+    }
+    return false
   }
 
   // Play gentle bell sound for session finish
@@ -621,3 +653,29 @@ class SoundManager {
 }
 
 export const soundManager = new SoundManager()
+
+/**
+ * Tự động mở khóa Web Audio API trên thiết bị di động (iOS Safari, Android Chrome, Cốc Cốc)
+ * Lắng nghe một lần cử chỉ chạm đầu tiên của người dùng để kích hoạt AudioContext sang trạng thái running.
+ */
+export function setupGlobalAudioUnlocker() {
+  if (typeof window === 'undefined') return
+
+  let unlocked = false
+  const unlockEvents = ['touchstart', 'touchend', 'pointerdown', 'mousedown', 'keydown']
+
+  const handleUnlock = async () => {
+    if (unlocked) return
+    const ok = await soundManager.unlockAudio()
+    if (ok) {
+      unlocked = true
+      unlockEvents.forEach((evt) => {
+        window.removeEventListener(evt, handleUnlock, true)
+      })
+    }
+  }
+
+  unlockEvents.forEach((evt) => {
+    window.addEventListener(evt, handleUnlock, { capture: true, passive: true })
+  })
+}

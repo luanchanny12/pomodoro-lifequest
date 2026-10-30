@@ -86,3 +86,49 @@ def test_race_track_and_cheer():
     })
     assert cheer_res.status_code == 200
     assert cheer_res.json()["success"] is True
+
+    # 3. Test unread cheers & mark all read
+    login_res = client.post("/api/auth/login", json={
+        "username": "speed_racer_test",
+        "password": "secret_password_123"
+    })
+    if login_res.status_code == 200:
+        token = login_res.json()["access_token"]
+        recent_cheers = client.get(f"/api/race/cheers/my", headers={"Authorization": f"Bearer {token}"})
+        assert recent_cheers.status_code == 200
+        assert isinstance(recent_cheers.json(), list)
+
+        unread_res = client.get("/api/race/cheers/unread", headers={"Authorization": f"Bearer {token}"})
+        assert unread_res.status_code == 200
+        assert "unread_count" in unread_res.json()
+
+        mark_res = client.post("/api/race/cheers/read-all", headers={"Authorization": f"Bearer {token}"})
+        assert mark_res.status_code == 200
+
+
+def test_matrix_task_deduplication():
+    # Test anti-double click deduplication on backend
+    import datetime
+    today = datetime.date.today().isoformat()
+    unique_title = f"Test Matrix Task Anti-Spam {datetime.datetime.utcnow().timestamp()}"
+
+    res1 = client.post("/api/focus/matrix", json={
+        "title": unique_title,
+        "quadrant": 2,
+        "date": today
+    })
+    assert res1.status_code == 201
+    task1 = res1.json()
+
+    # Immediate second click with same title within 3 seconds
+    res2 = client.post("/api/focus/matrix", json={
+        "title": unique_title,
+        "quadrant": 2,
+        "date": today
+    })
+    assert res2.status_code == 201
+    task2 = res2.json()
+
+    # Deduplication should return the exact same task ID rather than duplicating!
+    assert task1["id"] == task2["id"]
+    assert task1["title"] == task2["title"]

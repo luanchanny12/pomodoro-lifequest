@@ -257,7 +257,52 @@ def get_my_recent_cheers(
         db.query(CheerLog)
         .filter(CheerLog.target_user_id == user.id)
         .order_by(CheerLog.created_at.desc())
-        .limit(10)
+        .limit(20)
         .all()
     )
     return logs
+
+
+@router.get("/cheers/unread")
+def get_unread_cheers(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Lấy danh sách các lời cổ vũ mới nhất chưa đọc để hiển thị thông báo popup cho user."""
+    unread_logs = (
+        db.query(CheerLog)
+        .filter(CheerLog.target_user_id == user.id, (CheerLog.is_read == False) | (CheerLog.is_read == None))
+        .order_by(CheerLog.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return {
+        "unread_count": len(unread_logs),
+        "cheers": unread_logs,
+    }
+
+
+@router.post("/cheers/{cheer_id}/read")
+def mark_cheer_read(
+    cheer_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    cheer = db.query(CheerLog).filter(CheerLog.id == cheer_id, CheerLog.target_user_id == user.id).first()
+    if cheer:
+        cheer.is_read = True
+        db.commit()
+    return {"success": True}
+
+
+@router.post("/cheers/read-all")
+def mark_all_cheers_read(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    db.query(CheerLog).filter(
+        CheerLog.target_user_id == user.id,
+        (CheerLog.is_read == False) | (CheerLog.is_read == None)
+    ).update({"is_read": True}, synchronize_session=False)
+    db.commit()
+    return {"success": True, "message": "Đã đánh dấu tất cả lời cổ vũ là đã đọc"}

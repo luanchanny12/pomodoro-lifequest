@@ -43,6 +43,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose, c
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (submitting) return
     if (!content.trim()) {
       toast.error('Vui lòng nhập nội dung nhận xét hoặc góp ý của bạn!')
       return

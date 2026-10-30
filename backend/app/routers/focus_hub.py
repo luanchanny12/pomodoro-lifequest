@@ -1019,9 +1019,44 @@ def create_matrix_task(
 ):
     task_date = data.date or datetime.date.today()
     quadrant = max(1, min(4, data.quadrant))
+    clean_title = data.title.strip()
+
+    # Chống double click / spam request trùng lặp trong vòng 3 giây
+    recent_duplicate = (
+        db.query(DailyMatrixTask)
+        .filter(
+            DailyMatrixTask.user_id == (user.id if user else None),
+            DailyMatrixTask.title == clean_title,
+            DailyMatrixTask.date == task_date,
+            DailyMatrixTask.quadrant == quadrant,
+        )
+        .order_by(DailyMatrixTask.created_at.desc())
+        .first()
+    )
+    if recent_duplicate and recent_duplicate.created_at:
+        diff_sec = (datetime.datetime.utcnow() - recent_duplicate.created_at).total_seconds()
+        if diff_sec < 3.0:
+            goal = db.query(StudyGoal).filter(StudyGoal.id == recent_duplicate.goal_id).first() if recent_duplicate.goal_id else None
+            return DailyMatrixTaskResponse(
+                id=recent_duplicate.id,
+                title=recent_duplicate.title,
+                description=recent_duplicate.description,
+                date=recent_duplicate.date,
+                quadrant=recent_duplicate.quadrant,
+                goal_id=recent_duplicate.goal_id,
+                goal_title=goal.title if goal else None,
+                goal_color=goal.color if goal else None,
+                is_completed=recent_duplicate.is_completed,
+                completed_at=recent_duplicate.completed_at,
+                reflection_note=recent_duplicate.reflection_note,
+                order_index=recent_duplicate.order_index,
+                created_at=recent_duplicate.created_at,
+                updated_at=recent_duplicate.updated_at,
+            )
+
     task = DailyMatrixTask(
         user_id=user.id if user else None,
-        title=data.title,
+        title=clean_title,
         description=data.description,
         date=task_date,
         quadrant=quadrant,

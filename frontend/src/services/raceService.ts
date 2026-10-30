@@ -26,6 +26,22 @@ export interface RaceTrackResponse {
   my_rank?: number | null
 }
 
+export interface CheerItem {
+  id: number
+  sender_id?: number | null
+  sender_name: string
+  target_user_id: number
+  emoji: string
+  message?: string | null
+  is_read?: boolean
+  created_at: string
+}
+
+export interface UnreadCheersResponse {
+  unread_count: number
+  cheers: CheerItem[]
+}
+
 export const raceService = {
   getTrackStatus: async (): Promise<RaceTrackResponse> => {
     const res = await api.get<RaceTrackResponse>('/race/track')
@@ -45,8 +61,23 @@ export const raceService = {
     return res.data
   },
 
-  getMyRecentCheers: async (): Promise<any[]> => {
-    const res = await api.get('/race/cheers/my')
+  getMyRecentCheers: async (): Promise<CheerItem[]> => {
+    const res = await api.get<CheerItem[]>('/race/cheers/my')
+    return res.data
+  },
+
+  getUnreadCheers: async (): Promise<UnreadCheersResponse> => {
+    const res = await api.get<UnreadCheersResponse>('/race/cheers/unread')
+    return res.data
+  },
+
+  markCheerAsRead: async (cheerId: number): Promise<any> => {
+    const res = await api.post(`/race/cheers/${cheerId}/read`)
+    return res.data
+  },
+
+  markAllCheersAsRead: async (): Promise<any> => {
+    const res = await api.post('/race/cheers/read-all')
     return res.data
   },
 }

@@ -95,6 +95,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (loading) return
     if (!validate()) {
       return
     }

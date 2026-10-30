@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   Calendar,
   CheckCircle2,
@@ -58,6 +58,12 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
   const [editingReflectionTaskId, setEditingReflectionTaskId] = useState<number | null>(null)
   const [reflectionInput, setReflectionInput] = useState<string>('')
 
+  // Anti-Double Click & Action State
+  const [isCreatingTask, setIsCreatingTask] = useState<boolean>(false)
+  const lastCreateRef = useRef<number>(0)
+  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
+  const [isRollingOver, setIsRollingOver] = useState<boolean>(false)
+
   // Load Data
   const loadData = async (date: string) => {
     setIsLoading(true)
@@ -82,6 +88,8 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
 
   // Handle Toggle
   const handleToggle = async (taskId: number) => {
+    if (actionLoadingId === taskId) return
+    setActionLoadingId(taskId)
     try {
       const updated = await focusService.toggleMatrixTask(taskId)
       setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)))
@@ -90,16 +98,25 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
       }
     } catch (err) {
       toast.error('Lỗi khi cập nhật trạng thái')
+    } finally {
+      setActionLoadingId(null)
     }
   }
 
-  // Handle Quick Add
+  // Handle Quick Add with Anti-Double Click & Debounce
   const handleCreateTask = async (quadrant: number) => {
+    const now = Date.now()
+    if (isCreatingTask || now - lastCreateRef.current < 600) {
+      return
+    }
+
     if (!newTitle.trim()) {
       toast.error('Vui lòng nhập tên công việc')
       return
     }
 
+    lastCreateRef.current = now
+    setIsCreatingTask(true)
     try {
       const created = await focusService.createMatrixTask({
         title: newTitle.trim(),
@@ -115,17 +132,23 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
       toast.success('Đã thêm công việc vào Ô ' + quadrant)
     } catch (err) {
       toast.error('Không thể thêm công việc')
+    } finally {
+      setIsCreatingTask(false)
     }
   }
 
   // Handle Delete
   const handleDeleteTask = async (taskId: number) => {
+    if (actionLoadingId === taskId) return
+    setActionLoadingId(taskId)
     try {
       await focusService.deleteMatrixTask(taskId)
       setTasks((prev) => prev.filter((t) => t.id !== taskId))
       toast.success('Đã xóa công việc')
     } catch (err) {
       toast.error('Không thể xóa công việc')
+    } finally {
+      setActionLoadingId(null)
     }
   }
 
@@ -155,6 +178,8 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
 
   // Handle Rollover (Sao chép việc dở hôm nay sang ngày mai)
   const handleRollover = async () => {
+    if (isRollingOver) return
+    setIsRollingOver(true)
     try {
       const res = await focusService.rolloverMatrixTasks(todayStr, tomorrowStr)
       toast.success(res.message)
@@ -163,6 +188,8 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
       }
     } catch (err) {
       toast.error('Lỗi khi chuyển việc dở sang ngày mai')
+    } finally {
+      setIsRollingOver(false)
     }
   }
 
@@ -286,6 +313,8 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
           tasks={q1Tasks}
           goals={goals}
           isAdding={addingQuadrant === 1}
+          isSubmitting={isCreatingTask}
+          actionLoadingId={actionLoadingId}
           newTitle={newTitle}
           newGoalId={newGoalId}
           onStartAdd={() => {
@@ -322,6 +351,8 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
           tasks={q2Tasks}
           goals={goals}
           isAdding={addingQuadrant === 2}
+          isSubmitting={isCreatingTask}
+          actionLoadingId={actionLoadingId}
           newTitle={newTitle}
           newGoalId={newGoalId}
           onStartAdd={() => {
@@ -357,6 +388,8 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
           tasks={q3Tasks}
           goals={goals}
           isAdding={addingQuadrant === 3}
+          isSubmitting={isCreatingTask}
+          actionLoadingId={actionLoadingId}
           newTitle={newTitle}
           newGoalId={newGoalId}
           onStartAdd={() => {
@@ -392,6 +425,8 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
           tasks={q4Tasks}
           goals={goals}
           isAdding={addingQuadrant === 4}
+          isSubmitting={isCreatingTask}
+          actionLoadingId={actionLoadingId}
           newTitle={newTitle}
           newGoalId={newGoalId}
           onStartAdd={() => {
@@ -438,6 +473,8 @@ interface QuadrantCardProps {
   tasks: DailyMatrixTask[]
   goals: StudyGoal[]
   isAdding: boolean
+  isSubmitting?: boolean
+  actionLoadingId?: number | null
   newTitle: string
   newGoalId: string
   onStartAdd: () => void
@@ -466,6 +503,8 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
   tasks,
   goals,
   isAdding,
+  isSubmitting = false,
+  actionLoadingId = null,
   newTitle,
   newGoalId,
   onStartAdd,
@@ -565,42 +604,44 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
             <p className="text-[11px] text-white/60 mt-0.5">{subtitle}</p>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="text-xs px-2 py-0.5 rounded-lg bg-white/10 text-white/80 font-mono font-bold">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-xs px-2.5 py-1 rounded-lg bg-white/10 text-white/80 font-mono font-bold">
               {completedCount}/{tasks.length}
             </span>
             <button
               onClick={onStartAdd}
-              className={`p-1.5 rounded-xl bg-white/10 ${colorStyles.addBtn} transition`}
+              className={`p-2.5 sm:p-1.5 min-w-[38px] min-h-[38px] flex items-center justify-center rounded-xl bg-white/10 ${colorStyles.addBtn} active:scale-95 transition shadow-sm`}
               title="Thêm công việc vào ô này"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-5 h-5 sm:w-4 sm:h-4" />
             </button>
           </div>
         </div>
 
         {/* Inline Add Task Form */}
         {isAdding && (
-          <div className="mt-3 p-3 rounded-2xl bg-white/5 border border-white/15 space-y-2 animate-in fade-in duration-150">
+          <div className="mt-3 p-3 rounded-2xl bg-white/5 border border-white/15 space-y-2.5 animate-in fade-in duration-150">
             <input
               type="text"
               autoFocus
+              disabled={isSubmitting}
               value={newTitle}
               onChange={(e) => onTitleChange(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') onSubmitAdd()
-                if (e.key === 'Escape') onCancelAdd()
+                if (e.key === 'Enter' && !isSubmitting) onSubmitAdd()
+                if (e.key === 'Escape' && !isSubmitting) onCancelAdd()
               }}
               placeholder={`Nhập tên việc Ô ${quadrantNumber}... (Enter để lưu)`}
-              className="w-full px-3 py-1.5 bg-black/50 border border-white/20 rounded-xl text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-white/60"
+              className="w-full px-3.5 py-2.5 sm:py-2 bg-black/50 border border-white/20 rounded-xl text-xs sm:text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/60 disabled:opacity-50"
             />
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5">
               {/* Optional Goal Link Dropdown */}
               <select
                 value={newGoalId}
+                disabled={isSubmitting}
                 onChange={(e) => onGoalChange(e.target.value)}
-                className="w-full sm:w-auto px-2 py-1 bg-black/50 border border-white/20 rounded-xl text-[11px] text-white/80 focus:outline-none"
+                className="w-full sm:w-auto px-3 py-2 sm:py-1 bg-black/50 border border-white/20 rounded-xl text-xs sm:text-[11px] text-white/80 focus:outline-none min-h-[36px] sm:min-h-0"
               >
                 <option value="">🎯 Không gắn mục tiêu lớn (việc đời sống/khác)</option>
                 {goals.map((g) => (
@@ -610,18 +651,27 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
                 ))}
               </select>
 
-              <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                 <button
                   onClick={onCancelAdd}
-                  className="px-2.5 py-1 text-[11px] text-white/60 hover:text-white rounded-lg transition"
+                  disabled={isSubmitting}
+                  className="px-3.5 py-2 sm:py-1 text-xs sm:text-[11px] text-white/60 hover:text-white rounded-lg transition min-h-[38px] sm:min-h-0 disabled:opacity-40"
                 >
                   Hủy
                 </button>
                 <button
                   onClick={onSubmitAdd}
-                  className="px-3 py-1 bg-white text-black font-bold text-xs rounded-xl hover:bg-white/90 transition shadow"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 sm:py-1 bg-white text-black font-bold text-xs rounded-xl hover:bg-white/90 active:scale-95 transition shadow flex items-center justify-center gap-1.5 min-h-[38px] sm:min-h-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Thêm việc
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      <span>Đang thêm...</span>
+                    </>
+                  ) : (
+                    <span>Thêm việc</span>
+                  )}
                 </button>
               </div>
             </div>
@@ -669,7 +719,8 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
                       )}
                       <button
                         onClick={() => onToggle(task.id)}
-                        className="mt-0.5 text-white/50 hover:text-emerald-400 transition flex-shrink-0"
+                        disabled={actionLoadingId === task.id}
+                        className="p-1 sm:p-0.5 mt-0.5 text-white/50 hover:text-emerald-400 active:scale-90 transition flex-shrink-0 disabled:opacity-50"
                         title={task.is_completed ? 'Đánh dấu chưa xong' : 'Tích hoàn thành'}
                       >
                         {task.is_completed ? (
@@ -764,15 +815,15 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
                     </div>
 
                     {/* Action buttons (Reflection, Move, Delete) */}
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 sm:gap-1 flex-shrink-0">
                       {/* Reflection button if not already has one */}
                       {!task.reflection_note && !isEditingRef && (
                         <button
                           onClick={() => onStartEditReflection(task)}
-                          className="p-1 text-white/40 hover:text-amber-300 hover:bg-white/10 rounded-lg transition"
+                          className="p-2 sm:p-1 min-w-[34px] min-h-[34px] flex items-center justify-center text-white/40 hover:text-amber-300 hover:bg-white/10 rounded-lg transition active:scale-90"
                           title="Thêm ghi chú tự đánh giá cá nhân (lý do chưa xong, thiếu giờ...)"
                         >
-                          <Edit3 className="w-3.5 h-3.5" />
+                          <Edit3 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                         </button>
                       )}
 
@@ -780,7 +831,7 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
                       <select
                         value={task.quadrant}
                         onChange={(e) => onMove(task.id, Number(e.target.value))}
-                        className="bg-black/50 border border-white/15 rounded-lg px-1.5 py-0.5 text-[10px] text-white/70 focus:outline-none"
+                        className="bg-black/50 border border-white/15 rounded-lg px-2 py-1 min-h-[34px] sm:min-h-0 text-xs sm:text-[10px] text-white/70 focus:outline-none"
                         title="Chuyển sang ô khác"
                       >
                         <option value={1}>Ô 1 (Làm ngay)</option>
@@ -792,10 +843,11 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
                       {/* Delete */}
                       <button
                         onClick={() => onDelete(task.id)}
-                        className="p-1 text-white/30 hover:text-rose-400 hover:bg-white/10 rounded-lg transition"
+                        disabled={actionLoadingId === task.id}
+                        className="p-2 sm:p-1 min-w-[34px] min-h-[34px] flex items-center justify-center text-white/30 hover:text-rose-400 hover:bg-white/10 rounded-lg transition active:scale-90 disabled:opacity-40"
                         title="Xóa việc này"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -810,9 +862,9 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
       {!isAdding && tasks.length > 0 && (
         <button
           onClick={onStartAdd}
-          className="mt-3 w-full py-1.5 rounded-xl border border-dashed border-white/20 hover:border-white/40 text-white/60 hover:text-white text-xs font-medium transition flex items-center justify-center gap-1"
+          className="mt-3 w-full py-2.5 sm:py-2 min-h-[44px] rounded-xl border border-dashed border-white/20 hover:border-white/40 active:bg-white/10 text-white/70 hover:text-white text-xs sm:text-[11px] font-bold transition flex items-center justify-center gap-2 active:scale-98 shadow-sm"
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus className="w-4 h-4 text-emerald-400" />
           <span>Thêm việc vào Ô {quadrantNumber}</span>
         </button>
       )}

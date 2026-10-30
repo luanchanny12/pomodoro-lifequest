@@ -33,6 +33,7 @@ export const ManualLogModal: React.FC<ManualLogModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     if (minutes <= 0) {
       toast.error('Vui lòng chọn hoặc nhập thời lượng học hợp lệ')
       return

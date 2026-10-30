@@ -48,6 +48,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE daily_matrix_tasks ADD COLUMN user_id INTEGER",
             "ALTER TABLE notification_settings ADD COLUMN user_id INTEGER",
             "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE cheer_logs ADD COLUMN is_read BOOLEAN DEFAULT FALSE",
         ]:
             try:
                 db.execute(text(stmt))
