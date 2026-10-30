@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   Play,
   Pause,
@@ -240,6 +240,10 @@ export default function PomodoroApp() {
   const [mode, setMode] = useState<TimerMode>('pomodoro')
   const [timeLeft, setTimeLeft] = useState<number>(settings.focusMinutes * 60)
   const [isRunning, setIsRunning] = useState<boolean>(false)
+  const isRunningRef = useRef<boolean>(isRunning)
+  useEffect(() => {
+    isRunningRef.current = isRunning
+  }, [isRunning])
   const [sessionCount, setSessionCount] = useState<number>(1)
   const [activeTab, setActiveTab] = useState<'goals' | 'matrix' | 'galaxy' | 'timewarp' | 'logs' | 'stats'>('goals')
 
@@ -527,13 +531,53 @@ export default function PomodoroApp() {
     setTimeLeft(minutes * 60)
   }
 
+  // Stable memoized callbacks to prevent re-rendering memoized children
+  const handleOpenDonate = useCallback(() => setIsDonateModalOpen(true), [])
+  const handleOpenFeedback = useCallback(() => setIsFeedbackModalOpen(true), [])
+  const handleOpenRace = useCallback(() => setIsRaceModalOpen(true), [])
+
+  const handleStartMatrixPomodoro = useCallback((goalId?: number, taskTitle?: string) => {
+    if (goalId) {
+      setSelectedGoalId(goalId)
+      const g = goals.find((item) => item.id === goalId)
+      if (g) setSessionNote(taskTitle || g.title)
+    } else if (taskTitle) {
+      setSessionNote(taskTitle)
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    if (!isRunningRef.current) {
+      handleStartPause()
+    }
+    toast.success(`Đang cày Pomodoro: "${taskTitle || 'Mục tiêu'}" 🚀`)
+  }, [goals])
+
+  const handleAIBuddyAction = useCallback((actionType: string, target?: string, goalId?: number) => {
+    if (actionType === 'start_pomodoro') {
+      if (goalId) {
+        setSelectedGoalId(goalId)
+        const g = goals.find((item) => item.id === goalId)
+        if (g) setSessionNote(g.title)
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      if (!isRunningRef.current) {
+        handleStartPause()
+      }
+    } else if (actionType === 'open_matrix' || actionType === 'plan_tomorrow') {
+      setActiveTab('matrix')
+      window.scrollTo({ top: 400, behavior: 'smooth' })
+    } else if (actionType === 'navigate_tab' && target) {
+      setActiveTab(target as any)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [goals])
+
   // Timer tick
   useEffect(() => {
     if (isRunning) {
       timerRef.current = window.setInterval(() => {
         if (!endTimeRef.current) return
         const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000))
-        setTimeLeft(remaining)
+        setTimeLeft((prev) => (prev !== remaining ? remaining : prev))
 
         if (remaining <= 0) {
           if (timerRef.current) clearInterval(timerRef.current)
@@ -541,7 +585,7 @@ export default function PomodoroApp() {
           endTimeRef.current = null
           onTimerComplete(true)
         }
-      }, 250)
+      }, 500)
     } else {
       if (timerRef.current) clearInterval(timerRef.current)
     }
@@ -1573,20 +1617,7 @@ export default function PomodoroApp() {
         {activeTab === 'matrix' && (
           <div className="mt-6 space-y-4 animate-in fade-in duration-200">
             <EisenhowerMatrixView
-              onStartPomodoroWithGoal={(goalId, taskTitle) => {
-                if (goalId) {
-                  setSelectedGoalId(goalId)
-                  const g = goals.find((item) => item.id === goalId)
-                  if (g) setSessionNote(taskTitle || g.title)
-                } else if (taskTitle) {
-                  setSessionNote(taskTitle)
-                }
-                window.scrollTo({ top: 0, behavior: 'smooth' })
-                if (!isRunning) {
-                  handleStartPause()
-                }
-                toast.success(`Đang cày Pomodoro: "${taskTitle || 'Mục tiêu'}" 🚀`)
-              }}
+              onStartPomodoroWithGoal={handleStartMatrixPomodoro}
             />
           </div>
         )}
@@ -1904,9 +1935,9 @@ export default function PomodoroApp() {
 
       {/* ── FOOTER (DONATE & FEEDBACK & BRAND) ── */}
       <Footer
-        onOpenDonate={() => setIsDonateModalOpen(true)}
-        onOpenFeedback={() => setIsFeedbackModalOpen(true)}
-        onOpenRace={() => setIsRaceModalOpen(true)}
+        onOpenDonate={handleOpenDonate}
+        onOpenFeedback={handleOpenFeedback}
+        onOpenRace={handleOpenRace}
         isAdmin={currentUser?.is_admin}
       />
 
@@ -2075,22 +2106,7 @@ export default function PomodoroApp() {
       {/* ── AI FLOATING BUDDY COMPANION ── */}
       <AIFloatingBuddy
         isTimerRunning={isRunning}
-        onAction={(actionType, target, goalId) => {
-          if (actionType === 'start_pomodoro') {
-            if (goalId) {
-              setSelectedGoalId(goalId)
-              const g = goals.find((item) => item.id === goalId)
-              if (g) setSessionNote(g.title)
-            }
-            window.scrollTo({ top: 0, behavior: 'smooth' })
-            if (!isRunning) {
-              handleStartPause()
-            }
-          } else if (actionType === 'open_matrix' || actionType === 'plan_tomorrow') {
-            setActiveTab('matrix')
-            window.scrollTo({ top: 400, behavior: 'smooth' })
-          }
-        }}
+        onAction={handleAIBuddyAction}
       />
     </div>
   )

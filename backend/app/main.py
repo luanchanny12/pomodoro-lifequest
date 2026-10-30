@@ -8,6 +8,7 @@ load_dotenv(os.path.join(PROJECT_ROOT, "backend", ".env"))
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from app.database import engine, Base
 from app.routers import (
     auth,
@@ -54,6 +55,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE reward_items ADD COLUMN user_id INTEGER",
             "ALTER TABLE reward_redemptions ADD COLUMN user_id INTEGER",
             "ALTER TABLE time_capsules ADD COLUMN user_id INTEGER",
+            "CREATE INDEX IF NOT EXISTS ix_study_session_logs_session_date ON study_session_logs (session_date)",
+            "CREATE INDEX IF NOT EXISTS ix_study_session_logs_user_id ON study_session_logs (user_id)",
+            "CREATE INDEX IF NOT EXISTS ix_daily_matrix_tasks_user_date ON daily_matrix_tasks (user_id, date)",
         ]:
             try:
                 db.execute(text(stmt))
@@ -174,6 +178,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Chỉ mount đúng 7 router lõi thực tế đang hoạt động
 app.include_router(auth.router)

@@ -37,7 +37,7 @@ interface EisenhowerMatrixViewProps {
   onStartPomodoroWithGoal?: (goalId?: number, taskTitle?: string) => void
 }
 
-export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
+const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
   onStartPomodoroWithGoal,
 }) => {
   const todayStr = format(new Date(), 'yyyy-MM-dd')
@@ -463,6 +463,8 @@ export const EisenhowerMatrixView: React.FC<EisenhowerMatrixViewProps> = ({
   )
 }
 
+export const EisenhowerMatrixView = React.memo(EisenhowerMatrixViewComponent)
+
 // ── REUSABLE QUADRANT CARD COMPONENT ──
 interface QuadrantCardProps {
   quadrantNumber: number
@@ -494,7 +496,7 @@ interface QuadrantCardProps {
   onStartPomodoro?: (goalId?: number, taskTitle?: string) => void
 }
 
-const QuadrantCard: React.FC<QuadrantCardProps> = ({
+const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
   quadrantNumber,
   title,
   subtitle,
@@ -871,3 +873,5 @@ const QuadrantCard: React.FC<QuadrantCardProps> = ({
     </div>
   )
 }
+
+const QuadrantCard = React.memo(QuadrantCardComponent)

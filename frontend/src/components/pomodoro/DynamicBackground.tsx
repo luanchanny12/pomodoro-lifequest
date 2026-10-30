@@ -58,7 +58,7 @@ interface DynamicBackgroundProps {
   fallbackColor?: string
 }
 
-export const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ config }) => {
+const DynamicBackgroundComponent: React.FC<DynamicBackgroundProps> = ({ config }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const animFrameRef = useRef<number | null>(null)
 
@@ -73,6 +73,7 @@ export const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ config }) 
 
     let width = (canvas.width = window.innerWidth)
     let height = (canvas.height = window.innerHeight)
+    let activeLoop: (() => void) | null = null
 
     const handleResize = () => {
       if (!canvas) return
@@ -80,6 +81,19 @@ export const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ config }) 
       height = canvas.height = window.innerHeight
     }
     window.addEventListener('resize', handleResize)
+
+    // Tự động tạm dừng animation khi người dùng ẩn tab / thu nhỏ trình duyệt để tiết kiệm 100% CPU/GPU
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animFrameRef.current) {
+          cancelAnimationFrame(animFrameRef.current)
+          animFrameRef.current = null
+        }
+      } else if (activeLoop && !animFrameRef.current) {
+        animFrameRef.current = requestAnimationFrame(activeLoop)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     // ── 1. RAINDROPS ON GLASS ──
     if (config.canvasEffect === 'rain') {
@@ -96,6 +110,7 @@ export const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ config }) 
       }
 
       const renderRain = () => {
+        if (document.hidden) return
         // Clear with transparent so the beautiful background image shows through clearly!
         ctx.clearRect(0, 0, width, height)
 
@@ -119,6 +134,7 @@ export const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ config }) 
         }
         animFrameRef.current = requestAnimationFrame(renderRain)
       }
+      activeLoop = renderRain
       renderRain()
     }
 
@@ -138,6 +154,7 @@ export const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ config }) 
       }
 
       const renderEmbers = () => {
+        if (document.hidden) return
         ctx.clearRect(0, 0, width, height)
 
         for (let i = 0; i < emberCount; i++) {
@@ -158,6 +175,7 @@ export const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ config }) 
         }
         animFrameRef.current = requestAnimationFrame(renderEmbers)
       }
+      activeLoop = renderEmbers
       renderEmbers()
     }
 
@@ -186,6 +204,7 @@ export const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ config }) 
       let frame = 0
 
       const renderStars = () => {
+        if (document.hidden) return
         frame++
         ctx.clearRect(0, 0, width, height)
 
@@ -224,11 +243,13 @@ export const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ config }) 
 
         animFrameRef.current = requestAnimationFrame(renderStars)
       }
+      activeLoop = renderStars
       renderStars()
     }
 
     return () => {
       window.removeEventListener('resize', handleResize)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     }
   }, [config.canvasEffect])
@@ -259,3 +280,5 @@ export const DynamicBackground: React.FC<DynamicBackgroundProps> = ({ config }) 
     </div>
   )
 }
+
+export const DynamicBackground = React.memo(DynamicBackgroundComponent)

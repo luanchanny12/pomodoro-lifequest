@@ -34,9 +34,6 @@ export default defineConfig({
           motion: ['framer-motion'],
           charts: ['recharts'],
           ui: ['lucide-react', 'sonner', 'date-fns'],
-          // Split Three.js ecosystem into its own cacheable chunk
-          three: ['three'],
-          'three-fiber': ['@react-three/fiber', '@react-three/drei', '@react-three/postprocessing'],
         },
       },
     },

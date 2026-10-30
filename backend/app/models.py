@@ -348,7 +348,7 @@ class StudySessionLog(Base):
     goal_id = Column(Integer, ForeignKey("study_goals.id"), nullable=True)
     duration_minutes = Column(Integer, default=25)
     duration_hours = Column(Float, default=0.42)
-    session_date = Column(Date, nullable=False, default=date.today)
+    session_date = Column(Date, nullable=False, default=date.today, index=True)
     topic_note = Column(Text, nullable=True)
     source = Column(String, default="pomodoro")  # 'pomodoro' or 'manual'
     created_at = Column(DateTime, default=datetime.utcnow)

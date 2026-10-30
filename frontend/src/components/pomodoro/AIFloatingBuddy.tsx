@@ -8,7 +8,7 @@ interface AIFloatingBuddyProps {
   isTimerRunning?: boolean
 }
 
-export const AIFloatingBuddy: React.FC<AIFloatingBuddyProps> = ({
+const AIFloatingBuddyComponent: React.FC<AIFloatingBuddyProps> = ({
   onAction,
   isTimerRunning = false,
 }) => {
@@ -167,3 +167,5 @@ export const AIFloatingBuddy: React.FC<AIFloatingBuddyProps> = ({
     </div>
   )
 }
+
+export const AIFloatingBuddy = React.memo(AIFloatingBuddyComponent)

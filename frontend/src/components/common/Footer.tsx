@@ -17,7 +17,7 @@ interface FooterProps {
   isAdmin?: boolean
 }
 
-export const Footer: React.FC<FooterProps> = ({
+const FooterComponent: React.FC<FooterProps> = ({
   onOpenDonate,
   onOpenFeedback,
   onOpenRace,
@@ -139,3 +139,5 @@ export const Footer: React.FC<FooterProps> = ({
     </footer>
   )
 }
+
+export const Footer = React.memo(FooterComponent)

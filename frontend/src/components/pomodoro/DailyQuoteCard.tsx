@@ -7,7 +7,7 @@ import {
   getRandomQuote,
 } from '@/data/motivationalQuotes'
 
-export const DailyQuoteCard: React.FC = () => {
+const DailyQuoteCardComponent: React.FC = () => {
   const [quote, setQuote] = useState<MotivationalQuote>(getDailyQuote)
   const [isCopied, setIsCopied] = useState<boolean>(false)
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false)
@@ -86,3 +86,5 @@ export const DailyQuoteCard: React.FC = () => {
     </div>
   )
 }
+
+export const DailyQuoteCard = React.memo(DailyQuoteCardComponent)

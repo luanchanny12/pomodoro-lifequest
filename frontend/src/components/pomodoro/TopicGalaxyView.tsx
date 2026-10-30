@@ -44,7 +44,7 @@ interface StarParticle {
   color: string
 }
 
-export const TopicGalaxyView: React.FC = () => {
+export const TopicGalaxyViewComponent: React.FC = () => {
   const [galaxy, setGalaxy] = useState<TopicGalaxy | null>(null)
   const [constellations, setConstellations] = useState<ConstellationAchievement[]>([])
   const [loading, setLoading] = useState(true)
@@ -154,6 +154,7 @@ export const TopicGalaxyView: React.FC = () => {
     let planetCoords: { x: number; y: number; r: number; planet: TopicPlanet; index: number }[] = []
 
     const render = (now: number) => {
+      if (document.hidden) return
       const dt = (now - lastTimestamp) / 1000
       lastTimestamp = now
 
@@ -164,7 +165,7 @@ export const TopicGalaxyView: React.FC = () => {
 
       // Handle Resize / High DPI
       const rect = canvas.getBoundingClientRect()
-      const dpr = window.devicePixelRatio || 1
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
       const width = rect.width
       const height = rect.height
 
@@ -537,9 +538,23 @@ export const TopicGalaxyView: React.FC = () => {
       animFrameRef.current = requestAnimationFrame(render)
     }
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animFrameRef.current) {
+          cancelAnimationFrame(animFrameRef.current)
+          animFrameRef.current = null
+        }
+      } else if (!animFrameRef.current && viewMode === 'canvas') {
+        lastTimestamp = performance.now()
+        animFrameRef.current = requestAnimationFrame(render)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     animFrameRef.current = requestAnimationFrame(render)
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     }
   }, [viewMode, isPaused, speedMultiplier, planets, galaxy, hoveredPlanetIndex, isSunHovered, backgroundStars, sunStats])
@@ -1109,4 +1124,7 @@ export const TopicGalaxyView: React.FC = () => {
       />
     </div>
   )
+
 }
+
+export const TopicGalaxyView = React.memo(TopicGalaxyViewComponent)
