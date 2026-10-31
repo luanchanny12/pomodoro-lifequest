@@ -1064,8 +1064,9 @@ export const TopicGalaxyViewComponent: React.FC<TopicGalaxyViewProps> = ({ onBac
               <div className="flex flex-col gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    setBuildingGoal({
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const goalToBuild = {
                       id: selectedPlanet.goal_id,
                       title: selectedPlanet.real_title,
                       current_hours: selectedPlanet.current_hours,
@@ -1073,8 +1074,12 @@ export const TopicGalaxyViewComponent: React.FC<TopicGalaxyViewProps> = ({ onBac
                       planet_type: selectedPlanet.planet_type || 'earth',
                       planet_data: selectedPlanet.planet_data || '[]',
                       is_completed: selectedPlanet.is_completed,
-                    })
+                    }
                     setSelectedPlanet(null)
+                    // Khoảng đệm 50ms để browser xả sạch hàng đợi touch event trên mobile, chống ghost-click
+                    setTimeout(() => {
+                      setBuildingGoal(goalToBuild)
+                    }, 50)
                   }}
                   className="w-full py-3 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 hover:opacity-95 text-black font-black text-xs sm:text-sm rounded-xl transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 active:scale-95"
                 >

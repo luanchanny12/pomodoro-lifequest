@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   X,
   Sparkles,
@@ -198,6 +198,13 @@ export const PlanetBuilderModal: React.FC<PlanetBuilderModalProps> = ({
   const [selectedTool, setSelectedTool] = useState<string | 'remover'>('seedling')
   const [plots, setPlots] = useState<PlanetPlot[]>([])
   const [isSaving, setIsSaving] = useState(false)
+  const mountTimeRef = useRef<number>(0)
+
+  useEffect(() => {
+    if (isOpen) {
+      mountTimeRef.current = Date.now()
+    }
+  }, [isOpen])
 
   // Initialize plots from goal.planet_data
   useEffect(() => {
@@ -308,9 +315,16 @@ export const PlanetBuilderModal: React.FC<PlanetBuilderModalProps> = ({
     toast.info('Đã dọn sạch hành tinh')
   }
 
+  // Chống hiện tượng ghost-click / tap-through trên điện thoại khi mở modal
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target !== e.currentTarget) return
+    if (Date.now() - mountTimeRef.current < 350) return
+    onClose()
+  }
+
   return (
     <div
-      onClick={onClose}
+      onClick={handleBackdropClick}
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
     >
       <div
