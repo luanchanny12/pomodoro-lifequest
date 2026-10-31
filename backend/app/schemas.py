@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, confloat
+from pydantic import BaseModel, Field, confloat, field_validator
 from typing import Optional, List, Dict, Any
 import datetime
 
@@ -957,20 +957,32 @@ class DailyMatrixTaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
     date: Optional[datetime.date] = None
-    quadrant: int = Field(2, ge=1, le=4)  # 1: Q1, 2: Q2, 3: Q3, 4: Q4
+    quadrant: int = 2  # 1: Q1, 2: Q2, 3: Q3, 4: Q4 (clamp về [1,4] thay vì reject)
     goal_id: Optional[int] = None
     reflection_note: Optional[str] = None
+
+    @field_validator("quadrant", mode="after")
+    @classmethod
+    def _clamp_quadrant(cls, v: int) -> int:
+        return max(1, min(4, v))
 
 
 class DailyMatrixTaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     date: Optional[datetime.date] = None
-    quadrant: Optional[int] = Field(None, ge=1, le=4)
+    quadrant: Optional[int] = None
     goal_id: Optional[int] = None
     is_completed: Optional[bool] = None
     reflection_note: Optional[str] = None
     order_index: Optional[int] = None
+
+    @field_validator("quadrant", mode="after")
+    @classmethod
+    def _clamp_quadrant(cls, v: Optional[int]) -> Optional[int]:
+        if v is None:
+            return None
+        return max(1, min(4, v))
 
 
 class DailyMatrixTaskReflectionUpdate(BaseModel):

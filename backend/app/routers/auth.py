@@ -84,6 +84,37 @@ def decode_access_token(token: str) -> Optional[dict]:
     except Exception:
         return None
 
+# --- In-Memory Rate Limiter (Sliding Window with TTLCache) ---
+
+_RATE_LIMIT_STORE = TTLCache(maxsize=10000, ttl=600)
+
+
+def _check_rate_limit(key: str, max_attempts: int, window_seconds: int, message: str = "Quá nhiều yêu cầu. Vui lòng thử lại sau!"):
+    now = time.time()
+    raw_attempts = _RATE_LIMIT_STORE.get(key, [])
+    attempts = [t for t in raw_attempts if now - t < window_seconds]
+    if attempts:
+        _RATE_LIMIT_STORE[key] = attempts
+    elif key in _RATE_LIMIT_STORE:
+        _RATE_LIMIT_STORE.pop(key, None)
+    if len(attempts) >= max_attempts:
+        retry_after = int(window_seconds - (now - attempts[0]))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"{message} (Vui lòng thử lại sau {max(1, retry_after)} giây)",
+        )
+
+
+def _record_failed_attempt(key: str):
+    now = time.time()
+    attempts = list(_RATE_LIMIT_STORE.get(key, []))
+    attempts.append(now)
+    _RATE_LIMIT_STORE[key] = attempts
+
+
+def _reset_attempts(key: str):
+    _RATE_LIMIT_STORE.pop(key, None)
+
 # --- Dependencies ---
 
 def get_current_user_optional(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)) -> Optional[User]:
@@ -219,6 +250,7 @@ def _build_user_response(user: User, db: Session) -> UserResponse:
 def register(data: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     client_ip = get_client_ip(request)
     _check_rate_limit(f"reg:{client_ip}", max_attempts=5, window_seconds=600, message="Bạn đã đăng ký tài khoản quá nhiều lần.")
+    _record_failed_attempt(f"reg:{client_ip}")
 
     clean_username = data.username.strip().lower()
     if not re.match(r"^[a-zA-Z0-9_]{3,30}$", clean_username):
@@ -297,36 +329,6 @@ def register(data: RegisterRequest, request: Request, db: Session = Depends(get_
         access_token=token,
         user=_build_user_response(user, db)
     )
-
-# In-memory sliding window rate limiter against brute-force attacks and DoS with bounded TTL
-_RATE_LIMIT_STORE = TTLCache(maxsize=10000, ttl=600)
-
-
-def _check_rate_limit(key: str, max_attempts: int, window_seconds: int, message: str = "Quá nhiều yêu cầu. Vui lòng thử lại sau!"):
-    now = time.time()
-    raw_attempts = _RATE_LIMIT_STORE.get(key, [])
-    attempts = [t for t in raw_attempts if now - t < window_seconds]
-    if attempts:
-        _RATE_LIMIT_STORE[key] = attempts
-    elif key in _RATE_LIMIT_STORE:
-        _RATE_LIMIT_STORE.pop(key, None)
-    if len(attempts) >= max_attempts:
-        retry_after = int(window_seconds - (now - attempts[0]))
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"{message} (Vui lòng thử lại sau {max(1, retry_after)} giây)",
-        )
-
-
-def _record_failed_attempt(key: str):
-    now = time.time()
-    attempts = list(_RATE_LIMIT_STORE.get(key, []))
-    attempts.append(now)
-    _RATE_LIMIT_STORE[key] = attempts
-
-
-def _reset_attempts(key: str):
-    _RATE_LIMIT_STORE.pop(key, None)
 
 
 @router.post("/login", response_model=AuthResponse)

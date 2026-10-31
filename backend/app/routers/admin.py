@@ -664,6 +664,12 @@ def admin_delete_goal(
         raise HTTPException(status_code=404, detail="Không tìm thấy mục tiêu này!")
 
     target_user_id = goal.user_id
+
+    # 1. Khấu trừ giờ khỏi mục tiêu lớn cha nếu mục tiêu này là mục tiêu con
+    if goal.parent_id and goal.current_hours > 0:
+        from app.routers.focus_hub import _propagate_goal_hours
+        _propagate_goal_hours(db, goal.parent_id, -goal.current_hours, datetime.datetime.utcnow())
+
     # Safe Unlinking: Bảo toàn 100% giờ học lịch sử và công việc ma trận của người dùng
     db.query(StudySessionLog).filter(StudySessionLog.goal_id == goal_id).update({"goal_id": None}, synchronize_session=False)
     db.query(DailyMatrixTask).filter(DailyMatrixTask.goal_id == goal_id).update({"goal_id": None}, synchronize_session=False)

@@ -186,9 +186,9 @@ def _reconcile_parent_goals(db: Session, user_id: Optional[int]):
             .scalar()
         ) or 0.0
         sub_hours = sum(c.current_hours for c in children)
-        # Tối thiểu là tổng giờ direct + con, nhưng không làm tụt giờ nếu parent đã có số giờ thiết lập lớn hơn
+        # Tự động đồng bộ số giờ chính xác = direct_hours + tổng giờ các mục tiêu con (hỗ trợ cả tăng và giảm)
         calculated_sum = round(float(direct_hours) + float(sub_hours), 2)
-        expected_hours = max(parent.current_hours, calculated_sum)
+        expected_hours = calculated_sum
         if abs(parent.current_hours - expected_hours) > 0.01:
             parent.current_hours = expected_hours
             if parent.target_hours > 0 and parent.current_hours >= parent.target_hours:
@@ -1516,17 +1516,28 @@ def get_constellation_achievements(
     completed_titles = [g.title for g in completed_goals]
     titles_str = ", ".join(f'"{t}"' for t in completed_titles) if completed_titles else None
 
+    uid = user.id if user else None
+    unlock_query = db.query(UserConstellationUnlock)
+    if uid is None:
+        unlock_query = unlock_query.filter(UserConstellationUnlock.user_id.is_(None))
+    else:
+        unlock_query = unlock_query.filter(UserConstellationUnlock.user_id == uid)
+    persisted_unlock_map = {u.constellation_id: u for u in unlock_query.all()}
+
     constellations = db.query(ConstellationAchievement).order_by(ConstellationAchievement.required_completed_goals.asc()).all()
     results = []
     for c in constellations:
-        is_unlocked = completed_goals_count >= c.required_completed_goals
-        prog = min(100.0, round((completed_goals_count / c.required_completed_goals) * 100.0, 1))
+        is_persisted = c.id in persisted_unlock_map
+        is_unlocked = is_persisted or (completed_goals_count >= c.required_completed_goals)
+        prog = 100.0 if is_unlocked else min(100.0, round((completed_goals_count / c.required_completed_goals) * 100.0, 1))
 
         ai_interp = c.ai_interpretation
         narration = c.narration_script
         if is_unlocked and titles_str:
             ai_interp = f"{ai_interp} Các vì tinh tú được tôi luyện qua việc chinh phục thành công: {titles_str}."
             narration = f"{narration} Thành tích này được ghi dấu bằng việc bạn đã hoàn thành xuất sắc các mục tiêu: {titles_str}!"
+
+        unlocked_timestamp = persisted_unlock_map[c.id].unlocked_at if is_persisted else None
 
         item = ConstellationAchievementResponse(
             id=c.id,
@@ -1540,7 +1551,7 @@ def get_constellation_achievements(
             narration_script=narration,
             associated_goal_titles=titles_str if is_unlocked else None,
             is_unlocked=is_unlocked,
-            unlocked_at=None,
+            unlocked_at=unlocked_timestamp,
             progress_percent=prog,
         )
         results.append(item)
@@ -1563,26 +1574,29 @@ def check_constellation_unlock(
     completed_titles = [g.title for g in completed_goals]
     titles_str = ", ".join(f'"{t}"' for t in completed_titles) if completed_titles else None
 
-    constellations = db.query(ConstellationAchievement).order_by(ConstellationAchievement.required_completed_goals.asc()).all()
-
-    newly_unlocked_response = None
-    unlocked_count = 0
     uid = user.id if user else None
     now = datetime.datetime.utcnow()
 
+    # Tải các bản ghi đã mở khóa đã được lưu vĩnh viễn (sao đã mở không bị thu hồi khi un-complete goal)
+    unlock_query = db.query(UserConstellationUnlock)
+    if uid is None:
+        unlock_query = unlock_query.filter(UserConstellationUnlock.user_id.is_(None))
+    else:
+        unlock_query = unlock_query.filter(UserConstellationUnlock.user_id == uid)
+    persisted_unlock_map = {u.constellation_id: u for u in unlock_query.all()}
+
+    constellations = db.query(ConstellationAchievement).order_by(ConstellationAchievement.required_completed_goals.asc()).all()
+    newly_unlocked_response = None
+
     for c in constellations:
+        # Nếu đạt điều kiện hoàn thành mục tiêu
         if completed_count >= c.required_completed_goals:
-            unlocked_count += 1
+            # Chỉ coi là "mới khai mở" nếu TỪNG người dùng này chưa có record unlock
+            if c.id not in persisted_unlock_map:
+                new_unlock = UserConstellationUnlock(user_id=uid, constellation_id=c.id, unlocked_at=now)
+                db.add(new_unlock)
+                persisted_unlock_map[c.id] = new_unlock
 
-            # Chỉ coi là "mới khai mở" nếu TỪNG người dùng này chưa có record unlock.
-            q = db.query(UserConstellationUnlock).filter(UserConstellationUnlock.constellation_id == c.id)
-            if uid is None:
-                q = q.filter(UserConstellationUnlock.user_id.is_(None))
-            else:
-                q = q.filter(UserConstellationUnlock.user_id == uid)
-
-            if q.first() is None:
-                db.add(UserConstellationUnlock(user_id=uid, constellation_id=c.id, unlocked_at=now))
                 ai_interp = c.ai_interpretation
                 narration = c.narration_script
                 if titles_str:
@@ -1610,9 +1624,12 @@ def check_constellation_unlock(
     except Exception:
         db.rollback()
 
+    # Tổng số chòm sao đã mở khóa tính trên số bản ghi unlock thực tế (không bị mất khi un-complete goal)
+    total_unlocked = len(persisted_unlock_map)
+
     return ConstellationCheckResponse(
         newly_unlocked=newly_unlocked_response,
-        total_unlocked=unlocked_count,
+        total_unlocked=total_unlocked,
         total_constellations=len(constellations),
     )
 

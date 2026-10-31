@@ -4,16 +4,19 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.database import Base, engine, SessionLocal
 from app.models_auth import User
-from app.models import StudyGoal, StudySessionLog, Player, Achievement
+from app.models import StudyGoal, StudySessionLog, Player, Achievement, UserConstellationUnlock
+from app.routers.auth import _RATE_LIMIT_STORE, create_access_token, hash_password
 
 client = TestClient(app)
 
 
 def _cleanup():
+    _RATE_LIMIT_STORE.clear()
     db = SessionLocal()
     try:
         audit_users = [u[0] for u in db.query(User.id).filter(User.username.like("audit_%")).all()]
         if audit_users:
+            db.query(UserConstellationUnlock).filter(UserConstellationUnlock.user_id.in_(audit_users)).delete(synchronize_session=False)
             db.query(StudySessionLog).filter(StudySessionLog.user_id.in_(audit_users)).delete(synchronize_session=False)
             db.query(StudyGoal).filter(StudyGoal.user_id.in_(audit_users)).update({"parent_id": None}, synchronize_session=False)
             db.query(StudyGoal).filter(StudyGoal.user_id.in_(audit_users)).delete(synchronize_session=False)
@@ -151,3 +154,178 @@ def test_m9_large_body_payload_blocked():
         content=huge_data,
     )
     assert res.status_code == 413
+
+
+def test_b1_admin_delete_goal_deducts_parent_rollup_and_reconciles():
+    """
+    B1 — HIGH: Khi admin xóa goal con, số giờ đã rollup vào goal cha phải được
+    khấu trừ (_propagate_goal_hours), và _reconcile_parent_goals không được
+    dùng max(...) giữ lại giờ ma (phantom hours).
+    """
+    token, user = _register("audit_b1_user")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Tạo tài khoản admin
+    db = SessionLocal()
+    try:
+        p_hash, salt = hash_password("AdminPass123!")
+        admin_u = User(
+            username="audit_b1_admin",
+            display_name="Admin B1",
+            password_hash=p_hash,
+            salt=salt,
+            is_admin=True,
+            is_active=True,
+        )
+        db.add(admin_u)
+        db.commit()
+        db.refresh(admin_u)
+        admin_token = create_access_token(admin_u.id, admin_u.username, admin_u.salt)
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    finally:
+        db.close()
+
+    # 1. User tạo Parent Goal (target: 10h)
+    res_p = client.post("/api/focus/goals", headers=headers, json={"title": "Goal Cha", "target_hours": 10.0})
+    assert res_p.status_code == 201
+    parent_id = res_p.json()["id"]
+
+    # 2. User tạo Child Goal (target: 5h, parent_id=parent_id)
+    res_c = client.post("/api/focus/goals", headers=headers, json={"title": "Goal Con", "target_hours": 5.0, "parent_id": parent_id})
+    assert res_c.status_code == 201
+    child_id = res_c.json()["id"]
+
+    # 3. User học 2.0 giờ vào Goal Con
+    now_str = datetime.datetime.utcnow().isoformat()
+    res_s = client.post(
+        "/api/focus/sessions",
+        headers=headers,
+        json={
+            "duration_minutes": 120,
+            "session_type": "pomodoro",
+            "goal_id": child_id,
+            "completed_at": now_str,
+        },
+    )
+    assert res_s.status_code == 201
+
+    # Kiểm tra Goal Cha đã được rollup 2.0 giờ
+    db = SessionLocal()
+    try:
+        parent_goal = db.query(StudyGoal).filter(StudyGoal.id == parent_id).first()
+        assert parent_goal.current_hours == 2.0
+    finally:
+        db.close()
+
+    # 4. Admin xóa Goal Con bằng DELETE /api/admin/goals/{child_id}
+    res_del = client.delete(f"/api/admin/goals/{child_id}", headers=admin_headers)
+    assert res_del.status_code == 200
+
+    # 5. Kiểm tra Goal Cha đã được khấu trừ 2.0 giờ -> về 0.0
+    db = SessionLocal()
+    try:
+        parent_goal = db.query(StudyGoal).filter(StudyGoal.id == parent_id).first()
+        assert parent_goal.current_hours == 0.0
+    finally:
+        db.close()
+
+    # 6. Gọi GET /api/focus/goals (nơi chạy _reconcile_parent_goals)
+    res_list = client.get("/api/focus/goals", headers=headers)
+    assert res_list.status_code == 200
+    goals = res_list.json()
+    p_in_list = next((g for g in goals if g["id"] == parent_id), None)
+    assert p_in_list is not None
+    assert p_in_list["current_hours"] == 0.0
+
+
+def test_b2_registration_rate_limit_enforced():
+    """
+    B2 — HIGH: Rate limit đăng ký tài khoản (tối đa 5 lần trong 10 phút / IP).
+    Lần thứ 6 phải bị chặn với mã lỗi HTTP 429 Too Many Requests.
+    """
+    _RATE_LIMIT_STORE.clear()
+
+    # Gửi 5 lần đăng ký thành công
+    for i in range(1, 6):
+        res = client.post(
+            "/api/auth/register",
+            json={
+                "username": f"audit_reg_{i}",
+                "display_name": f"Tester {i}",
+                "password": "Password123!",
+            },
+        )
+        assert res.status_code == 200, f"Attempt {i} failed: {res.text}"
+
+    # Lần thứ 6 phải bị chặn 429
+    res_6 = client.post(
+        "/api/auth/register",
+        json={
+            "username": "audit_reg_6",
+            "display_name": "Tester 6",
+            "password": "Password123!",
+        },
+    )
+    assert res_6.status_code == 429
+    assert "quá nhiều" in res_6.json()["detail"].lower()
+
+
+def test_b3_constellation_unlock_persists_after_goal_uncompleted():
+    """
+    B3 — MEDIUM: total_unlocked và trạng thái mở khóa chòm sao được bảo toàn vĩnh viễn
+    trong UserConstellationUnlock, không bị mất sao khi un-complete mục tiêu.
+    """
+    token, user = _register("audit_b3_user")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Tạo 1 mục tiêu với target 1.0 giờ
+    res_g = client.post("/api/focus/goals", headers=headers, json={"title": "Chinh Phục Sao", "target_hours": 1.0})
+    assert res_g.status_code == 201
+    goal_id = res_g.json()["id"]
+
+    # Học 60 phút để hoàn thành mục tiêu (1.0 giờ)
+    now_str = datetime.datetime.utcnow().isoformat()
+    res_s = client.post(
+        "/api/focus/sessions",
+        headers=headers,
+        json={
+            "duration_minutes": 60,
+            "session_type": "pomodoro",
+            "goal_id": goal_id,
+            "completed_at": now_str,
+        },
+    )
+    assert res_s.status_code == 201
+
+    # Kiểm tra mở khóa chòm sao: phải mở được ít nhất 1 chòm sao
+    res_check = client.post("/api/focus/constellations/check", headers=headers)
+    assert res_check.status_code == 200
+    data_check = res_check.json()
+    assert data_check["total_unlocked"] >= 1
+    unlocked_before = data_check["total_unlocked"]
+
+    # Giờ un-complete mục tiêu bằng cách xóa session hoặc cập nhật current_hours về 0
+    db = SessionLocal()
+    try:
+        g = db.query(StudyGoal).filter(StudyGoal.id == goal_id).first()
+        g.is_completed = False
+        g.completed_at = None
+        g.current_hours = 0.0
+        db.commit()
+    finally:
+        db.close()
+
+    # Kiểm tra lại /constellations/check: total_unlocked VẪN PHẢI BẢO TOÀN (>= 1)
+    res_check_again = client.post("/api/focus/constellations/check", headers=headers)
+    assert res_check_again.status_code == 200
+    data_check_again = res_check_again.json()
+    assert data_check_again["total_unlocked"] == unlocked_before
+
+    # Kiểm tra GET /constellations: chòm sao đã mở vẫn có is_unlocked == True và progress == 100.0
+    res_list = client.get("/api/focus/constellations", headers=headers)
+    assert res_list.status_code == 200
+    constellations = res_list.json()
+    unlocked_items = [c for c in constellations if c["is_unlocked"]]
+    assert len(unlocked_items) == unlocked_before
+    for u_item in unlocked_items:
+        assert u_item["progress_percent"] == 100.0
