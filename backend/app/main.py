@@ -1,4 +1,6 @@
 import os
+import json
+import math
 import asyncio
 from dotenv import load_dotenv
 # Load .env từ thư mục gốc dự án (và backend/.env nếu có)
@@ -6,7 +8,9 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 load_dotenv(os.path.join(PROJECT_ROOT, "backend", ".env"))
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.database import engine, Base
@@ -184,6 +188,19 @@ app = FastAPI(
     openapi_url="/openapi.json" if enable_docs else None,
 )
 
+# Chống Crash 500 khi hacker gửi payload inf / nan (chuẩn hóa lỗi 422 an toàn)
+@app.exception_handler(RequestValidationError)
+async def custom_validation_exception_handler(request: Request, exc: RequestValidationError):
+    clean_errors = []
+    for err in exc.errors():
+        clean_err = dict(err)
+        if "input" in clean_err:
+            val = clean_err["input"]
+            if isinstance(val, float) and (math.isinf(val) or math.isnan(val)):
+                clean_err["input"] = str(val)
+        clean_errors.append(clean_err)
+    return JSONResponse(status_code=422, content={"detail": clean_errors})
+
 # Middleware gắn HTTP Security Headers phòng thủ theo chuẩn OWASP
 @app.middleware("http")
 async def add_security_headers(request, call_next):
@@ -193,6 +210,24 @@ async def add_security_headers(request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
+
+# Giới hạn kích thước payload HTTP request (10MB) phòng thủ RAM exhaustion DoS
+MAX_BODY_SIZE = 10 * 1024 * 1024
+
+@app.middleware("http")
+async def limit_request_body_size(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_BODY_SIZE:
+                return Response(
+                    content=json.dumps({"detail": "Kích thước payload vượt quá giới hạn cho phép (10MB)!"}),
+                    status_code=413,
+                    media_type="application/json",
+                )
+        except ValueError:
+            pass
+    return await call_next(request)
 
 # CORS Configuration
 allowed_origins_env = os.getenv("CORS_ORIGINS", "")

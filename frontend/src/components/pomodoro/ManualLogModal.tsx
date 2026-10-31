@@ -27,10 +27,13 @@ export const ManualLogModal: React.FC<ManualLogModalProps> = ({
   const [topicNote, setTopicNote] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
 
+  const prevIsOpenRef = React.useRef(isOpen)
   React.useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevIsOpenRef.current) {
       setGoalId(selectedGoalId || (goals[0]?.id ?? ''))
+      setSessionDate(format(new Date(), 'yyyy-MM-dd'))
     }
+    prevIsOpenRef.current = isOpen
   }, [isOpen, selectedGoalId, goals])
 
   if (!isOpen) return null
@@ -42,6 +45,11 @@ export const ManualLogModal: React.FC<ManualLogModalProps> = ({
     if (isSubmitting) return
     if (minutes <= 0) {
       toast.error('Vui lòng chọn hoặc nhập thời lượng học hợp lệ')
+      return
+    }
+    const todayStr = format(new Date(), 'yyyy-MM-dd')
+    if (sessionDate > todayStr) {
+      toast.error('Ngày học không thể vượt quá ngày hôm nay!')
       return
     }
 
@@ -172,6 +180,7 @@ export const ManualLogModal: React.FC<ManualLogModalProps> = ({
             </label>
             <input
               type="date"
+              max={format(new Date(), 'yyyy-MM-dd')}
               value={sessionDate}
               onChange={(e) => setSessionDate(e.target.value)}
               className="w-full px-3.5 py-2 bg-[#14171E] border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-red-500/60"

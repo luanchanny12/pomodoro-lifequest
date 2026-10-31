@@ -13,6 +13,8 @@ from app.models import (
     RewardItem,
     RewardRedemption,
     Player,
+    Achievement,
+    UserConstellationUnlock,
 )
 
 client = TestClient(app)
@@ -20,12 +22,16 @@ client = TestClient(app)
 
 def _cleanup(db):
     db.query(VisitorLog).filter(VisitorLog.visitor_id.like("unique_visitor%")).delete(synchronize_session=False)
+    db.query(UserConstellationUnlock).delete(synchronize_session=False)
     db.query(RewardRedemption).delete(synchronize_session=False)
+    db.query(RewardItem).delete(synchronize_session=False)
     db.query(TimeCapsule).delete(synchronize_session=False)
     db.query(DailyMatrixTask).delete(synchronize_session=False)
     db.query(StudySessionLog).delete(synchronize_session=False)
+    db.query(StudyGoal).update({"parent_id": None}, synchronize_session=False)
     db.query(StudyGoal).delete(synchronize_session=False)
     db.query(NotificationSetting).delete(synchronize_session=False)
+    db.query(Achievement).delete(synchronize_session=False)
     db.query(Player).filter(Player.user_id.isnot(None)).delete(synchronize_session=False)
     db.query(User).filter(User.username.like("user%")).delete(synchronize_session=False)
     db.commit()

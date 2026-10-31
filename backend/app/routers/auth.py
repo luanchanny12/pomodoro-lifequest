@@ -6,7 +6,9 @@ import hmac
 import base64
 import hashlib
 import secrets
+import datetime
 from typing import Optional
+from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Header, status, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -40,7 +42,7 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication & Multi-User"])
 def get_client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        return forwarded.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 def hash_password(password: str, salt: Optional[str] = None) -> tuple:
@@ -89,17 +91,33 @@ def get_current_user_optional(authorization: Optional[str] = Header(None), db: S
         return None
     parts = authorization.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Header xác thực không hợp lệ. Vui lòng đăng nhập lại.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     token = parts[1]
     payload = decode_access_token(token)
     if not payload:
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Phiên đăng nhập đã hết hạn hoặc token không hợp lệ. Vui lòng đăng nhập lại.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     user_id = payload.get("sub")
     if not user_id:
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token không chứa thông tin người dùng hợp lệ.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Người dùng không tồn tại hoặc đã bị xóa.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -108,7 +126,11 @@ def get_current_user_optional(authorization: Optional[str] = Header(None), db: S
     # Thu hồi token cũ nếu mật khẩu đã được đổi sau thời điểm cấp token
     if payload.get("pv") and getattr(user, "salt", None):
         if payload["pv"] != user.salt[:8]:
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Mật khẩu đã được thay đổi. Vui lòng đăng nhập lại.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     return user
 
 def get_current_user(user: Optional[User] = Depends(get_current_user_optional)) -> User:
@@ -276,14 +298,18 @@ def register(data: RegisterRequest, request: Request, db: Session = Depends(get_
         user=_build_user_response(user, db)
     )
 
-# In-memory sliding window rate limiter against brute-force attacks and DoS
-_RATE_LIMIT_STORE = {}
+# In-memory sliding window rate limiter against brute-force attacks and DoS with bounded TTL
+_RATE_LIMIT_STORE = TTLCache(maxsize=10000, ttl=600)
 
 
 def _check_rate_limit(key: str, max_attempts: int, window_seconds: int, message: str = "Quá nhiều yêu cầu. Vui lòng thử lại sau!"):
     now = time.time()
-    attempts = [t for t in _RATE_LIMIT_STORE.get(key, []) if now - t < window_seconds]
-    _RATE_LIMIT_STORE[key] = attempts
+    raw_attempts = _RATE_LIMIT_STORE.get(key, [])
+    attempts = [t for t in raw_attempts if now - t < window_seconds]
+    if attempts:
+        _RATE_LIMIT_STORE[key] = attempts
+    elif key in _RATE_LIMIT_STORE:
+        _RATE_LIMIT_STORE.pop(key, None)
     if len(attempts) >= max_attempts:
         retry_after = int(window_seconds - (now - attempts[0]))
         raise HTTPException(
@@ -294,9 +320,9 @@ def _check_rate_limit(key: str, max_attempts: int, window_seconds: int, message:
 
 def _record_failed_attempt(key: str):
     now = time.time()
-    if key not in _RATE_LIMIT_STORE:
-        _RATE_LIMIT_STORE[key] = []
-    _RATE_LIMIT_STORE[key].append(now)
+    attempts = list(_RATE_LIMIT_STORE.get(key, []))
+    attempts.append(now)
+    _RATE_LIMIT_STORE[key] = attempts
 
 
 def _reset_attempts(key: str):

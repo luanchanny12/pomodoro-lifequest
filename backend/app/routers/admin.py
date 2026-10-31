@@ -2,14 +2,26 @@ import datetime
 from datetime import date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, confloat
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
 from app.models_auth import User, CheerLog, VisitorLog, UserFeedback
-from app.models import Player, StudyGoal, StudySessionLog, DailyMatrixTask, NotificationSetting, TimeCapsule, RewardRedemption
+from app.models import (
+    Player,
+    Achievement,
+    StudyGoal,
+    StudySessionLog,
+    DailyMatrixTask,
+    NotificationSetting,
+    TimeCapsule,
+    RewardItem,
+    RewardRedemption,
+    UserConstellationUnlock,
+)
 from app.routers.auth import get_current_admin, hash_password
+from app.cache import invalidate_user_cache
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Portal & User Management"])
 
@@ -26,8 +38,8 @@ class UpdateStatusRequest(BaseModel):
 
 class AdminGoalUpdateRequest(BaseModel):
     title: Optional[str] = None
-    target_hours: Optional[float] = None
-    current_hours: Optional[float] = None
+    target_hours: Optional[confloat(allow_inf_nan=False, ge=0.1, le=100000.0)] = None
+    current_hours: Optional[confloat(allow_inf_nan=False, ge=0.0, le=100000.0)] = None
     notes: Optional[str] = None
     is_completed: Optional[bool] = None
 
@@ -563,21 +575,29 @@ def admin_delete_user(
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail="Không thể tự xóa tài khoản của chính bạn!")
 
-    # Dọn dẹp dữ liệu liên quan
+    # Dọn dẹp dữ liệu liên quan theo đúng thứ tự ràng buộc khóa ngoại (Foreign Keys)
     db.query(VisitorLog).filter(VisitorLog.user_id == user_id).update({"user_id": None}, synchronize_session=False)
     db.query(UserFeedback).filter(UserFeedback.user_id == user_id).update({"user_id": None}, synchronize_session=False)
     db.query(StudyGoal).filter(StudyGoal.user_id == user_id).update({"parent_id": None}, synchronize_session=False)
-    db.query(TimeCapsule).filter(TimeCapsule.user_id == user_id).delete()
-    db.query(RewardRedemption).filter(RewardRedemption.user_id == user_id).delete()
-    db.query(StudySessionLog).filter(StudySessionLog.user_id == user_id).delete()
-    db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id == user_id).delete()
-    db.query(StudyGoal).filter(StudyGoal.user_id == user_id).delete()
-    db.query(NotificationSetting).filter(NotificationSetting.user_id == user_id).delete()
-    db.query(Player).filter(Player.user_id == user_id).delete()
-    db.query(CheerLog).filter((CheerLog.target_user_id == user_id) | (CheerLog.sender_id == user_id)).delete()
+    
+    db.query(UserConstellationUnlock).filter(UserConstellationUnlock.user_id == user_id).delete(synchronize_session=False)
+    db.query(RewardRedemption).filter(RewardRedemption.user_id == user_id).delete(synchronize_session=False)
+    db.query(RewardItem).filter(RewardItem.user_id == user_id).delete(synchronize_session=False)
+    db.query(TimeCapsule).filter(TimeCapsule.user_id == user_id).delete(synchronize_session=False)
+    db.query(StudySessionLog).filter(StudySessionLog.user_id == user_id).delete(synchronize_session=False)
+    db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id == user_id).delete(synchronize_session=False)
+    db.query(StudyGoal).filter(StudyGoal.user_id == user_id).delete(synchronize_session=False)
+    db.query(NotificationSetting).filter(NotificationSetting.user_id == user_id).delete(synchronize_session=False)
+
+    player_ids = [p[0] for p in db.query(Player.id).filter(Player.user_id == user_id).all()]
+    if player_ids:
+        db.query(Achievement).filter(Achievement.player_id.in_(player_ids)).delete(synchronize_session=False)
+    db.query(Player).filter(Player.user_id == user_id).delete(synchronize_session=False)
+    db.query(CheerLog).filter((CheerLog.target_user_id == user_id) | (CheerLog.sender_id == user_id)).delete(synchronize_session=False)
 
     db.delete(user)
     db.commit()
+    invalidate_user_cache(user_id)
 
     return {"message": f"Đã xóa hoàn toàn tài khoản @{user.username} và các dữ liệu liên quan!"}
 
@@ -594,19 +614,41 @@ def admin_update_goal(
     if not goal:
         raise HTTPException(status_code=404, detail="Không tìm thấy mục tiêu này!")
 
+    old_hours = goal.current_hours
+    now = datetime.datetime.utcnow()
+
     if data.title is not None:
         goal.title = data.title.strip()
     if data.target_hours is not None:
-        goal.target_hours = max(1.0, data.target_hours)
+        goal.target_hours = max(0.1, data.target_hours)
     if data.current_hours is not None:
         goal.current_hours = max(0.0, data.current_hours)
     if data.notes is not None:
         goal.notes = data.notes
+
     if data.is_completed is not None:
         goal.is_completed = data.is_completed
+        goal.completed_at = now if goal.is_completed else None
+    elif goal.target_hours > 0:
+        if goal.current_hours >= goal.target_hours:
+            goal.is_completed = True
+            if not goal.completed_at:
+                goal.completed_at = now
+        else:
+            goal.is_completed = False
+            goal.completed_at = None
+
+    diff_hours = goal.current_hours - old_hours
+    goal.updated_at = now
+
+    # Propagate to parent goal if applicable
+    if goal.parent_id and abs(diff_hours) > 1e-6:
+        from app.routers.focus_hub import _propagate_goal_hours
+        _propagate_goal_hours(db, goal.parent_id, diff_hours, now)
 
     db.commit()
     db.refresh(goal)
+    invalidate_user_cache(goal.user_id)
     return {"message": "Đã cập nhật mục tiêu thành công!", "goal_id": goal.id}
 
 
@@ -621,6 +663,7 @@ def admin_delete_goal(
     if not goal:
         raise HTTPException(status_code=404, detail="Không tìm thấy mục tiêu này!")
 
+    target_user_id = goal.user_id
     # Safe Unlinking: Bảo toàn 100% giờ học lịch sử và công việc ma trận của người dùng
     db.query(StudySessionLog).filter(StudySessionLog.goal_id == goal_id).update({"goal_id": None}, synchronize_session=False)
     db.query(DailyMatrixTask).filter(DailyMatrixTask.goal_id == goal_id).update({"goal_id": None}, synchronize_session=False)
@@ -628,6 +671,7 @@ def admin_delete_goal(
     db.query(TimeCapsule).filter(TimeCapsule.goal_id == goal_id).update({"goal_id": None}, synchronize_session=False)
     db.delete(goal)
     db.commit()
+    invalidate_user_cache(target_user_id)
 
     return {"message": "Đã xóa mục tiêu thành công!"}
 

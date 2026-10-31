@@ -289,35 +289,56 @@ export const queueOfflineSession = (data: {
   }
 }
 
+let isSyncingOfflineSessions = false
+
 export const syncOfflinePendingSessions = async () => {
-  const pending = getOfflinePendingSessions()
-  if (!pending.length) return
-  const remaining = []
-  for (const s of pending) {
-    try {
-      await api.post('/focus/sessions', {
-        goal_id: s.goal_id,
-        duration_minutes: s.duration_minutes,
-        session_date: s.session_date,
-        topic_note: s.topic_note,
-        source: s.source || 'pomodoro',
-      })
-    } catch (err: any) {
-      const isGenuineOffline =
-        (typeof navigator !== 'undefined' && !navigator.onLine) ||
-        err.code === 'ERR_NETWORK' ||
-        (!err.response && !err.status && String(err.message || '').includes('Network'))
-      if (isGenuineOffline) {
-        remaining.push(s)
+  if (isSyncingOfflineSessions) return
+  isSyncingOfflineSessions = true
+  try {
+    const pending = getOfflinePendingSessions()
+    if (!pending.length) return
+    const remaining = []
+    for (const s of pending) {
+      try {
+        await api.post('/focus/sessions', {
+          goal_id: s.goal_id,
+          duration_minutes: s.duration_minutes,
+          session_date: s.session_date,
+          topic_note: s.topic_note,
+          source: s.source || 'pomodoro',
+        })
+      } catch (err: any) {
+        const isGenuineOffline =
+          (typeof navigator !== 'undefined' && !navigator.onLine) ||
+          err.code === 'ERR_NETWORK' ||
+          (!err.response && !err.status && String(err.message || '').includes('Network'))
+        if (isGenuineOffline) {
+          remaining.push(s)
+        }
       }
     }
+    if (typeof localStorage !== 'undefined') {
+      if (remaining.length) {
+        localStorage.setItem(OFFLINE_SESSIONS_KEY, JSON.stringify(remaining))
+      } else {
+        localStorage.removeItem(OFFLINE_SESSIONS_KEY)
+      }
+    }
+  } finally {
+    isSyncingOfflineSessions = false
   }
-  if (typeof localStorage !== 'undefined') {
-    if (remaining.length) {
-      localStorage.setItem(OFFLINE_SESSIONS_KEY, JSON.stringify(remaining))
-    } else {
+}
+
+export const clearFocusCache = () => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(GOALS_CACHE_KEY)
+      localStorage.removeItem(STATS_CACHE_KEY)
+      localStorage.removeItem(SESSIONS_CACHE_KEY)
       localStorage.removeItem(OFFLINE_SESSIONS_KEY)
     }
+  } catch (e) {
+    console.error('Failed to clear focus cache', e)
   }
 }
 
@@ -363,12 +384,13 @@ export const focusService = {
   getGoals: async (isCompleted?: boolean): Promise<StudyGoal[]> => {
     const params = isCompleted !== undefined ? { is_completed: isCompleted } : {}
     const res = await api.get('/focus/goals', { params })
-    if (isCompleted === undefined && Array.isArray(res.data) && typeof localStorage !== 'undefined') {
+    const data = Array.isArray(res.data) ? res.data : []
+    if (isCompleted === undefined && typeof localStorage !== 'undefined') {
       try {
-        localStorage.setItem(GOALS_CACHE_KEY, JSON.stringify(res.data))
+        localStorage.setItem(GOALS_CACHE_KEY, JSON.stringify(data))
       } catch (_) {}
     }
-    return res.data
+    return data
   },
 
   createGoal: async (data: {
@@ -400,12 +422,13 @@ export const focusService = {
     limit?: number
   }): Promise<StudySessionLog[]> => {
     const res = await api.get('/focus/sessions', { params })
-    if (!params?.goal_id && Array.isArray(res.data) && typeof localStorage !== 'undefined') {
+    const data = Array.isArray(res.data) ? res.data : []
+    if (!params?.goal_id && !params?.date_from && typeof localStorage !== 'undefined') {
       try {
-        localStorage.setItem(SESSIONS_CACHE_KEY, JSON.stringify(res.data))
+        localStorage.setItem(SESSIONS_CACHE_KEY, JSON.stringify(data))
       } catch (_) {}
     }
-    return res.data
+    return data
   },
 
   createSession: async (data: {
@@ -607,4 +630,5 @@ export const focusService = {
   },
 
   syncPendingSessions: syncOfflinePendingSessions,
+  clearCache: clearFocusCache,
 }

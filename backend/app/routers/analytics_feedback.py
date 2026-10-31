@@ -10,6 +10,7 @@ from sqlalchemy import func
 from app.database import get_db
 from app.models_auth import User, VisitorLog, UserFeedback
 from app.routers.auth import get_current_admin, get_current_user_optional
+from app.cache import get_cache, set_cache
 
 router = APIRouter(tags=["Analytics & Feedback"])
 
@@ -108,11 +109,13 @@ def track_visit(
         is_member = False
         user_id = None
 
-    # Lấy IP client từ các proxy headers phổ biến
+    # Lấy IP client từ các proxy headers phổ biến (ưu tiên entry cuối của X-Forwarded-For chống IP spoofing)
+    forwarded = request.headers.get("x-forwarded-for")
+    trusted_forwarded_ip = forwarded.split(",")[-1].strip() if forwarded else None
     client_ip = (
         request.headers.get("cf-connecting-ip")
         or request.headers.get("x-real-ip")
-        or (request.headers.get("x-forwarded-for").split(",")[0].strip() if request.headers.get("x-forwarded-for") else None)
+        or trusted_forwarded_ip
         or (request.client.host if request.client else None)
     )
     ua = data.user_agent or request.headers.get("user-agent")
@@ -135,11 +138,19 @@ def track_visit(
         .order_by(VisitorLog.created_at.desc())
         .first()
     )
+
+    def _get_total_visits() -> int:
+        cached_count = get_cache("cache:stats:total_visits")
+        if cached_count is not None and isinstance(cached_count, int):
+            return cached_count
+        count = db.query(VisitorLog).count()
+        set_cache("cache:stats:total_visits", count, ttl_seconds=60)
+        return count
+
     if recent_visit and recent_visit.created_at:
         diff_sec = (datetime.datetime.utcnow() - recent_visit.created_at).total_seconds()
         if diff_sec < 60.0:
-            total_visits = db.query(VisitorLog).count()
-            return {"status": "ok", "cached": True, "total_visits": total_visits}
+            return {"status": "ok", "cached": True, "total_visits": _get_total_visits()}
 
     visit = VisitorLog(
         visitor_id=data.visitor_id.strip()[:64],
@@ -155,7 +166,7 @@ def track_visit(
     db.add(visit)
     db.commit()
 
-    total_visits = db.query(VisitorLog).count()
+    total_visits = _get_total_visits()
     return {"status": "ok", "total_visits": total_visits}
 
 

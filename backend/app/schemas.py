@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, confloat
 from typing import Optional, List, Dict, Any
 import datetime
 
@@ -6,18 +6,18 @@ import datetime
 class GoalCreate(BaseModel):
     name: str
     type: str
-    target_value: float = 0
-    current_value: float = 0
+    target_value: confloat(allow_inf_nan=False, ge=0.0, le=1000000.0) = 0.0
+    current_value: confloat(allow_inf_nan=False, ge=0.0, le=1000000.0) = 0.0
     deadline: Optional[datetime.date] = None
     priority: str = "trung bình"
 
 class GoalUpdate(BaseModel):
     name: Optional[str] = None
-    target_value: Optional[float] = None
-    current_value: Optional[float] = None
+    target_value: Optional[confloat(allow_inf_nan=False, ge=0.0, le=1000000.0)] = None
+    current_value: Optional[confloat(allow_inf_nan=False, ge=0.0, le=1000000.0)] = None
     deadline: Optional[datetime.date] = None
     priority: Optional[str] = None
-    progress_percent: Optional[float] = None
+    progress_percent: Optional[confloat(allow_inf_nan=False, ge=0.0, le=100.0)] = None
 
 class GoalResponse(BaseModel):
     id: int
@@ -708,8 +708,8 @@ class StudyGoalCreate(BaseModel):
     title: str
     celestial_name: Optional[str] = None
     goal_type: Optional[str] = "hours"  # 'hours' or 'deadline'
-    target_hours: float = 100.0
-    current_hours: float = 0.0
+    target_hours: confloat(allow_inf_nan=False, ge=0.1, le=100000.0) = 100.0
+    current_hours: confloat(allow_inf_nan=False, ge=0.0, le=100000.0) = 0.0
     target_date: Optional[datetime.date] = None
     parent_id: Optional[int] = None
     planet_type: Optional[str] = "earth"
@@ -722,8 +722,8 @@ class StudyGoalUpdate(BaseModel):
     title: Optional[str] = None
     celestial_name: Optional[str] = None
     goal_type: Optional[str] = None
-    target_hours: Optional[float] = None
-    current_hours: Optional[float] = None
+    target_hours: Optional[confloat(allow_inf_nan=False, ge=0.1, le=100000.0)] = None
+    current_hours: Optional[confloat(allow_inf_nan=False, ge=0.0, le=100000.0)] = None
     target_date: Optional[datetime.date] = None
     parent_id: Optional[int] = None
     planet_type: Optional[str] = None
@@ -768,14 +768,14 @@ class StudyGoalResponse(BaseModel):
 
 class StudySessionLogCreate(BaseModel):
     goal_id: Optional[int] = None
-    duration_minutes: int
+    duration_minutes: int = Field(..., ge=1, le=1440)
     session_date: Optional[datetime.date] = None
     topic_note: Optional[str] = None
     source: str = "manual"  # 'manual' | 'pomodoro'
 
 class StudySessionLogUpdate(BaseModel):
     goal_id: Optional[int] = None
-    duration_minutes: Optional[int] = None
+    duration_minutes: Optional[int] = Field(None, ge=1, le=1440)
     session_date: Optional[datetime.date] = None
     topic_note: Optional[str] = None
     source: Optional[str] = None
@@ -957,7 +957,7 @@ class DailyMatrixTaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
     date: Optional[datetime.date] = None
-    quadrant: int = 2  # 1: Q1, 2: Q2, 3: Q3, 4: Q4
+    quadrant: int = Field(2, ge=1, le=4)  # 1: Q1, 2: Q2, 3: Q3, 4: Q4
     goal_id: Optional[int] = None
     reflection_note: Optional[str] = None
 
@@ -966,7 +966,7 @@ class DailyMatrixTaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     date: Optional[datetime.date] = None
-    quadrant: Optional[int] = None
+    quadrant: Optional[int] = Field(None, ge=1, le=4)
     goal_id: Optional[int] = None
     is_completed: Optional[bool] = None
     reflection_note: Optional[str] = None

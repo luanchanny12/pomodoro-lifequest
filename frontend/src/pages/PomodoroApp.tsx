@@ -285,6 +285,8 @@ export default function PomodoroApp() {
   const [unreadCheers, setUnreadCheers] = useState<CheerItem[]>([])
   const [isCheerModalOpen, setIsCheerModalOpen] = useState<boolean>(false)
   const [isTimerToggling, setIsTimerToggling] = useState<boolean>(false)
+  const [isSavingEarly, setIsSavingEarly] = useState<boolean>(false)
+  const isSavingEarlyRef = useRef<boolean>(false)
 
   // Data with SWR instant cache snapshot (<10ms load)
   const [goals, setGoals] = useState<StudyGoal[]>(() => focusService.getCachedGoals())
@@ -333,11 +335,18 @@ export default function PomodoroApp() {
           }
           return goalsData[0].id
         })
+      } else {
+        setSelectedGoalId(null)
       }
 
-      // Tự động làm mới profile người dùng để cập nhật chuỗi ngày (streak) & cấp độ (level) tức thì
+      // Tự động làm mới profile người dùng nếu các trường (streak, level, exp, coins) thật sự thay đổi
       authService.getMe().then((u) => {
-        setCurrentUser(u)
+        setCurrentUser((prev) => {
+          if (!prev || prev.id !== u.id || prev.streak !== u.streak || prev.level !== u.level || prev.exp !== u.exp || prev.coins !== u.coins) {
+            return u
+          }
+          return prev
+        })
       }).catch(() => {})
     } catch (err) {
       console.error('Error loading focus data:', err)
@@ -347,7 +356,7 @@ export default function PomodoroApp() {
   useEffect(() => {
     loadData()
     focusService.syncPendingSessions().catch(() => {})
-  }, [currentUser])
+  }, [currentUser?.id])
 
   // Track visit for analytics
   useEffect(() => {
@@ -540,17 +549,25 @@ export default function PomodoroApp() {
   }
 
   const handleFinishEarly = async () => {
+    if (isSavingEarlyRef.current) return
     const elapsedMinutes = Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)
     if (elapsedMinutes < 1) {
       toast.info('Bạn cần tập trung ít nhất 1 phút để ghi nhận phiên học.')
       return
     }
+    isSavingEarlyRef.current = true
+    setIsSavingEarly(true)
     soundManager.playClick()
     setIsRunning(false)
     endTimeRef.current = null
     if (timerRef.current) clearInterval(timerRef.current)
 
-    await onTimerComplete(true, elapsedMinutes)
+    try {
+      await onTimerComplete(true, elapsedMinutes)
+    } finally {
+      isSavingEarlyRef.current = false
+      setIsSavingEarly(false)
+    }
   }
 
   const handleReset = () => {
@@ -631,7 +648,7 @@ export default function PomodoroApp() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [isRunning])
+  }, [isRunning, mode])
 
   // Update browser document title
   useEffect(() => {
@@ -914,7 +931,7 @@ export default function PomodoroApp() {
               </div>
               {currentUser ? (
                 <div className="text-[11px] text-amber-300 font-semibold flex items-center gap-1.5 mt-0.5">
-                  <span>🔥 {currentUser.streak || 1}d streak</span>
+                  <span>🔥 {currentUser.streak ?? 0}d streak</span>
                   <span className="text-white/30">•</span>
                   <span className="text-cyan-300 font-mono text-[10px]">Lv.{currentUser.level || 1}</span>
                 </div>
@@ -1313,12 +1330,19 @@ export default function PomodoroApp() {
             {mode === 'pomodoro' && Math.floor((settings.focusMinutes * 60 - timeLeft) / 60) >= 1 && (
               <button
                 onClick={handleFinishEarly}
-                className="px-3.5 sm:px-4 py-3.5 sm:py-4 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-2xl transition active:scale-95 flex items-center justify-center gap-1.5 text-xs sm:text-sm font-bold shadow-md shadow-emerald-950/30"
+                disabled={isSavingEarly}
+                className={`px-3.5 sm:px-4 py-3.5 sm:py-4 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-2xl transition active:scale-95 flex items-center justify-center gap-1.5 text-xs sm:text-sm font-bold shadow-md shadow-emerald-950/30 ${
+                  isSavingEarly ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
                 title={`Lưu và kết thúc sớm ${Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)} phút đã học`}
               >
                 <CheckCircle className="w-4 h-4 text-emerald-400" />
-                <span className="hidden sm:inline">Lưu sớm ({Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)}p)</span>
-                <span className="sm:hidden">Lưu {Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)}p</span>
+                <span className="hidden sm:inline">
+                  {isSavingEarly ? 'Đang lưu...' : `Lưu sớm (${Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)}p)`}
+                </span>
+                <span className="sm:hidden">
+                  {isSavingEarly ? 'Lưu...' : `Lưu ${Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)}p`}
+                </span>
               </button>
             )}
 

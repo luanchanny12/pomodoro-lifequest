@@ -5,6 +5,7 @@ Compatible with Upstash Redis, Redis Cloud, or local in-memory fallback.
 """
 
 import os
+import time
 import json
 import logging
 from typing import Any, Optional, Dict
@@ -16,7 +17,7 @@ logger = logging.getLogger("app.cache")
 REDIS_URL = os.getenv("REDIS_URL")
 
 _redis_client = None
-_in_memory_cache: TTLCache = TTLCache(maxsize=1000, ttl=180)  # default 3 mins fallback
+_in_memory_cache: TTLCache = TTLCache(maxsize=2000, ttl=3600)  # max 1 hr window
 
 if REDIS_URL:
     try:
@@ -58,11 +59,21 @@ def get_cache(key: str) -> Optional[Any]:
         except Exception as e:
             logger.warning(f"Redis get error for {key}: {e}. Falling back to memory.")
     
-    # In-memory lookup
+    # In-memory lookup with custom TTL verification
     try:
-        val = _in_memory_cache.get(key)
-        if val is not None:
-            # Stored as json string or directly as python object
+        val_entry = _in_memory_cache.get(key)
+        if val_entry is not None:
+            if isinstance(val_entry, tuple) and len(val_entry) == 2:
+                val, exp = val_entry
+                if time.time() > exp:
+                    try:
+                        del _in_memory_cache[key]
+                    except Exception:
+                        pass
+                    return None
+            else:
+                val = val_entry
+
             if isinstance(val, str):
                 try:
                     return json.loads(val)
@@ -92,9 +103,10 @@ def set_cache(key: str, value: Any, ttl_seconds: int = 120) -> bool:
         except Exception as e:
             logger.warning(f"Redis set error for {key}: {e}. Falling back to memory.")
 
-    # Always write to memory cache as well for immediate local availability
+    # Always write to memory cache with custom expiration timestamp
     try:
-        _in_memory_cache[key] = serialized
+        expires_at = time.time() + ttl_seconds
+        _in_memory_cache[key] = (serialized, expires_at)
         success = True
     except Exception:
         pass

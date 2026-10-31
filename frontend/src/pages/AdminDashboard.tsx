@@ -202,13 +202,14 @@ export default function AdminDashboard() {
     }
   }, [activeAdminTab, feedbackCategory, feedbackStatus, feedbackRating])
 
-  const fetchVisitors = async (pageOverride?: number) => {
+  const fetchVisitors = async (pageOverride?: number, searchOverride?: string) => {
     try {
       setVisitorsLoading(true)
       const p = pageOverride !== undefined ? pageOverride : visitorPage
+      const s = searchOverride !== undefined ? searchOverride : visitorSearchTerm
       const res = await adminService.getVisitors({
         filter_type: visitorFilterType !== 'all' ? visitorFilterType : undefined,
-        search: visitorSearchTerm.trim() || undefined,
+        search: s.trim() || undefined,
         timeframe: visitorFilterDate ? undefined : (selectedTimeframe !== 'all' ? selectedTimeframe : undefined),
         date_str: visitorFilterDate || undefined,
         page: p,
@@ -1408,7 +1409,12 @@ export default function AdminDashboard() {
                     type="text"
                     value={visitorSearchTerm}
                     onChange={(e) => setVisitorSearchTerm(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && fetchVisitors()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        setVisitorPage(1)
+                        fetchVisitors(1)
+                      }
+                    }}
                     placeholder="Tìm theo tên hiển thị, @username hoặc địa chỉ IP..."
                     className="w-full pl-9 pr-9 py-2 bg-black/40 border border-slate-700/80 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 text-xs transition"
                   />
@@ -1417,7 +1423,8 @@ export default function AdminDashboard() {
                       type="button"
                       onClick={() => {
                         setVisitorSearchTerm('')
-                        setTimeout(() => fetchVisitors(), 0)
+                        setVisitorPage(1)
+                        fetchVisitors(1, '')
                       }}
                       className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white"
                     >

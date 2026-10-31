@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import hmac
 import threading
 from typing import Optional
 import urllib.request
@@ -292,7 +293,9 @@ def trigger_telegram_check(
     """
     expected_token = os.getenv("PINGER_SECRET_TOKEN")
     provided_token = x_pinger_token or token
-    is_authorized_pinger = bool(expected_token and provided_token == expected_token)
+    is_authorized_pinger = bool(
+        expected_token and provided_token and hmac.compare_digest(provided_token.strip(), expected_token.strip())
+    )
     is_admin = bool(user and getattr(user, "is_admin", False))
 
     if force and not (is_authorized_pinger or is_admin):

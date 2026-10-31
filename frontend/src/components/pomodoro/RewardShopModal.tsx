@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   X,
   Sparkles,
@@ -55,6 +55,8 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
 
   // Golden Pass modal
   const [redeemedTicket, setRedeemedTicket] = useState<RewardRedemption | null>(null)
+  const [redeemingId, setRedeemingId] = useState<number | null>(null)
+  const isRedeemingRef = useRef<boolean>(false)
 
   const loadData = async () => {
     try {
@@ -79,6 +81,7 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
   if (!isOpen) return null
 
   const handleRedeem = async (item: RewardItem) => {
+    if (isRedeemingRef.current) return
     if (balance.available_pearls < item.pearl_cost) {
       toast.error(
         `Bạn cần ${item.pearl_cost} ngọc nhưng hiện chỉ có ${balance.available_pearls} ngọc. Hãy học thêm một chút nhé!`
@@ -87,6 +90,8 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
     }
 
     try {
+      isRedeemingRef.current = true
+      setRedeemingId(item.id)
       const res = await focusService.redeemReward(item.id)
       soundManager.playRedeemSuccess()
       setRedeemedTicket(res)
@@ -95,6 +100,9 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
       if (onRewardRedeemed) onRewardRedeemed()
     } catch (err: any) {
       toast.error(err.message || 'Lỗi đổi phần thưởng')
+    } finally {
+      isRedeemingRef.current = false
+      setRedeemingId(null)
     }
   }
 
@@ -331,15 +339,15 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
 
                       <button
                         onClick={() => handleRedeem(item)}
-                        disabled={!canAfford}
+                        disabled={!canAfford || redeemingId !== null}
                         className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition shadow flex items-center gap-1.5 ${
-                          canAfford
+                          canAfford && redeemingId === null
                             ? 'bg-amber-400 hover:bg-amber-300 text-black active:scale-95'
                             : 'bg-white/10 text-white/40 cursor-not-allowed'
                         }`}
                       >
                         <Ticket className="w-3.5 h-3.5" />
-                        <span>Đổi vé ngay</span>
+                        <span>{redeemingId === item.id ? 'Đang đổi...' : 'Đổi vé ngay'}</span>
                       </button>
                     </div>
                   </div>

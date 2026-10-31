@@ -101,5 +101,8 @@ export const authService = {
   logout: () => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
+    localStorage.removeItem('lifequest_cached_goals')
+    localStorage.removeItem('lifequest_cached_stats')
+    localStorage.removeItem('lifequest_cached_sessions')
   },
 }
