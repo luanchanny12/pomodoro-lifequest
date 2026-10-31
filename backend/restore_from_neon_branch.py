@@ -9,6 +9,11 @@ Ví dụ:
 
 import sys
 import os
+import io
+
+# Đảm bảo in tiếng Việt trên console Windows không bị UnicodeEncodeError
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # Đảm bảo app import được
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -27,6 +32,17 @@ from app.database import SessionLocal as MainSessionLocal
 
 
 def restore_user_data(recovery_db_url: str, target_username: str = "luanchanny1211"):
+    import re
+    if recovery_db_url.startswith("postgres://"):
+        recovery_db_url = recovery_db_url.replace("postgres://", "postgresql://", 1)
+    recovery_db_url = re.sub(r"[?&]channel_binding=[^&]+", "", recovery_db_url)
+    if os.name == "nt" and "neon.tech" in recovery_db_url and "options=" not in recovery_db_url:
+        m = re.search(r"@([a-z0-9\-]+)\.[a-z0-9\-\.]*neon\.tech", recovery_db_url)
+        if m:
+            endpoint_id = m.group(1)
+            sep = "&" if "?" in recovery_db_url else "?"
+            recovery_db_url += f"{sep}options=endpoint%3D{endpoint_id}"
+
     print(f"[*] Đang kết nối tới DB phục hồi...")
     rec_engine = create_engine(recovery_db_url)
     RecSession = sessionmaker(bind=rec_engine)
