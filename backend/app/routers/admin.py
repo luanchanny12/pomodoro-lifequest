@@ -85,7 +85,7 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
             "racer_avatar": u.racer_avatar or "rocket",
             "total_hours": round(float(hours), 2),
             "level": player.level if player else 1,
-            "streak": player.streak if player else 0,
+            "streak": (player.streak if (player and (not player.last_streak_date or player.last_streak_date >= datetime.date.today() - datetime.timedelta(days=1))) else 0) if player else 0,
         })
     user_ranking.sort(key=lambda x: x["total_hours"], reverse=True)
 
@@ -338,7 +338,7 @@ def get_admin_users(
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "level": player.level if player else 1,
             "exp": player.exp if player else 0,
-            "streak": player.streak if player else 0,
+            "streak": (player.streak if (player and (not player.last_streak_date or player.last_streak_date >= datetime.date.today() - datetime.timedelta(days=1))) else 0) if player else 0,
             "total_hours": round(float(total_hours), 2),
             "today_hours": round(float(today_hours), 2),
             "goal_count": goal_count,
@@ -469,7 +469,7 @@ def get_user_activity_detail(
             "level": player.level if player else 1,
             "exp": player.exp if player else 0,
             "coins": player.coins if player else 0,
-            "streak": player.streak if player else 0,
+            "streak": (player.streak if (player and (not player.last_streak_date or player.last_streak_date >= datetime.date.today() - datetime.timedelta(days=1))) else 0) if player else 0,
             "has_telegram": bool(notif and notif.telegram_chat_id),
         },
         "goals": goals_data,

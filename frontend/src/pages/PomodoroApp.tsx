@@ -7,6 +7,7 @@ import {
   Plus,
   Target,
   Clock,
+  CheckCircle,
   BookOpen,
   Settings as SettingsIcon,
   BarChart3,
@@ -325,9 +326,19 @@ export default function PomodoroApp() {
       setStats(statsData)
       setAvailablePearls(rewardsData.balance.available_pearls)
 
-      if (goalsData.length > 0 && selectedGoalId === null) {
-        setSelectedGoalId(goalsData[0].id)
+      if (goalsData.length > 0) {
+        setSelectedGoalId((prev) => {
+          if (prev !== null && goalsData.some((g) => g.id === prev)) {
+            return prev
+          }
+          return goalsData[0].id
+        })
       }
+
+      // Tự động làm mới profile người dùng để cập nhật chuỗi ngày (streak) & cấp độ (level) tức thì
+      authService.getMe().then((u) => {
+        setCurrentUser(u)
+      }).catch(() => {})
     } catch (err) {
       console.error('Error loading focus data:', err)
     }
@@ -528,6 +539,20 @@ export default function PomodoroApp() {
     onTimerComplete(false)
   }
 
+  const handleFinishEarly = async () => {
+    const elapsedMinutes = Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)
+    if (elapsedMinutes < 1) {
+      toast.info('Bạn cần tập trung ít nhất 1 phút để ghi nhận phiên học.')
+      return
+    }
+    soundManager.playClick()
+    setIsRunning(false)
+    endTimeRef.current = null
+    if (timerRef.current) clearInterval(timerRef.current)
+
+    await onTimerComplete(true, elapsedMinutes)
+  }
+
   const handleReset = () => {
     soundManager.playClick()
     setIsRunning(false)
@@ -580,7 +605,7 @@ export default function PomodoroApp() {
     }
   }, [goals])
 
-  const onTimerCompleteRef = useRef<((recordSession?: boolean) => void) | null>(null)
+  const onTimerCompleteRef = useRef<((recordSession?: boolean, customMinutes?: number) => void) | null>(null)
 
   // Timer tick
   useEffect(() => {
@@ -700,7 +725,7 @@ export default function PomodoroApp() {
   }
 
   // Timer complete handler
-  const onTimerComplete = async (recordSession = true) => {
+  const onTimerComplete = async (recordSession = true, customMinutes?: number) => {
     // Play alarm sound
     if (settings.alarmSound === 'bell') {
       soundManager.playBell(settings.alarmVolume)
@@ -709,9 +734,11 @@ export default function PomodoroApp() {
     }
 
     if (mode === 'pomodoro') {
-      // Completed a focus session!
-      const activeGoal = goals.find((g) => g.id === selectedGoalId)
-      notificationManager.notifyPomodoroEnd(activeGoal?.title)
+      // Xác định mục tiêu chính xác: ưu tiên selectedGoalId, sau đó activeGoal, cuối cùng goals[0]
+      const effectiveGoalId = selectedGoalId || activeGoal?.id || (goals.length > 0 ? goals[0].id : null)
+      const targetGoal = goals.find((g) => g.id === effectiveGoalId) || activeGoal
+
+      notificationManager.notifyPomodoroEnd(targetGoal?.title)
       notificationManager.recordActivity()
 
       if (!currentUser) {
@@ -719,27 +746,26 @@ export default function PomodoroApp() {
         toast.success('🎉 Tuyệt vời! Bạn vừa hoàn thành 1 phiên tập trung! Hãy tạo tài khoản để lưu kỷ lục vào Đường Đua bạn bè!')
       } else if (recordSession) {
         try {
-          const durationMins = settings.focusMinutes
+          const durationMins = customMinutes || settings.focusMinutes
           const res = await focusService.createSession({
-            goal_id: selectedGoalId,
+            goal_id: effectiveGoalId,
             duration_minutes: durationMins,
             session_date: format(new Date(), 'yyyy-MM-dd'),
             topic_note: sessionNote.trim() || 'Phiên học Pomodoro',
             source: 'pomodoro',
           })
 
-          const activeGoal = goals.find((g) => g.id === selectedGoalId)
-          const newCurrentHours = (activeGoal?.current_hours || 0) + res.duration_hours
-          const targetHours = activeGoal?.target_hours || 0
+          const newCurrentHours = (targetGoal?.current_hours || 0) + res.duration_hours
+          const targetHours = targetGoal?.target_hours || 0
 
           // Dopamine chime & pearl drop
           soundManager.playPearlDrop()
           const earnedPearls = Number((durationMins / 60).toFixed(1))
           toast.success(`🎉 +${earnedPearls} 💎 Ngọc Pha Lê được cộng vào lọ!`)
 
-          if (targetHours > 0 && newCurrentHours >= targetHours && activeGoal) {
+          if (targetHours > 0 && newCurrentHours >= targetHours && targetGoal) {
             setShowCelebration({
-              title: activeGoal.title,
+              title: targetGoal.title,
               hours: targetHours,
             })
             const checkRes = await focusService.checkConstellations()
@@ -1257,15 +1283,15 @@ export default function PomodoroApp() {
             <h2 className="text-7xl sm:text-8xl font-black tracking-tighter font-mono drop-shadow-[0_0_35px_rgba(255,255,255,0.4)] text-white">
               {formatTimeDisplay(timeLeft)}
             </h2>
-            {selectedGoalId && (
+            {activeGoal && (
               <div className="text-xs text-cyan-300 font-semibold mt-1 flex items-center justify-center gap-1.5">
                 <Target className="w-3.5 h-3.5" />
-                <span className="text-white/90 truncate max-w-xs">{goals.find((g) => g.id === selectedGoalId)?.title}</span>
+                <span className="text-white/90 truncate max-w-xs">{activeGoal.title}</span>
               </div>
             )}
           </div>
 
-          {/* Main Controls: START / PAUSE + SKIP + RESET */}
+          {/* Main Controls: START / PAUSE + SKIP + RESET + FINISH EARLY */}
           <div className="flex items-center justify-center gap-3 my-2">
             <button
               onClick={handleStartPause}
@@ -1283,6 +1309,18 @@ export default function PomodoroApp() {
                 </>
               )}
             </button>
+
+            {mode === 'pomodoro' && Math.floor((settings.focusMinutes * 60 - timeLeft) / 60) >= 1 && (
+              <button
+                onClick={handleFinishEarly}
+                className="px-3.5 sm:px-4 py-3.5 sm:py-4 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-2xl transition active:scale-95 flex items-center justify-center gap-1.5 text-xs sm:text-sm font-bold shadow-md shadow-emerald-950/30"
+                title={`Lưu và kết thúc sớm ${Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)} phút đã học`}
+              >
+                <CheckCircle className="w-4 h-4 text-emerald-400" />
+                <span className="hidden sm:inline">Lưu sớm ({Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)}p)</span>
+                <span className="sm:hidden">Lưu {Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)}p</span>
+              </button>
+            )}
 
             {isRunning && (
               <button
@@ -1434,7 +1472,7 @@ export default function PomodoroApp() {
                 </div>
 
                 <select
-                  value={selectedGoalId || ''}
+                  value={selectedGoalId || activeGoal?.id || ''}
                   onChange={(e) => setSelectedGoalId(e.target.value ? Number(e.target.value) : null)}
                   className="bg-black/60 border border-white/20 rounded-xl px-3 py-1 text-xs text-white focus:outline-none max-w-[200px] truncate"
                 >

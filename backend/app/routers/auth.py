@@ -175,6 +175,11 @@ def _build_user_response(user: User, db: Session) -> UserResponse:
         db.commit()
         db.refresh(player)
 
+    today = datetime.date.today()
+    effective_streak = player.streak or 0
+    if player.last_streak_date and player.last_streak_date < today - datetime.timedelta(days=1):
+        effective_streak = 0
+
     return UserResponse(
         id=user.id,
         username=user.username,
@@ -185,7 +190,7 @@ def _build_user_response(user: User, db: Session) -> UserResponse:
         level=player.level,
         exp=player.exp,
         coins=player.coins,
-        streak=player.streak,
+        streak=effective_streak,
     )
 
 @router.post("/register", response_model=AuthResponse)

@@ -127,6 +127,8 @@ def get_race_track_status(
         player_level = player.level if player else 1
         player_exp = player.exp if player else 0
         player_streak = player.streak if player else 0
+        if player and player.last_streak_date and player.last_streak_date < today - datetime.timedelta(days=1):
+            player_streak = 0
 
         today_hours = round(today_hours_map.get(user.id, 0.0), 2)
         total_community_hours += today_hours

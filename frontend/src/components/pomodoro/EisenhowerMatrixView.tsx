@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Calendar,
   CheckCircle2,
@@ -198,6 +198,66 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
   const q3Tasks = tasks.filter((t) => t.quadrant === 3)
   const q4Tasks = tasks.filter((t) => t.quadrant === 4)
 
+  const totalCount = tasks.length
+  const completedCount = tasks.filter((t) => t.is_completed).length
+  const completionPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
+
+  const q1Done = q1Tasks.filter((t) => t.is_completed).length
+  const q2Done = q2Tasks.filter((t) => t.is_completed).length
+  const q3Done = q3Tasks.filter((t) => t.is_completed).length
+  const q4Done = q4Tasks.filter((t) => t.is_completed).length
+
+  // Huấn luyện viên Năng suất & Động lực Thông minh
+  const coachFeedback = useMemo(() => {
+    if (totalCount === 0) {
+      return {
+        badge: 'Khởi đầu ngày mới',
+        icon: '🎯',
+        quote: 'Một ngày mới ngập tràn cơ hội! Hãy chọn ra 1-3 việc trọng tâm ở Ô 1 hoặc Ô 2 để bắt đầu ngày làm việc hiệu quả nhé.',
+      }
+    }
+    if (completedCount === totalCount) {
+      return {
+        badge: 'Đỉnh cao kỷ luật',
+        icon: '🏆',
+        quote: 'Xuất sắc tuyệt đối! Bạn đã hoàn thành trọn vẹn 100% danh sách công việc. Một ngày đại thắng không còn gì nuối tiếc. Hãy tận hưởng buổi tối thư giãn và nạp năng lượng nhé!',
+      }
+    }
+    if (q2Done > 0 && q2Done >= q2Tasks.length && q2Tasks.length > 0) {
+      return {
+        badge: 'Tư duy chiến lược',
+        icon: '⭐',
+        quote: 'Rất ấn tượng! Bạn đã hoàn thành các mục tiêu ở Ô 2 (Đầu tư dài hạn & Cốt lõi). Đây chính là bí quyết của những người thành công nhất để tạo bước nhảy vọt tương lai!',
+      }
+    }
+    if (q1Done > 0 && q1Done >= q1Tasks.length && q1Tasks.length > 0) {
+      return {
+        badge: 'Dọn sạch khủng hoảng',
+        icon: '🔥',
+        quote: 'Phản xạ tuyệt vời! Áp lực và các việc khẩn cấp ở Ô 1 đã được bạn xử lý dứt điểm. Tâm trí đã nhẹ nhõm, hãy chuyển sang các mục tiêu dài hạn tiếp theo nhé!',
+      }
+    }
+    if (completionPercent >= 50) {
+      return {
+        badge: 'Đang bứt phá mạnh mẽ',
+        icon: '⚡',
+        quote: `Tiến độ rất tốt (${completionPercent}%)! Bạn đã đi được hơn nửa chặng đường của danh sách việc. Tiếp tục giữ vững nhịp độ tập trung này nhé!`,
+      }
+    }
+    if (completedCount > 0) {
+      return {
+        badge: 'Khởi động tích cực',
+        icon: '🌱',
+        quote: `Khởi đầu vững chắc! Bạn đã giải quyết được ${completedCount} việc. Từng bước nhỏ kiên trì sẽ tạo nên thành tựu lớn. Đừng ngại bấm "Chuyển việc dở sang ngày mai" nếu cần nghỉ ngơi!`,
+      }
+    }
+    return {
+      badge: 'Sẵn sàng hành động',
+      icon: '🚀',
+      quote: 'Mọi hành trình vạn dặm đều bắt đầu từ một bước chân. Hãy bật Pomodoro 25 phút để dứt điểm ngay công việc đầu tiên nào!',
+    }
+  }, [totalCount, completedCount, completionPercent, q1Done, q1Tasks.length, q2Done, q2Tasks.length])
+
   const isToday = selectedDate === todayStr
   const isTomorrow = selectedDate === tomorrowStr
 
@@ -301,6 +361,90 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
           </button>
         </div>
       )}
+
+      {/* ── DAILY MATRIX ANALYTICS & MOTIVATIONAL COACH ── */}
+      <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-3xl p-5 shadow-2xl relative overflow-hidden transition-all">
+        {/* Glowing backdrop accent */}
+        <div className="absolute -top-24 -right-24 w-60 h-60 bg-gradient-to-br from-amber-500/15 via-rose-500/10 to-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 space-y-4">
+          {/* Top Bar: Progress & Title */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-amber-400 to-rose-400 flex items-center justify-center text-black font-black text-base shadow-md shadow-amber-500/20 flex-shrink-0">
+                📊
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                  <span>Tiến Độ Công Việc Hôm Nay</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/10 text-white font-mono font-bold border border-white/15">
+                    {completedCount}/{totalCount} ({completionPercent}%)
+                  </span>
+                </h3>
+                <p className="text-[11px] text-white/60">
+                  Thống kê thời gian thực theo 4 ô nguyên lý Eisenhower
+                </p>
+              </div>
+            </div>
+
+            {/* 4-Quadrant Mini Pills */}
+            <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 text-[11px] font-semibold">
+              <div className="px-2.5 py-1 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 flex items-center justify-between sm:justify-start gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-400 inline-block" />
+                <span>Ô 1:</span>
+                <span className="font-bold text-white font-mono">{q1Done}/{q1Tasks.length}</span>
+              </div>
+              <div className="px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 flex items-center justify-between sm:justify-start gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                <span>Ô 2 ⭐:</span>
+                <span className="font-bold text-white font-mono">{q2Done}/{q2Tasks.length}</span>
+              </div>
+              <div className="px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 flex items-center justify-between sm:justify-start gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+                <span>Ô 3:</span>
+                <span className="font-bold text-white font-mono">{q3Done}/{q3Tasks.length}</span>
+              </div>
+              <div className="px-2.5 py-1 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-300 flex items-center justify-between sm:justify-start gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-purple-400 inline-block" />
+                <span>Ô 4:</span>
+                <span className="font-bold text-white font-mono">{q4Done}/{q4Tasks.length}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Glowing Animated Progress Bar */}
+          <div className="w-full bg-black/50 border border-white/10 rounded-full h-3 overflow-hidden p-0.5">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                completionPercent === 100
+                  ? 'bg-gradient-to-r from-emerald-400 via-teal-300 to-amber-300 shadow-[0_0_15px_rgba(52,211,153,0.5)]'
+                  : completionPercent >= 50
+                  ? 'bg-gradient-to-r from-amber-400 to-emerald-400'
+                  : 'bg-gradient-to-r from-indigo-500 via-rose-500 to-amber-400'
+              }`}
+              style={{ width: `${Math.max(completionPercent > 0 ? 5 : 0, Math.min(100, completionPercent))}%` }}
+            />
+          </div>
+
+          {/* Motivational Coach Box */}
+          <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-start sm:items-center gap-3">
+            <div className="text-2xl flex-shrink-0 animate-bounce duration-1000">
+              {coachFeedback.icon}
+            </div>
+            <div className="flex-1 space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                  {coachFeedback.badge}
+                </span>
+                <span className="text-[11px] text-white/50">Huấn Luyện Viên Động Lực</span>
+              </div>
+              <p className="text-xs text-white/90 font-medium leading-relaxed">
+                {coachFeedback.quote}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* ── 4-QUADRANT GRID ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

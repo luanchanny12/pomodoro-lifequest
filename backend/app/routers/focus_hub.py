@@ -18,6 +18,8 @@ from app.models import (
     ConstellationAchievement,
     UserConstellationUnlock,
     DailyMatrixTask,
+    Player,
+    Achievement,
 )
 from app.schemas import (
     StudyGoalCreate,
@@ -96,6 +98,145 @@ def _verify_resource_ownership(resource, current_user: Optional[User]):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Bạn không có quyền thao tác trên tài nguyên của người dùng khác!"
             )
+
+
+def _propagate_goal_hours(db: Session, parent_id: Optional[int], hours_delta: float, now: datetime.datetime):
+    """
+    Tự động leo cây phân cấp mục tiêu cha (Parent Goal Rollup),
+    cộng dồn/khấu trừ hours_delta và tự động cập nhật trạng thái hoàn thành.
+    """
+    if not parent_id or abs(hours_delta) < 1e-6:
+        return
+    curr_id = parent_id
+    visited = set()
+    while curr_id and curr_id not in visited:
+        visited.add(curr_id)
+        parent = db.query(StudyGoal).filter(StudyGoal.id == curr_id).first()
+        if not parent:
+            break
+        parent.current_hours = max(0.0, round(parent.current_hours + hours_delta, 2))
+        if parent.target_hours > 0 and parent.current_hours >= parent.target_hours:
+            parent.is_completed = True
+            if not parent.completed_at:
+                parent.completed_at = now
+        else:
+            parent.is_completed = False
+            parent.completed_at = None
+        parent.updated_at = now
+        curr_id = parent.parent_id
+
+
+def _reconcile_parent_goals(db: Session, user_id: Optional[int]):
+    """
+    Tự động đối soát và cân bằng lại số giờ của các Mục Tiêu Lớn cấp trên (Parent Goals)
+    đã tồn tại trong cơ sở dữ liệu nếu trước đây chưa được cộng dồn giờ từ mục tiêu con.
+    """
+    query = db.query(StudyGoal)
+    if user_id is not None:
+        query = query.filter(StudyGoal.user_id == user_id)
+    else:
+        query = query.filter(StudyGoal.user_id.is_(None))
+    all_goals = query.all()
+    if not all_goals:
+        return
+
+    parent_map: Dict[int, List[StudyGoal]] = {}
+    goal_dict: Dict[int, StudyGoal] = {g.id: g for g in all_goals}
+    for g in all_goals:
+        if g.parent_id:
+            parent_map.setdefault(g.parent_id, []).append(g)
+
+    now = datetime.datetime.utcnow()
+    changed = False
+    for pid, children in parent_map.items():
+        parent = goal_dict.get(pid)
+        if not parent:
+            continue
+        direct_hours = (
+            db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0))
+            .filter(StudySessionLog.goal_id == pid)
+            .scalar()
+        ) or 0.0
+        sub_hours = sum(c.current_hours for c in children)
+        expected_hours = round(float(direct_hours) + float(sub_hours), 2)
+        if abs(parent.current_hours - expected_hours) > 0.01:
+            parent.current_hours = expected_hours
+            if parent.target_hours > 0 and parent.current_hours >= parent.target_hours:
+                parent.is_completed = True
+                if not parent.completed_at:
+                    parent.completed_at = now
+            else:
+                parent.is_completed = False
+                parent.completed_at = None
+            parent.updated_at = now
+            changed = True
+
+    if changed:
+        db.commit()
+
+
+def _update_user_streak(
+    db: Session,
+    user: Optional[User],
+    activity_date: Optional[datetime.date] = None,
+) -> Optional[Player]:
+    """
+    Thuật toán Chuỗi Ngày Liên Tục (Streak) chuẩn quốc tế:
+    - Nếu hôm nay đã có hoạt động: Giữ nguyên streak (không tăng lặp trong ngày).
+    - Nếu hôm qua có hoạt động: Kéo dài streak (+1 ngày).
+    - Nếu bị đứt chuỗi (> 1 ngày không hoạt động): Khởi động lại từ 1 ngày.
+    - Thưởng +50 EXP mỗi ngày học và +300 EXP kèm Huy hiệu STREAK_7 khi đạt mốc 7 ngày liên tục.
+    """
+    real_user = _get_real_user(user)
+    if not real_user:
+        return None
+
+    today = activity_date or datetime.date.today()
+    player = db.query(Player).filter(Player.user_id == real_user.id).first()
+    if not player:
+        player = Player(user_id=real_user.id, level=1, exp=0, coins=0, streak=0)
+        db.add(player)
+        db.flush()
+
+    if player.last_streak_date:
+        if player.last_streak_date == today:
+            return player
+        elif player.last_streak_date == today - datetime.timedelta(days=1):
+            player.streak = (player.streak or 0) + 1
+        elif player.last_streak_date < today - datetime.timedelta(days=1):
+            player.streak = 1
+        else:
+            return player
+    else:
+        player.streak = 1
+
+    player.last_streak_date = today
+
+    # EXP Rewards: +50 EXP cho ngày học kiên trì
+    player.exp = (player.exp or 0) + 50
+    player.level = max(1, (player.exp // 200) + 1)
+
+    # Mốc thưởng 7 ngày liên tục
+    if player.streak > 0 and player.streak % 7 == 0:
+        player.exp += 300
+        player.level = max(1, (player.exp // 200) + 1)
+        ach = (
+            db.query(Achievement)
+            .filter(Achievement.player_id == player.id, Achievement.code == "STREAK_7")
+            .first()
+        )
+        if not ach:
+            new_ach = Achievement(
+                player_id=player.id,
+                code="STREAK_7",
+                name="Kiên Trì",
+                description="Duy trì chuỗi học tập 7 ngày liên tiếp",
+                icon="🔥",
+            )
+            db.add(new_ach)
+
+    db.flush()
+    return player
 
 
 def _format_goal_response(
@@ -192,6 +333,10 @@ def get_goals(
         query = db.query(StudyGoal).filter(StudyGoal.user_id == real_user.id)
     else:
         query = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None))
+
+    # Tự động đối soát và cộng dồn lại số giờ cho các mục tiêu lớn (nếu bị lệch trước đó)
+    _reconcile_parent_goals(db, real_user.id if real_user else None)
+
     if is_completed is not None:
         query = query.filter(StudyGoal.is_completed == is_completed)
     goals = query.order_by(StudyGoal.is_completed.asc(), StudyGoal.updated_at.desc()).all()
@@ -265,6 +410,9 @@ def create_goal(
         updated_at=now,
     )
     db.add(goal)
+    db.flush()
+    if goal.parent_id and goal.current_hours > 0:
+        _propagate_goal_hours(db, goal.parent_id, goal.current_hours, now)
     db.commit()
     db.refresh(goal)
     invalidate_user_cache(user)
@@ -283,12 +431,18 @@ def update_goal(
         raise HTTPException(status_code=404, detail="Mục tiêu không tồn tại")
     _verify_resource_ownership(goal, user)
 
+    old_parent_id = goal.parent_id
+    old_current_hours = goal.current_hours
+
     update_dict = data.model_dump(exclude_unset=True)
 
     if "target_hours" in update_dict:
         th = update_dict["target_hours"]
         if th is None or th <= 0:
             raise HTTPException(status_code=400, detail="Mục tiêu số giờ (target_hours) phải là số dương lớn hơn 0!")
+
+    new_parent_id = update_dict.get("parent_id", old_parent_id)
+    new_current_hours = update_dict.get("current_hours", old_current_hours)
 
     if "parent_id" in update_dict and update_dict["parent_id"] is not None:
         if update_dict["parent_id"] == goal.id:
@@ -301,16 +455,28 @@ def update_goal(
     for k, v in update_dict.items():
         setattr(goal, k, v)
 
+    now = datetime.datetime.utcnow()
+
+    # Rollup cập nhật giờ lên mục tiêu cha nếu đổi parent_id hoặc đổi current_hours
+    if new_parent_id != old_parent_id:
+        if old_parent_id and old_current_hours > 0:
+            _propagate_goal_hours(db, old_parent_id, -old_current_hours, now)
+        if new_parent_id and new_current_hours > 0:
+            _propagate_goal_hours(db, new_parent_id, new_current_hours, now)
+    elif new_parent_id and abs(new_current_hours - old_current_hours) > 1e-6:
+        delta = new_current_hours - old_current_hours
+        _propagate_goal_hours(db, new_parent_id, delta, now)
+
     # Re-evaluate completion status
-    if goal.current_hours >= goal.target_hours:
+    if goal.target_hours > 0 and goal.current_hours >= goal.target_hours:
         goal.is_completed = True
         if not goal.completed_at:
-            goal.completed_at = datetime.datetime.utcnow()
+            goal.completed_at = now
     elif "is_completed" not in update_dict:
         goal.is_completed = False
         goal.completed_at = None
 
-    goal.updated_at = datetime.datetime.utcnow()
+    goal.updated_at = now
     db.commit()
     db.refresh(goal)
     invalidate_user_cache(user)
@@ -352,13 +518,17 @@ def delete_goal(
         # 1. Gỡ liên kết các mục tiêu con để trở thành mục tiêu độc lập, tránh crash khóa ngoại
         db.query(StudyGoal).filter(StudyGoal.parent_id == goal_id).update({StudyGoal.parent_id: None})
 
-        # 2. Gỡ liên kết các phiên học đã hoàn thành -> BẢO TOÀN 100% GIỜ HỌC LỊCH SỬ CỦA NGƯỜI DÙNG
+        # 2. Khấu trừ giờ khỏi mục tiêu lớn cha nếu mục tiêu này là mục tiêu con
+        if goal.parent_id and goal.current_hours > 0:
+            _propagate_goal_hours(db, goal.parent_id, -goal.current_hours, datetime.datetime.utcnow())
+
+        # 3. Gỡ liên kết các phiên học đã hoàn thành -> BẢO TOÀN 100% GIỜ HỌC LỊCH SỬ CỦA NGƯỜI DÙNG
         db.query(StudySessionLog).filter(StudySessionLog.goal_id == goal_id).update({StudySessionLog.goal_id: None})
 
-        # 3. Gỡ liên kết các công việc trong ma trận 4 ô -> KHÔNG BAO GIỜ MẤT NHIỆM VỤ ĐÃ TẠO
+        # 4. Gỡ liên kết các công việc trong ma trận 4 ô -> KHÔNG BAO GIỜ MẤT NHIỆM VỤ ĐÃ TẠO
         db.query(DailyMatrixTask).filter(DailyMatrixTask.goal_id == goal_id).update({DailyMatrixTask.goal_id: None})
 
-        # 4. Gỡ liên kết TimeCapsule
+        # 5. Gỡ liên kết TimeCapsule
         db.query(TimeCapsule).filter(TimeCapsule.goal_id == goal_id).update({TimeCapsule.goal_id: None})
 
         db.delete(goal)
@@ -432,11 +602,16 @@ def create_session(
         _verify_resource_ownership(goal, user)
         if goal:
             goal.current_hours = round(goal.current_hours + duration_hours, 2)
-            if goal.current_hours >= goal.target_hours:
+            if goal.target_hours > 0 and goal.current_hours >= goal.target_hours:
                 goal.is_completed = True
                 if not goal.completed_at:
                     goal.completed_at = now
             goal.updated_at = now
+            if goal.parent_id:
+                _propagate_goal_hours(db, goal.parent_id, duration_hours, now)
+
+    # Tự động cập nhật chuỗi ngày học liên tục (Streak) và cộng điểm EXP
+    _update_user_streak(db, user, session_date)
 
     db.commit()
     db.refresh(session_log)
@@ -492,30 +667,37 @@ def update_session(
             old_g = db.query(StudyGoal).filter(StudyGoal.id == old_goal_id).first()
             if old_g:
                 old_g.current_hours = max(0.0, round(old_g.current_hours - old_hours, 2))
-                if old_g.current_hours < old_g.target_hours:
+                if old_g.target_hours > 0 and old_g.current_hours < old_g.target_hours:
                     old_g.is_completed = False
                 old_g.updated_at = now
+                if old_g.parent_id:
+                    _propagate_goal_hours(db, old_g.parent_id, -old_hours, now)
         if new_goal_id:
             new_g = db.query(StudyGoal).filter(StudyGoal.id == new_goal_id).first()
             if new_g:
                 new_g.current_hours = round(new_g.current_hours + new_hours, 2)
-                if new_g.current_hours >= new_g.target_hours:
+                if new_g.target_hours > 0 and new_g.current_hours >= new_g.target_hours:
                     new_g.is_completed = True
                     if not new_g.completed_at:
                         new_g.completed_at = now
                 new_g.updated_at = now
+                if new_g.parent_id:
+                    _propagate_goal_hours(db, new_g.parent_id, new_hours, now)
         session_log.goal_id = new_goal_id
     elif old_goal_id and old_hours != new_hours:
         goal = db.query(StudyGoal).filter(StudyGoal.id == old_goal_id).first()
         if goal:
-            goal.current_hours = max(0.0, round(goal.current_hours - old_hours + new_hours, 2))
-            if goal.current_hours >= goal.target_hours:
+            diff_hours = new_hours - old_hours
+            goal.current_hours = max(0.0, round(goal.current_hours + diff_hours, 2))
+            if goal.target_hours > 0 and goal.current_hours >= goal.target_hours:
                 goal.is_completed = True
                 if not goal.completed_at:
                     goal.completed_at = now
             else:
                 goal.is_completed = False
             goal.updated_at = now
+            if goal.parent_id:
+                _propagate_goal_hours(db, goal.parent_id, diff_hours, now)
 
     db.commit()
     db.refresh(session_log)
@@ -538,9 +720,12 @@ def delete_session(
         goal = db.query(StudyGoal).filter(StudyGoal.id == session_log.goal_id).first()
         if goal:
             goal.current_hours = max(0.0, round(goal.current_hours - session_log.duration_hours, 2))
-            if goal.current_hours < goal.target_hours:
+            if goal.target_hours > 0 and goal.current_hours < goal.target_hours:
                 goal.is_completed = False
-            goal.updated_at = datetime.datetime.utcnow()
+            now = datetime.datetime.utcnow()
+            goal.updated_at = now
+            if goal.parent_id:
+                _propagate_goal_hours(db, goal.parent_id, -session_log.duration_hours, now)
 
     db.delete(session_log)
     db.commit()
@@ -1571,6 +1756,10 @@ def toggle_matrix_task(
     task.is_completed = not task.is_completed
     task.completed_at = datetime.datetime.utcnow() if task.is_completed else None
     task.updated_at = datetime.datetime.utcnow()
+
+    if task.is_completed:
+        _update_user_streak(db, user, task.date)
+
     db.commit()
     db.refresh(task)
     invalidate_user_cache(user)

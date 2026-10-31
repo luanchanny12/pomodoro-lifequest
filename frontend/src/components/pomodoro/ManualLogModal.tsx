@@ -27,6 +27,12 @@ export const ManualLogModal: React.FC<ManualLogModalProps> = ({
   const [topicNote, setTopicNote] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
 
+  React.useEffect(() => {
+    if (isOpen) {
+      setGoalId(selectedGoalId || (goals[0]?.id ?? ''))
+    }
+  }, [isOpen, selectedGoalId, goals])
+
   if (!isOpen) return null
 
   const selectedGoal = goals.find((g) => g.id === Number(goalId))
