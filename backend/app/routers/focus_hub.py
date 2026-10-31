@@ -2,12 +2,13 @@ import datetime
 import math
 import re
 import threading
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
+from app.cache import get_cache, set_cache, invalidate_user_cache
 from app.models import (
     StudyGoal,
     StudySessionLog,
@@ -66,6 +67,12 @@ DEFAULT_CELESTIALS = [
 ]
 
 
+def _get_real_user(user: Any) -> Optional[User]:
+    if user and hasattr(user, "id") and type(user).__name__ != "Depends":
+        return user
+    return None
+
+
 def _verify_resource_ownership(resource, current_user: Optional[User]):
     """
     OWASP API1 (IDOR) Security Guard:
@@ -78,19 +85,25 @@ def _verify_resource_ownership(resource, current_user: Optional[User]):
         return
     res_user_id = getattr(resource, "user_id", None)
     if res_user_id is not None:
-        if not current_user:
+        real_user = _get_real_user(current_user)
+        if not real_user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Vui lòng đăng nhập để thao tác trên tài nguyên này."
             )
-        if res_user_id != current_user.id and not getattr(current_user, "is_admin", False):
+        if res_user_id != real_user.id and not getattr(real_user, "is_admin", False):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Bạn không có quyền thao tác trên tài nguyên của người dùng khác!"
             )
 
 
-def _format_goal_response(goal: StudyGoal, db: Session = None) -> StudyGoalResponse:
+def _format_goal_response(
+    goal: StudyGoal,
+    db: Optional[Session] = None,
+    sub_count: Optional[int] = None,
+    parent_title: Optional[str] = None,
+) -> StudyGoalResponse:
     target = goal.target_hours if (goal.target_hours and goal.target_hours > 0) else 1.0
     progress = round(min(100.0, (goal.current_hours / target) * 100.0), 1)
     remaining = max(0.0, round(goal.target_hours - goal.current_hours, 2))
@@ -106,14 +119,13 @@ def _format_goal_response(goal: StudyGoal, db: Session = None) -> StudyGoalRespo
         elif remaining > 0:
             hours_needed = remaining
 
-    parent_title = None
-    sub_goals_count = 0
-    if db:
-        if goal.parent_id:
-            parent = db.query(StudyGoal).filter(StudyGoal.id == goal.parent_id).first()
-            if parent:
-                parent_title = parent.title
-        sub_goals_count = db.query(StudyGoal).filter(StudyGoal.parent_id == goal.id).count()
+    if parent_title is None and db and goal.parent_id:
+        parent = db.query(StudyGoal).filter(StudyGoal.id == goal.parent_id).first()
+        if parent:
+            parent_title = parent.title
+
+    if sub_count is None:
+        sub_count = db.query(StudyGoal).filter(StudyGoal.parent_id == goal.id).count() if db else 0
 
     return StudyGoalResponse(
         id=goal.id,
@@ -127,7 +139,7 @@ def _format_goal_response(goal: StudyGoal, db: Session = None) -> StudyGoalRespo
         parent_title=parent_title,
         planet_type=goal.planet_type or "earth",
         planet_data=goal.planet_data,
-        sub_goals_count=sub_goals_count,
+        sub_goals_count=sub_count,
         days_left=days_left,
         hours_per_day_needed=hours_needed,
         color=goal.color or "#E24A4A",
@@ -169,14 +181,49 @@ def get_goals(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    if user:
-        query = db.query(StudyGoal).filter(StudyGoal.user_id == user.id)
+    real_user = _get_real_user(user)
+    uid_str = f"u_{real_user.id}" if real_user else "u_guest"
+    cache_key = f"cache:goals:{uid_str}:{is_completed}"
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    if real_user:
+        query = db.query(StudyGoal).filter(StudyGoal.user_id == real_user.id)
     else:
         query = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None))
     if is_completed is not None:
         query = query.filter(StudyGoal.is_completed == is_completed)
     goals = query.order_by(StudyGoal.is_completed.asc(), StudyGoal.updated_at.desc()).all()
-    return [_format_goal_response(g, db) for g in goals]
+
+    # Batch query sub_goals_count & parent_titles to eliminate N+1 queries
+    sub_counts: Dict[int, int] = {}
+    parent_map: Dict[int, str] = {}
+    goal_ids = [g.id for g in goals]
+    if goal_ids:
+        counts = (
+            db.query(StudyGoal.parent_id, func.count(StudyGoal.id))
+            .filter(StudyGoal.parent_id.in_(goal_ids))
+            .group_by(StudyGoal.parent_id)
+            .all()
+        )
+        sub_counts = {p_id: cnt for p_id, cnt in counts if p_id is not None}
+        parent_ids = [g.parent_id for g in goals if g.parent_id]
+        if parent_ids:
+            parents = db.query(StudyGoal.id, StudyGoal.title).filter(StudyGoal.id.in_(parent_ids)).all()
+            parent_map = {p.id: p.title for p in parents}
+
+    formatted = [
+        _format_goal_response(
+            g,
+            db=None,
+            sub_count=sub_counts.get(g.id, 0),
+            parent_title=parent_map.get(g.parent_id) if g.parent_id else None,
+        )
+        for g in goals
+    ]
+    set_cache(cache_key, [item.model_dump() for item in formatted], ttl_seconds=120)
+    return formatted
 
 
 @router.post("/goals", response_model=StudyGoalResponse, status_code=201)
@@ -220,6 +267,7 @@ def create_goal(
     db.add(goal)
     db.commit()
     db.refresh(goal)
+    invalidate_user_cache(user)
     return _format_goal_response(goal, db)
 
 
@@ -265,6 +313,7 @@ def update_goal(
     goal.updated_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(goal)
+    invalidate_user_cache(user)
     return _format_goal_response(goal, db)
 
 
@@ -284,6 +333,7 @@ def update_planet_build(
     goal.updated_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(goal)
+    invalidate_user_cache(user)
     return _format_goal_response(goal, db)
 
 
@@ -313,6 +363,7 @@ def delete_goal(
 
         db.delete(goal)
         db.commit()
+        invalidate_user_cache(user)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Lỗi khi xóa mục tiêu an toàn: {str(e)}")
@@ -389,6 +440,7 @@ def create_session(
 
     db.commit()
     db.refresh(session_log)
+    invalidate_user_cache(user)
     return _format_session_response(session_log)
 
 
@@ -467,6 +519,7 @@ def update_session(
 
     db.commit()
     db.refresh(session_log)
+    invalidate_user_cache(user)
     return _format_session_response(session_log)
 
 
@@ -491,6 +544,7 @@ def delete_session(
 
     db.delete(session_log)
     db.commit()
+    invalidate_user_cache(user)
     return {"message": "Đã xóa bản ghi học tập"}
 
 
@@ -503,13 +557,20 @@ def get_focus_stats(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
+    real_user = _get_real_user(user)
+    uid_str = f"u_{real_user.id}" if real_user else "u_guest"
+    cache_key = f"cache:stats:{uid_str}"
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
+
     today = datetime.date.today()
     week_start = today - datetime.timedelta(days=today.weekday())
 
-    if user:
-        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == user.id).all()
-        completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id == user.id, StudyGoal.is_completed == True).count()
-        active_goals = db.query(StudyGoal).filter(StudyGoal.user_id == user.id, StudyGoal.is_completed == False).count()
+    if real_user:
+        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == real_user.id).all()
+        completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id == real_user.id, StudyGoal.is_completed == True).count()
+        active_goals = db.query(StudyGoal).filter(StudyGoal.user_id == real_user.id, StudyGoal.is_completed == False).count()
     else:
         all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).all()
         completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None), StudyGoal.is_completed == True).count()
@@ -536,7 +597,7 @@ def get_focus_stats(
             )
         )
 
-    return FocusStatsResponse(
+    res = FocusStatsResponse(
         total_hours=total_hours,
         today_hours=today_hours,
         week_hours=week_hours,
@@ -546,6 +607,8 @@ def get_focus_stats(
         active_goals=active_goals,
         last_7_days=last_7_days,
     )
+    set_cache(cache_key, res.model_dump(), ttl_seconds=120)
+    return res
 
 
 # -------------------------------------------------------------
@@ -1301,9 +1364,16 @@ def get_matrix_tasks(
     user: Optional[User] = Depends(get_current_user_optional),
 ):
     target_date = task_date or datetime.date.today()
+    real_user = _get_real_user(user)
+    uid_str = f"u_{real_user.id}" if real_user else "u_guest"
+    cache_key = f"cache:matrix:{uid_str}:{target_date.isoformat()}"
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
+
     query = db.query(DailyMatrixTask).filter(DailyMatrixTask.date == target_date)
-    if user:
-        query = query.filter(DailyMatrixTask.user_id == user.id)
+    if real_user:
+        query = query.filter(DailyMatrixTask.user_id == real_user.id)
     else:
         query = query.filter(DailyMatrixTask.user_id.is_(None))
     tasks = (
@@ -1313,8 +1383,8 @@ def get_matrix_tasks(
     )
 
     goal_query = db.query(StudyGoal)
-    if user:
-        goal_query = goal_query.filter(StudyGoal.user_id == user.id)
+    if real_user:
+        goal_query = goal_query.filter(StudyGoal.user_id == real_user.id)
     else:
         goal_query = goal_query.filter(StudyGoal.user_id.is_(None))
     goals_map = {g.id: g for g in goal_query.all()}
@@ -1339,6 +1409,7 @@ def get_matrix_tasks(
                 updated_at=t.updated_at,
             )
         )
+    set_cache(cache_key, [item.model_dump() for item in result], ttl_seconds=120)
     return result
 
 
@@ -1404,6 +1475,7 @@ def create_matrix_task(
     db.add(task)
     db.commit()
     db.refresh(task)
+    invalidate_user_cache(user)
 
     goal = db.query(StudyGoal).filter(StudyGoal.id == task.goal_id).first() if task.goal_id else None
     return DailyMatrixTaskResponse(
@@ -1464,6 +1536,7 @@ def update_matrix_task(
     task.updated_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(task)
+    invalidate_user_cache(user)
 
     goal = db.query(StudyGoal).filter(StudyGoal.id == task.goal_id).first() if task.goal_id else None
     return DailyMatrixTaskResponse(
@@ -1500,6 +1573,7 @@ def toggle_matrix_task(
     task.updated_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(task)
+    invalidate_user_cache(user)
 
     goal = db.query(StudyGoal).filter(StudyGoal.id == task.goal_id).first() if task.goal_id else None
     return DailyMatrixTaskResponse(
@@ -1536,6 +1610,7 @@ def update_matrix_task_reflection(
     task.updated_at = datetime.datetime.utcnow()
     db.commit()
     db.refresh(task)
+    invalidate_user_cache(user)
 
     goal = db.query(StudyGoal).filter(StudyGoal.id == task.goal_id).first() if task.goal_id else None
     return DailyMatrixTaskResponse(
@@ -1568,6 +1643,7 @@ def delete_matrix_task(
     _verify_resource_ownership(task, user)
     db.delete(task)
     db.commit()
+    invalidate_user_cache(user)
     return {"message": "Đã xóa công việc", "id": task_id}
 
 
@@ -1617,6 +1693,7 @@ def rollover_matrix_tasks(
         rolled_count += 1
 
     db.commit()
+    invalidate_user_cache(user)
     return {
         "message": f"Đã chuyển {rolled_count} việc chưa hoàn thành sang ngày {to_date.strftime('%d/%m/%Y')}",
         "count": rolled_count,

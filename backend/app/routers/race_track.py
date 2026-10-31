@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database import get_db
+from app.cache import get_cache, set_cache, delete_cache
 from app.models_auth import User, CheerLog
 from app.models import Player, StudySessionLog, StudyGoal
 from app.routers.auth import get_current_user, get_current_user_optional
@@ -46,59 +47,93 @@ def get_race_track_status(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
+    # Check cache first (< 2ms response)
+    cached = get_cache("cache:race:track")
+    if cached is not None:
+        try:
+            cached_racers = [RacerCard(**r) for r in cached.get("racers", [])]
+            my_rank = None
+            for r in cached_racers:
+                r.is_current_user = (current_user is not None and r.user_id == current_user.id)
+                if r.is_current_user:
+                    my_rank = r.rank
+            return RaceTrackResponse(
+                track_name=cached.get("track_name", "Đường Đua Không Gian Neon F1"),
+                racers=cached_racers,
+                total_racers=len(cached_racers),
+                community_hours_today=cached.get("community_hours_today", 0.0),
+                my_rank=my_rank,
+            )
+        except Exception:
+            pass
+
     today = datetime.date.today()
     seven_days_ago = today - datetime.timedelta(days=7)
     now = datetime.datetime.utcnow()
     forty_five_mins_ago = now - datetime.timedelta(minutes=45)
 
     users = db.query(User).filter(User.is_active == True).all()
+    user_ids = [u.id for u in users]
+
+    # Batch queries to eliminate N+1 queries entirely
+    players_map = {}
+    today_hours_map = {}
+    weekly_hours_map = {}
+    recent_active_uids = set()
+    latest_goals_map = {}
+
+    if user_ids:
+        players = db.query(Player).filter(Player.user_id.in_(user_ids)).all()
+        players_map = {p.user_id: p for p in players}
+
+        today_logs = (
+            db.query(StudySessionLog)
+            .filter(StudySessionLog.user_id.in_(user_ids), StudySessionLog.session_date == today)
+            .all()
+        )
+        for log in today_logs:
+            today_hours_map[log.user_id] = today_hours_map.get(log.user_id, 0.0) + (log.duration_hours or 0.0)
+
+        weekly_logs = (
+            db.query(StudySessionLog)
+            .filter(StudySessionLog.user_id.in_(user_ids), StudySessionLog.session_date >= seven_days_ago)
+            .all()
+        )
+        for log in weekly_logs:
+            weekly_hours_map[log.user_id] = weekly_hours_map.get(log.user_id, 0.0) + (log.duration_hours or 0.0)
+
+        recent_logs = (
+            db.query(StudySessionLog.user_id)
+            .filter(StudySessionLog.user_id.in_(user_ids), StudySessionLog.created_at >= forty_five_mins_ago)
+            .all()
+        )
+        recent_active_uids = {r[0] for r in recent_logs}
+
+        all_user_goals = (
+            db.query(StudyGoal)
+            .filter(StudyGoal.user_id.in_(user_ids))
+            .order_by(StudyGoal.updated_at.desc())
+            .all()
+        )
+        for g in all_user_goals:
+            if g.user_id not in latest_goals_map:
+                latest_goals_map[g.user_id] = g.title
 
     racers: List[RacerCard] = []
     total_community_hours = 0.0
 
     for user in users:
-        player = db.query(Player).filter(Player.user_id == user.id).first()
+        player = players_map.get(user.id)
         player_level = player.level if player else 1
         player_exp = player.exp if player else 0
         player_streak = player.streak if player else 0
 
-        # 1. Tính số giờ hôm nay
-        today_sessions = (
-            db.query(StudySessionLog)
-            .filter(StudySessionLog.user_id == user.id, StudySessionLog.session_date == today)
-            .all()
-        )
-
-        today_hours = round(sum(s.duration_hours for s in today_sessions), 2)
+        today_hours = round(today_hours_map.get(user.id, 0.0), 2)
         total_community_hours += today_hours
 
-        # 2. Tính số giờ 7 ngày gần nhất
-        weekly_sessions = (
-            db.query(StudySessionLog)
-            .filter(StudySessionLog.user_id == user.id, StudySessionLog.session_date >= seven_days_ago)
-            .all()
-        )
-
-        weekly_hours = round(sum(s.duration_hours for s in weekly_sessions), 2)
-
-        # 3. Mục tiêu hiện tại
-        active_goal = (
-            db.query(StudyGoal)
-            .filter(StudyGoal.user_id == user.id)
-            .order_by(StudyGoal.updated_at.desc())
-            .first()
-        )
-        goal_title = active_goal.title if active_goal else "Chinh phục Pomodoro"
-
-        # 4. Đang đua ngay bây giờ? (có session trong 45 phút gần nhất)
-        recent_log = (
-            db.query(StudySessionLog)
-            .filter(StudySessionLog.user_id == user.id, StudySessionLog.created_at >= forty_five_mins_ago)
-            .first()
-        )
-        is_racing_now = recent_log is not None
-
-        # 5. Tiến trình trên đường đua: 5 giờ = 100%, 0 giờ = 5%
+        weekly_hours = round(weekly_hours_map.get(user.id, 0.0), 2)
+        goal_title = latest_goals_map.get(user.id, "Chinh phục Pomodoro")
+        is_racing_now = user.id in recent_active_uids
         progress = round(min(100.0, max(6.0, (today_hours / 5.0) * 100.0)), 1)
 
         racers.append(
@@ -114,7 +149,7 @@ def get_race_track_status(
                 weekly_hours=weekly_hours,
                 current_goal_title=goal_title,
                 cheer_count=user.cheer_count or 0,
-                rank=1,  # Will sort and reassign below
+                rank=1,
                 track_progress_percent=progress,
                 is_racing_now=is_racing_now,
                 is_current_user=(current_user is not None and user.id == current_user.id),
@@ -175,6 +210,13 @@ def get_race_track_status(
             racer.rank = index
             if current_user and racer.user_id == current_user.id:
                 my_rank = index
+
+    res_data = {
+        "track_name": "Đường Đua Không Gian Neon F1",
+        "racers": [r.model_dump() for r in racers],
+        "community_hours_today": round(total_community_hours, 2),
+    }
+    set_cache("cache:race:track", res_data, ttl_seconds=60)
 
     return RaceTrackResponse(
         racers=racers,
@@ -238,6 +280,7 @@ def cheer_racer(
     db.add(cheer_log)
     db.commit()
     db.refresh(target_user)
+    delete_cache("cache:race:track")
 
     return {
         "success": True,

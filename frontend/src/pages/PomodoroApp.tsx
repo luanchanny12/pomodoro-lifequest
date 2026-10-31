@@ -285,12 +285,15 @@ export default function PomodoroApp() {
   const [isCheerModalOpen, setIsCheerModalOpen] = useState<boolean>(false)
   const [isTimerToggling, setIsTimerToggling] = useState<boolean>(false)
 
-  // Data
-  const [goals, setGoals] = useState<StudyGoal[]>([])
-  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(null)
+  // Data with SWR instant cache snapshot (<10ms load)
+  const [goals, setGoals] = useState<StudyGoal[]>(() => focusService.getCachedGoals())
+  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(() => {
+    const cached = focusService.getCachedGoals()
+    return cached.length > 0 ? cached[0].id : null
+  })
   const [sessionNote, setSessionNote] = useState<string>('')
-  const [sessions, setSessions] = useState<StudySessionLog[]>([])
-  const [stats, setStats] = useState<FocusStats | null>(null)
+  const [sessions, setSessions] = useState<StudySessionLog[]>(() => focusService.getCachedSessions())
+  const [stats, setStats] = useState<FocusStats | null>(() => focusService.getCachedStats())
   const [availablePearls, setAvailablePearls] = useState<number>(0)
   const [goalFilter, setGoalFilter] = useState<'all' | 'active' | 'completed'>('all')
 

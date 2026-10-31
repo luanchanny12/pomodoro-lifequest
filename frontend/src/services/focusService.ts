@@ -251,6 +251,9 @@ export interface AIBuddyPrompt {
 }
 
 const OFFLINE_SESSIONS_KEY = 'pending_pomodoro_sessions'
+const GOALS_CACHE_KEY = 'lifequest_cached_goals'
+const STATS_CACHE_KEY = 'lifequest_cached_stats'
+const SESSIONS_CACHE_KEY = 'lifequest_cached_sessions'
 
 export const getOfflinePendingSessions = (): Array<{
   goal_id?: number | null
@@ -325,10 +328,46 @@ if (typeof window !== 'undefined') {
 }
 
 export const focusService = {
+  // SWR Instant Local Caches (<10ms instant populate)
+  getCachedGoals: (): StudyGoal[] => {
+    try {
+      if (typeof localStorage === 'undefined') return []
+      const raw = localStorage.getItem(GOALS_CACHE_KEY)
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  },
+
+  getCachedStats: (): FocusStats | null => {
+    try {
+      if (typeof localStorage === 'undefined') return null
+      const raw = localStorage.getItem(STATS_CACHE_KEY)
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  },
+
+  getCachedSessions: (): StudySessionLog[] => {
+    try {
+      if (typeof localStorage === 'undefined') return []
+      const raw = localStorage.getItem(SESSIONS_CACHE_KEY)
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  },
+
   // Goals
   getGoals: async (isCompleted?: boolean): Promise<StudyGoal[]> => {
     const params = isCompleted !== undefined ? { is_completed: isCompleted } : {}
     const res = await api.get('/focus/goals', { params })
+    if (isCompleted === undefined && Array.isArray(res.data) && typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(GOALS_CACHE_KEY, JSON.stringify(res.data))
+      } catch (_) {}
+    }
     return res.data
   },
 
@@ -361,6 +400,11 @@ export const focusService = {
     limit?: number
   }): Promise<StudySessionLog[]> => {
     const res = await api.get('/focus/sessions', { params })
+    if (!params?.goal_id && Array.isArray(res.data) && typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(SESSIONS_CACHE_KEY, JSON.stringify(res.data))
+      } catch (_) {}
+    }
     return res.data
   },
 

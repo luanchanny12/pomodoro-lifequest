@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, lazy, Suspense } from 'react'
 import {
   X,
   User,
@@ -14,7 +14,10 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { authService, UserProfile } from '@/services/authService'
-import { RacerVehicle3DCanvas } from './RacerVehicle3DCanvas'
+
+const RacerVehicle3DCanvas = lazy(() =>
+  import('./RacerVehicle3DCanvas').then((m) => ({ default: m.RacerVehicle3DCanvas }))
+)
 
 interface AuthModalProps {
   isOpen: boolean
@@ -439,7 +442,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
 
                 {/* 3D Interactive Model Preview */}
-                <RacerVehicle3DCanvas selectedAvatar={selectedAvatar} />
+                <Suspense
+                  fallback={
+                    <div className="w-full h-44 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-center text-xs text-cyan-300/60 animate-pulse">
+                      Đang tải mô hình 3D...
+                    </div>
+                  }
+                >
+                  <RacerVehicle3DCanvas selectedAvatar={selectedAvatar} />
+                </Suspense>
 
                 {/* Danh sách 5 xe đua chọn nhanh */}
                 <div className="space-y-1 pt-1">

@@ -4,7 +4,8 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from 'sonner'
 
 import PomodoroApp from '@/pages/PomodoroApp'
-import AdminDashboard from '@/pages/AdminDashboard'
+
+const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'))
 
 function App() {
   return (
@@ -14,7 +15,20 @@ function App() {
           {/* Main streamlined Pomodoro & Goal Focus App */}
           <Route path="/" element={<PomodoroApp />} />
           <Route path="/focus" element={<PomodoroApp />} />
-          <Route path="/admin" element={<AdminDashboard />} />
+          <Route
+            path="/admin"
+            element={
+              <Suspense
+                fallback={
+                  <div className="min-h-screen bg-[#090a0f] flex items-center justify-center text-slate-400">
+                    Đang tải Admin Dashboard...
+                  </div>
+                }
+              >
+                <AdminDashboard />
+              </Suspense>
+            }
+          />
         </Routes>
         <Toaster position="top-right" richColors closeButton />
       </BrowserRouter>

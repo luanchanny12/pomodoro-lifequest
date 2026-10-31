@@ -33,6 +33,7 @@ export default defineConfig({
           query: ['@tanstack/react-query'],
           motion: ['framer-motion'],
           charts: ['recharts'],
+          three: ['three', '@react-three/fiber', '@react-three/drei', '@react-three/postprocessing'],
           ui: ['lucide-react', 'sonner', 'date-fns'],
         },
       },

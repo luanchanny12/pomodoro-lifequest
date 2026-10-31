@@ -311,7 +311,18 @@ def test_rewards_pearls_isolation():
 
 def test_admin_delete_goal_zero_data_loss():
     token_user, user_info = _register("user_goal_loss", "User Goal Test")
-    admin_token, _ = _login("admin", "Admin@123456")
+    
+    db = SessionLocal()
+    admin_u = db.query(User).filter(User.username == "admin_zero_loss_tester").first()
+    if not admin_u:
+        from app.routers.auth import hash_password
+        p_hash, salt = hash_password("AdminPass123!")
+        admin_u = User(username="admin_zero_loss_tester", display_name="Admin Zero Loss", password_hash=p_hash, salt=salt, is_admin=True)
+        db.add(admin_u)
+        db.commit()
+        db.refresh(admin_u)
+    from app.routers.auth import create_access_token
+    admin_token = create_access_token(user_id=admin_u.id, username=admin_u.username, salt=admin_u.salt)
 
     # User creates a goal
     res_goal = client.post(
