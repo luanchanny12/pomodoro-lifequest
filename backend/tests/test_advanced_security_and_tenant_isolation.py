@@ -16,11 +16,13 @@ from app.models import (
     Achievement,
     UserConstellationUnlock,
 )
+from app.routers.auth import _RATE_LIMIT_STORE
 
 client = TestClient(app)
 
 
 def _cleanup(db):
+    _RATE_LIMIT_STORE.clear()
     db.query(VisitorLog).filter(VisitorLog.visitor_id.like("unique_visitor%")).delete(synchronize_session=False)
     db.query(UserConstellationUnlock).delete(synchronize_session=False)
     db.query(RewardRedemption).delete(synchronize_session=False)
