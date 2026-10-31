@@ -37,8 +37,8 @@ export const PLANET_ITEMS: BuildableItem[] = [
     category: 'nature',
     icon: '🌱',
     symbol: '🌱',
-    requiredHours: 0.5,
-    description: 'Bắt đầu hành trình với những hạt mầm tri thức đầu tiên đâm chồi.',
+    requiredHours: 0.0,
+    description: 'Vật phẩm khởi đầu: Gieo những hạt mầm tri thức đầu tiên để khai hoang hành tinh.',
   },
   {
     id: 'forest',
@@ -293,6 +293,7 @@ export const PlanetBuilderModal: React.FC<PlanetBuilderModalProps> = ({
       await focusService.updatePlanetBuild(goal.id, JSON.stringify(plots))
       toast.success('Đã lưu quy hoạch kiến thiết hành tinh vào vũ trụ thành công! 🌍✨')
       if (onSaveSuccess) onSaveSuccess()
+      onClose()
     } catch (err: any) {
       toast.error(err.message || 'Không thể lưu kiến thiết hành tinh')
     } finally {
@@ -308,8 +309,14 @@ export const PlanetBuilderModal: React.FC<PlanetBuilderModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className={`relative w-full max-w-2xl bg-gradient-to-b ${theme.bg} border border-white/15 rounded-3xl p-5 sm:p-6 text-white shadow-2xl overflow-hidden flex flex-col max-h-[92vh]`}>
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`relative w-full max-w-2xl bg-gradient-to-b ${theme.bg} border border-white/15 rounded-3xl p-4 sm:p-6 text-white shadow-2xl overflow-hidden flex flex-col max-h-[92vh]`}
+      >
         
         {/* Glow ambient circle in background */}
         <div

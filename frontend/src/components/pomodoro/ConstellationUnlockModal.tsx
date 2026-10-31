@@ -93,8 +93,14 @@ export const ConstellationUnlockModal: React.FC<ConstellationUnlockModalProps> =
   }
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-lg animate-fadeIn">
-      <div className="relative w-full max-w-lg bg-gradient-to-b from-[#241708] via-[#140e06] to-[#080503] border-2 border-amber-500/50 rounded-3xl p-6 sm:p-7 text-white text-center shadow-2xl overflow-hidden">
+    <div
+      onClick={handleClose}
+      className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-lg animate-fadeIn"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto bg-gradient-to-b from-[#241708] via-[#140e06] to-[#080503] border-2 border-amber-500/50 rounded-3xl p-5 sm:p-7 text-white text-center shadow-2xl custom-scrollbar"
+      >
         {/* Close button */}
         <button
           onClick={handleClose}

@@ -21,7 +21,8 @@ import {
   Unlock,
   ChevronRight,
   Flame,
-  Target
+  Target,
+  ArrowLeft,
 } from 'lucide-react'
 import {
   focusService,
@@ -44,7 +45,11 @@ interface StarParticle {
   color: string
 }
 
-export const TopicGalaxyViewComponent: React.FC = () => {
+export interface TopicGalaxyViewProps {
+  onBackToGoals?: () => void
+}
+
+export const TopicGalaxyViewComponent: React.FC<TopicGalaxyViewProps> = ({ onBackToGoals }) => {
   const [galaxy, setGalaxy] = useState<TopicGalaxy | null>(null)
   const [constellations, setConstellations] = useState<ConstellationAchievement[]>([])
   const [loading, setLoading] = useState(true)
@@ -559,34 +564,29 @@ export const TopicGalaxyViewComponent: React.FC = () => {
     }
   }, [viewMode, isPaused, speedMultiplier, planets, galaxy, hoveredPlanetIndex, isSunHovered, backgroundStars, sunStats])
 
-  // Canvas Mouse Move (Hit testing for hover)
-  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Hit testing for both Mouse Hover, Mouse Click, and Mobile Touch Tap
+  const getHitTarget = (clientX: number, clientY: number): { type: 'sun' } | { type: 'planet'; planet: TopicPlanet; index: number } | null => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas) return null
     const rect = canvas.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
+    const mouseX = clientX - rect.left
+    const mouseY = clientY - rect.top
 
     const cx = rect.width / 2
     const cy = rect.height / 2
 
-    // Check Sun hit
-    const distSun = Math.hypot(mouseX - cx, mouseY - cy)
-    if (distSun <= 36) {
-      setIsSunHovered(true)
-      setHoveredPlanetIndex(null)
-      canvas.style.cursor = 'pointer'
-      return
+    // Check Sun hit (generous 44px radius for comfortable mobile tap)
+    if (Math.hypot(mouseX - cx, mouseY - cy) <= 44) {
+      return { type: 'sun' }
     }
-    setIsSunHovered(false)
 
     // Check Planets hit
     const baseA = Math.min(rect.width * 0.2, 95)
     const stepA = Math.min(rect.width * 0.08, 48)
     const aspect = 0.58
 
-    let foundIdx: number | null = null
-    planets.forEach((p, idx) => {
+    for (let idx = 0; idx < planets.length; idx++) {
+      const p = planets[idx]
       const a = baseA + idx * stepA
       const b = a * aspect
       const omega = (0.32 / Math.pow(idx + 1, 0.55))
@@ -598,37 +598,61 @@ export const TopicGalaxyViewComponent: React.FC = () => {
       const pr = 12 + p.level * 3
 
       const dist = Math.hypot(mouseX - px, mouseY - py)
-      if (dist <= pr + 6) {
-        foundIdx = idx
+      // Generous hit radius for mobile touch (at least 28px radius)
+      if (dist <= Math.max(28, pr + 12)) {
+        return { type: 'planet', planet: p, index: idx }
       }
-    })
-
-    setHoveredPlanetIndex(foundIdx)
-    canvas.style.cursor = foundIdx !== null ? 'pointer' : 'default'
+    }
+    return null
   }
 
-  // Canvas Click (Hit testing for planet modal or sun modal)
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Canvas Mouse Move (Hit testing for hover on Desktop)
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const hit = getHitTarget(e.clientX, e.clientY)
     const canvas = canvasRef.current
     if (!canvas) return
-    const rect = canvas.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
 
-    const cx = rect.width / 2
-    const cy = rect.height / 2
-
-    // Click on Sun
-    if (Math.hypot(mouseX - cx, mouseY - cy) <= 36) {
-      soundManager.playCosmicChime()
-      setIsSunModalOpen(true)
-      return
+    if (hit?.type === 'sun') {
+      setIsSunHovered(true)
+      setHoveredPlanetIndex(null)
+      canvas.style.cursor = 'pointer'
+    } else if (hit?.type === 'planet') {
+      setIsSunHovered(false)
+      setHoveredPlanetIndex(hit.index)
+      canvas.style.cursor = 'pointer'
+    } else {
+      setIsSunHovered(false)
+      setHoveredPlanetIndex(null)
+      canvas.style.cursor = 'default'
     }
+  }
 
-    // Click on Planet -> opens Real Goal details!
-    if (hoveredPlanetIndex !== null && planets[hoveredPlanetIndex]) {
-      soundManager.playCosmicChime()
-      setSelectedPlanet(planets[hoveredPlanetIndex])
+  // Canvas Click (Desktop Mouse Click)
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const hit = getHitTarget(e.clientX, e.clientY)
+    if (!hit) return
+
+    soundManager.playCosmicChime()
+    if (hit.type === 'sun') {
+      setIsSunModalOpen(true)
+    } else if (hit.type === 'planet') {
+      setSelectedPlanet(hit.planet)
+    }
+  }
+
+  // Canvas Touch (Mobile Touch Tap)
+  const handleCanvasTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.changedTouches.length === 0) return
+    const touch = e.changedTouches[0]
+    const hit = getHitTarget(touch.clientX, touch.clientY)
+    if (!hit) return
+
+    e.preventDefault()
+    soundManager.playCosmicChime()
+    if (hit.type === 'sun') {
+      setIsSunModalOpen(true)
+    } else if (hit.type === 'planet') {
+      setSelectedPlanet(hit.planet)
     }
   }
 
@@ -647,8 +671,19 @@ export const TopicGalaxyViewComponent: React.FC = () => {
     >
       {/* ── TOP HEADER & CONTROLS ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-br from-amber-500/20 via-yellow-500/10 to-cyan-500/20 text-amber-300 rounded-2xl border border-amber-400/30">
+        <div className="flex items-center gap-2.5">
+          {onBackToGoals && (
+            <button
+              type="button"
+              onClick={onBackToGoals}
+              className="p-2 sm:px-3 sm:py-2 bg-white/10 hover:bg-white/20 active:scale-95 text-white/90 hover:text-white rounded-2xl border border-white/15 transition flex items-center gap-1.5 flex-shrink-0"
+              title="Quay lại danh sách Mục tiêu lớn"
+            >
+              <ArrowLeft className="w-4 h-4 text-cyan-300" />
+              <span className="text-xs font-bold">Quay lại</span>
+            </button>
+          )}
+          <div className="p-2.5 bg-gradient-to-br from-amber-500/20 via-yellow-500/10 to-cyan-500/20 text-amber-300 rounded-2xl border border-amber-400/30 flex-shrink-0">
             <Orbit className="w-5 h-5 animate-spin" style={{ animationDuration: '24s' }} />
           </div>
           <div>
@@ -748,7 +783,8 @@ export const TopicGalaxyViewComponent: React.FC = () => {
               setIsSunHovered(false)
             }}
             onClick={handleCanvasClick}
-            className="w-full h-[440px] sm:h-[480px] block select-none"
+            onTouchEnd={handleCanvasTouchEnd}
+            className="w-full h-[440px] sm:h-[480px] block select-none cursor-pointer"
           />
 
           {/* Legend indicator overlay */}
@@ -928,123 +964,132 @@ export const TopicGalaxyViewComponent: React.FC = () => {
 
       {/* ── MODAL 1: REAL GOAL DETAIL MODAL (WHEN PLANET CLICKED) ── */}
       {selectedPlanet && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-sm bg-gradient-to-b from-[#181d2c] via-[#0f1422] to-[#0a0d17] border border-cyan-400/40 rounded-3xl p-6 text-white text-center shadow-2xl overflow-hidden">
+        <div
+          onClick={() => setSelectedPlanet(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-sm max-h-[92vh] flex flex-col bg-gradient-to-b from-[#181d2c] via-[#0f1422] to-[#0a0d17] border border-cyan-400/40 rounded-3xl text-white text-center shadow-2xl overflow-hidden"
+          >
             <button
               onClick={() => setSelectedPlanet(null)}
-              className="absolute top-4 right-4 p-1.5 text-white/50 hover:text-white rounded-lg hover:bg-white/10"
+              className="absolute top-3 right-3 p-2 text-white/70 hover:text-white rounded-xl bg-white/10 hover:bg-white/20 transition z-20"
+              title="Đóng chi tiết"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
 
-            {/* Planet Sphere in 3D */}
-            <div
-              className="w-20 h-20 rounded-full mx-auto mb-3 shadow-2xl relative"
-              style={{
-                background: selectedPlanet.is_completed
-                  ? 'radial-gradient(circle at 35% 35%, #ffffff, #fde047 40%, #d97706 80%, #78350f 100%)'
-                  : `radial-gradient(circle at 35% 35%, #ffffff, ${selectedPlanet.color} 50%, #000000 100%)`,
-                boxShadow: selectedPlanet.is_completed
-                  ? '0 0 35px #f59e0b'
-                  : `0 0 25px ${selectedPlanet.color}`,
-              }}
-            >
-              {selectedPlanet.is_completed && (
-                <div className="absolute -inset-2 rounded-full border border-amber-400/60 animate-ping pointer-events-none" />
-              )}
-            </div>
-
-            <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300 mb-1 flex items-center justify-center gap-1">
-              <Star className="w-3.5 h-3.5 fill-current text-amber-400" />
-              {selectedPlanet.name} (Tên Chiêm Tinh)
-            </div>
-
-            {/* REAL GOAL TITLE */}
-            <h4 className="text-xl font-bold text-white mb-2">
-              {selectedPlanet.real_title}
-            </h4>
-
-            {/* Status pill */}
-            <div className="mb-4">
-              {selectedPlanet.is_completed ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-yellow-400 to-amber-500 text-black text-xs font-black shadow-md">
-                  <Trophy className="w-3.5 h-3.5" /> 🏆 ĐÃ HOÀN THÀNH MỤC TIÊU (DONE)
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 text-xs font-bold">
-                  <Clock className="w-3.5 h-3.5" /> Đang học tập: {selectedPlanet.progress_percent}%
-                </span>
-              )}
-            </div>
-
-            {/* Goal detailed statistics */}
-            <div className="bg-black/50 rounded-2xl p-4 text-xs space-y-2.5 border border-white/10 text-left mb-4">
-              <div className="flex justify-between items-center">
-                <span className="text-white/60">Tiến độ tích lũy:</span>
-                <span className="font-extrabold text-white text-sm">
-                  {selectedPlanet.current_hours} / {selectedPlanet.target_hours} giờ
-                </span>
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    selectedPlanet.is_completed
-                      ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
-                      : 'bg-gradient-to-r from-cyan-400 to-blue-500'
-                  }`}
-                  style={{ width: `${Math.min(100, selectedPlanet.progress_percent)}%` }}
-                />
-              </div>
-
-              <div className="flex justify-between items-center pt-1">
-                <span className="text-white/60">Số phiên đã tập trung:</span>
-                <span className="font-bold text-white">{selectedPlanet.session_count} buổi</span>
-              </div>
-
-              {selectedPlanet.category && (
-                <div className="flex justify-between items-center">
-                  <span className="text-white/60">Phân loại:</span>
-                  <span className="font-medium text-cyan-300">{selectedPlanet.category}</span>
-                </div>
-              )}
-
-              {selectedPlanet.notes && (
-                <div className="pt-2 border-t border-white/10 text-[11px] text-white/70 italic">
-                  "{selectedPlanet.notes}"
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setBuildingGoal({
-                    id: selectedPlanet.goal_id,
-                    title: selectedPlanet.real_title,
-                    current_hours: selectedPlanet.current_hours,
-                    target_hours: selectedPlanet.target_hours,
-                    planet_type: selectedPlanet.planet_type || 'earth',
-                    planet_data: selectedPlanet.planet_data || '[]',
-                    is_completed: selectedPlanet.is_completed,
-                  })
-                  setSelectedPlanet(null)
+            <div className="overflow-y-auto p-5 sm:p-6 custom-scrollbar">
+              {/* Planet Sphere in 3D */}
+              <div
+                className="w-20 h-20 rounded-full mx-auto mb-3 shadow-2xl relative"
+                style={{
+                  background: selectedPlanet.is_completed
+                    ? 'radial-gradient(circle at 35% 35%, #ffffff, #fde047 40%, #d97706 80%, #78350f 100%)'
+                    : `radial-gradient(circle at 35% 35%, #ffffff, ${selectedPlanet.color} 50%, #000000 100%)`,
+                  boxShadow: selectedPlanet.is_completed
+                    ? '0 0 35px #f59e0b'
+                    : `0 0 25px ${selectedPlanet.color}`,
                 }}
-                className="w-full py-2.5 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 hover:opacity-95 text-black font-black text-xs rounded-xl transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
               >
-                <Globe className="w-4 h-4" />
-                <span>🌍 Vào Xây Dựng Hành Tinh</span>
-                <Sparkles className="w-3.5 h-3.5 text-amber-700" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedPlanet(null)}
-                className="w-full py-2 bg-white/10 hover:bg-white/15 text-white/80 font-bold text-xs rounded-xl transition"
-              >
-                Đóng chi tiết
-              </button>
+                {selectedPlanet.is_completed && (
+                  <div className="absolute -inset-2 rounded-full border border-amber-400/60 animate-ping pointer-events-none" />
+                )}
+              </div>
+
+              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300 mb-1 flex items-center justify-center gap-1">
+                <Star className="w-3.5 h-3.5 fill-current text-amber-400" />
+                {selectedPlanet.name} (Tên Chiêm Tinh)
+              </div>
+
+              {/* REAL GOAL TITLE */}
+              <h4 className="text-xl font-bold text-white mb-2">
+                {selectedPlanet.real_title}
+              </h4>
+
+              {/* Status pill */}
+              <div className="mb-4">
+                {selectedPlanet.is_completed ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-yellow-400 to-amber-500 text-black text-xs font-black shadow-md">
+                    <Trophy className="w-3.5 h-3.5" /> 🏆 ĐÃ HOÀN THÀNH MỤC TIÊU (DONE)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 text-xs font-bold">
+                    <Clock className="w-3.5 h-3.5" /> Đang học tập: {selectedPlanet.progress_percent}%
+                  </span>
+                )}
+              </div>
+
+              {/* Goal detailed statistics */}
+              <div className="bg-black/50 rounded-2xl p-4 text-xs space-y-2.5 border border-white/10 text-left mb-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-white/60">Tiến độ tích lũy:</span>
+                  <span className="font-extrabold text-white text-sm">
+                    {selectedPlanet.current_hours} / {selectedPlanet.target_hours} giờ
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      selectedPlanet.is_completed
+                        ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
+                        : 'bg-gradient-to-r from-cyan-400 to-blue-500'
+                    }`}
+                    style={{ width: `${Math.min(100, selectedPlanet.progress_percent)}%` }}
+                  />
+                </div>
+
+                <div className="flex justify-between items-center pt-1">
+                  <span className="text-white/60">Số phiên đã tập trung:</span>
+                  <span className="font-bold text-white">{selectedPlanet.session_count} buổi</span>
+                </div>
+
+                {selectedPlanet.category && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-white/60">Phân loại:</span>
+                    <span className="font-medium text-cyan-300">{selectedPlanet.category}</span>
+                  </div>
+                )}
+
+                {selectedPlanet.notes && (
+                  <div className="pt-2 border-t border-white/10 text-[11px] text-white/70 italic">
+                    "{selectedPlanet.notes}"
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBuildingGoal({
+                      id: selectedPlanet.goal_id,
+                      title: selectedPlanet.real_title,
+                      current_hours: selectedPlanet.current_hours,
+                      target_hours: selectedPlanet.target_hours,
+                      planet_type: selectedPlanet.planet_type || 'earth',
+                      planet_data: selectedPlanet.planet_data || '[]',
+                      is_completed: selectedPlanet.is_completed,
+                    })
+                    setSelectedPlanet(null)
+                  }}
+                  className="w-full py-3 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 hover:opacity-95 text-black font-black text-xs sm:text-sm rounded-xl transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 active:scale-95"
+                >
+                  <Globe className="w-4 h-4" />
+                  <span>🌍 Vào Xây Dựng Hành Tinh</span>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlanet(null)}
+                  className="w-full py-2.5 bg-white/10 hover:bg-white/15 text-white/80 font-bold text-xs rounded-xl transition active:scale-95"
+                >
+                  Đóng chi tiết
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1052,59 +1097,68 @@ export const TopicGalaxyViewComponent: React.FC = () => {
 
       {/* ── MODAL 2: CENTRAL SUN ENERGY MODAL ── */}
       {isSunModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-sm bg-gradient-to-b from-[#2b1805] via-[#1a0f05] to-[#0a0502] border-2 border-amber-500/40 rounded-3xl p-6 text-white text-center shadow-2xl overflow-hidden">
+        <div
+          onClick={() => setIsSunModalOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-sm max-h-[92vh] flex flex-col bg-gradient-to-b from-[#2b1805] via-[#1a0f05] to-[#0a0502] border-2 border-amber-500/40 rounded-3xl text-white text-center shadow-2xl overflow-hidden"
+          >
             <button
               onClick={() => setIsSunModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 text-white/50 hover:text-white rounded-lg hover:bg-white/10"
+              className="absolute top-3 right-3 p-2 text-white/70 hover:text-white rounded-xl bg-white/10 hover:bg-white/20 transition z-20"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
 
-            {/* Glowing Sun Emblem */}
-            <div className="w-20 h-20 rounded-full mx-auto mb-3 flex items-center justify-center bg-gradient-to-tr from-amber-600 via-amber-400 to-yellow-200 shadow-2xl shadow-amber-500/50">
-              <span className="text-3xl animate-spin" style={{ animationDuration: '30s' }}>☀️</span>
+            <div className="overflow-y-auto p-5 sm:p-6 custom-scrollbar">
+              {/* Glowing Sun Emblem */}
+              <div className="w-20 h-20 rounded-full mx-auto mb-3 flex items-center justify-center bg-gradient-to-tr from-amber-600 via-amber-400 to-yellow-200 shadow-2xl shadow-amber-500/50">
+                <span className="text-3xl animate-spin" style={{ animationDuration: '30s' }}>☀️</span>
+              </div>
+
+              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-1">
+                Trọng Tâm Ngân Hà • The Solar Core
+              </div>
+
+              <h4 className="text-2xl font-black text-amber-100 mb-1">
+                {sunStats.name || 'Mặt Trời Tri Thức'}
+              </h4>
+
+              <p className="text-xs text-amber-200/70 mb-4">
+                Nguồn năng lượng giữ vững quỹ đạo cho toàn bộ các mục tiêu bạn đặt ra
+              </p>
+
+              <div className="bg-black/50 rounded-2xl p-4 text-xs space-y-2.5 border border-amber-500/20 text-left mb-5">
+                <div className="flex justify-between items-center">
+                  <span className="text-amber-200/70">Tổng thời gian chiếu sáng:</span>
+                  <span className="font-extrabold text-amber-300 text-base">
+                    {(sunStats.total_hours || 0).toFixed(1)} giờ
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-amber-200/70">Tổng phiên tập trung:</span>
+                  <span className="font-bold text-white">{sunStats.total_sessions || 0} phiên</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-amber-200/70">Số hành tinh mục tiêu:</span>
+                  <span className="font-bold text-cyan-300">{planets.length} mục tiêu</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-amber-500/20">
+                  <span className="text-amber-200/70">Trạng thái quang năng:</span>
+                  <span className="font-bold text-amber-400">🔥 {sunStats.solar_power || 'Bừng sáng'}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSunModalOpen(false)}
+                className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:opacity-90 text-black font-extrabold text-xs rounded-xl transition shadow-lg shadow-amber-500/25 active:scale-95"
+              >
+                Hòa mình vào ánh sáng mặt trời ☀️
+              </button>
             </div>
-
-            <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-1">
-              Trọng Tâm Ngân Hà • The Solar Core
-            </div>
-
-            <h4 className="text-2xl font-black text-amber-100 mb-1">
-              {sunStats.name || 'Mặt Trời Tri Thức'}
-            </h4>
-
-            <p className="text-xs text-amber-200/70 mb-4">
-              Nguồn năng lượng giữ vững quỹ đạo cho toàn bộ các mục tiêu bạn đặt ra
-            </p>
-
-            <div className="bg-black/50 rounded-2xl p-4 text-xs space-y-2.5 border border-amber-500/20 text-left mb-5">
-              <div className="flex justify-between items-center">
-                <span className="text-amber-200/70">Tổng thời gian chiếu sáng:</span>
-                <span className="font-extrabold text-amber-300 text-base">
-                  {(sunStats.total_hours || 0).toFixed(1)} giờ
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-amber-200/70">Tổng phiên tập trung:</span>
-                <span className="font-bold text-white">{sunStats.total_sessions || 0} phiên</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-amber-200/70">Số hành tinh mục tiêu:</span>
-                <span className="font-bold text-cyan-300">{planets.length} mục tiêu</span>
-              </div>
-              <div className="flex justify-between items-center pt-2 border-t border-amber-500/20">
-                <span className="text-amber-200/70">Trạng thái quang năng:</span>
-                <span className="font-bold text-amber-400">🔥 {sunStats.solar_power || 'Bừng sáng'}</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setIsSunModalOpen(false)}
-              className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:opacity-90 text-black font-extrabold text-xs rounded-xl transition shadow-lg shadow-amber-500/25"
-            >
-              Hòa mình vào ánh sáng mặt trời ☀️
-            </button>
           </div>
         </div>
       )}

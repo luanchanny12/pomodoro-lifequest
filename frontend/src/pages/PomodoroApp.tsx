@@ -1703,7 +1703,7 @@ export default function PomodoroApp() {
         {/* ── TAB: TOPIC GALAXY ── */}
         {activeTab === 'galaxy' && (
           <div className="mt-6 space-y-4 animate-in fade-in duration-200">
-            <TopicGalaxyView />
+            <TopicGalaxyView onBackToGoals={() => setActiveTab('goals')} />
           </div>
         )}
 
