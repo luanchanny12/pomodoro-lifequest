@@ -40,6 +40,11 @@ import {
   ShieldAlert,
   AlertCircle,
   Activity,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  CalendarDays,
 } from 'lucide-react'
 import {
   BarChart,
@@ -75,7 +80,7 @@ export default function AdminDashboard() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
   const [userDetail, setUserDetail] = useState<UserActivityDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState<boolean>(false)
-  const [detailTab, setDetailTab] = useState<'goals' | 'sessions' | 'matrix' | 'cheer'>('goals')
+  const [detailTab, setDetailTab] = useState<'goals' | 'sessions' | 'matrix' | 'visits' | 'cheer'>('goals')
 
   // Reset Password Modal State
   const [resetModalUser, setResetModalUser] = useState<AdminUserItem | null>(null)
@@ -123,6 +128,14 @@ export default function AdminDashboard() {
   const [visitorFilterType, setVisitorFilterType] = useState<'all' | 'members' | 'guests'>('all')
   const [visitorSearchTerm, setVisitorSearchTerm] = useState<string>('')
   const [visitorViewMode, setVisitorViewMode] = useState<'aggregated' | 'live'>('aggregated')
+  const [visitorFilterDate, setVisitorFilterDate] = useState<string>('')
+  const [visitorPage, setVisitorPage] = useState<number>(1)
+  const [visitorPageSize, setVisitorPageSize] = useState<number>(15)
+  const [visitorTotalPages, setVisitorTotalPages] = useState<number>(1)
+  const [visitorTotalUnique, setVisitorTotalUnique] = useState<number>(0)
+  const [visitorTotalLive, setVisitorTotalLive] = useState<number>(0)
+  const [visitorTotalLivePages, setVisitorTotalLivePages] = useState<number>(1)
+  const [availableDates, setAvailableDates] = useState<string[]>([])
 
   useEffect(() => {
     const token = authService.getToken()
@@ -189,16 +202,27 @@ export default function AdminDashboard() {
     }
   }, [activeAdminTab, feedbackCategory, feedbackStatus, feedbackRating])
 
-  const fetchVisitors = async () => {
+  const fetchVisitors = async (pageOverride?: number) => {
     try {
       setVisitorsLoading(true)
+      const p = pageOverride !== undefined ? pageOverride : visitorPage
       const res = await adminService.getVisitors({
         filter_type: visitorFilterType !== 'all' ? visitorFilterType : undefined,
         search: visitorSearchTerm.trim() || undefined,
-        timeframe: selectedTimeframe !== 'all' ? selectedTimeframe : undefined,
+        timeframe: visitorFilterDate ? undefined : (selectedTimeframe !== 'all' ? selectedTimeframe : undefined),
+        date_str: visitorFilterDate || undefined,
+        page: p,
+        page_size: visitorPageSize,
       })
-      setAggregatedVisitors(res.aggregated_visitors)
-      setLiveVisitLogs(res.live_recent_logs)
+      setAggregatedVisitors(res.aggregated_visitors || [])
+      setLiveVisitLogs(res.live_recent_logs || [])
+      setVisitorTotalPages(res.total_pages || 1)
+      setVisitorTotalUnique(res.total_unique_visitors || 0)
+      setVisitorTotalLive(res.total_live_count || 0)
+      setVisitorTotalLivePages(res.total_live_pages || 1)
+      if (res.available_dates) {
+        setAvailableDates(res.available_dates)
+      }
     } catch (err: any) {
       toast.error(err.message || 'Lỗi tải danh sách người truy cập!')
     } finally {
@@ -208,9 +232,10 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (activeAdminTab === 'traffic') {
-      fetchVisitors()
+      fetchVisitors(1)
+      setVisitorPage(1)
     }
-  }, [activeAdminTab, visitorFilterType, selectedTimeframe])
+  }, [activeAdminTab, visitorFilterType, selectedTimeframe, visitorFilterDate, visitorPageSize])
 
   const formatRelativeTime = (isoString: string | null): string => {
     if (!isoString) return 'Chưa ghi nhận'
@@ -1364,7 +1389,7 @@ export default function AdminDashboard() {
 
                   <button
                     type="button"
-                    onClick={fetchVisitors}
+                    onClick={() => fetchVisitors()}
                     disabled={visitorsLoading}
                     className="p-2 rounded-xl bg-[#162032] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition"
                     title="Làm mới dữ liệu"
@@ -1392,7 +1417,7 @@ export default function AdminDashboard() {
                       type="button"
                       onClick={() => {
                         setVisitorSearchTerm('')
-                        setTimeout(fetchVisitors, 0)
+                        setTimeout(() => fetchVisitors(), 0)
                       }}
                       className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white"
                     >
@@ -1439,6 +1464,104 @@ export default function AdminDashboard() {
                     <span>Khách Vãng Lai ({aggregatedVisitors.filter(v => !v.is_member).length})</span>
                   </button>
                 </div>
+              </div>
+
+              {/* BỘ CHỌN & LỌC THEO NGÀY CỤ THỂ */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800/80 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-slate-400 font-bold">
+                    <CalendarDays className="w-4 h-4 text-amber-400" />
+                    <span>Lọc theo ngày:</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVisitorFilterDate('')
+                      setVisitorPage(1)
+                    }}
+                    className={`px-2.5 py-1 rounded-lg transition font-medium ${
+                      !visitorFilterDate
+                        ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
+                        : 'bg-[#162032] text-slate-400 hover:text-white border border-slate-700/60'
+                    }`}
+                  >
+                    Mọi ngày ({selectedTimeframe === 'day' ? 'Hôm nay' : selectedTimeframe === 'week' ? '7 ngày' : selectedTimeframe === 'month' ? '30 ngày' : 'Toàn bộ'})
+                  </button>
+
+                  {/* Nút nhanh Hôm nay / Hôm qua */}
+                  {(() => {
+                    const todayStr = new Date().toISOString().split('T')[0]
+                    const yest = new Date()
+                    yest.setDate(yest.getDate() - 1)
+                    const yestStr = yest.toISOString().split('T')[0]
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVisitorFilterDate(todayStr)
+                            setVisitorPage(1)
+                          }}
+                          className={`px-2.5 py-1 rounded-lg transition font-medium ${
+                            visitorFilterDate === todayStr
+                              ? 'bg-amber-400 text-slate-950 font-bold shadow-sm'
+                              : 'bg-[#162032] text-slate-400 hover:text-white border border-slate-700/60'
+                          }`}
+                        >
+                          Hôm Nay
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVisitorFilterDate(yestStr)
+                            setVisitorPage(1)
+                          }}
+                          className={`px-2.5 py-1 rounded-lg transition font-medium ${
+                            visitorFilterDate === yestStr
+                              ? 'bg-amber-400 text-slate-950 font-bold shadow-sm'
+                              : 'bg-[#162032] text-slate-400 hover:text-white border border-slate-700/60'
+                          }`}
+                        >
+                          Hôm Qua
+                        </button>
+                      </>
+                    )
+                  })()}
+
+                  {/* Date Input */}
+                  <div className="flex items-center gap-1.5 bg-black/40 border border-slate-700/80 rounded-xl px-2.5 py-1">
+                    <span className="text-[11px] text-slate-400">Chọn ngày:</span>
+                    <input
+                      type="date"
+                      value={visitorFilterDate}
+                      onChange={(e) => {
+                        setVisitorFilterDate(e.target.value)
+                        setVisitorPage(1)
+                      }}
+                      className="bg-transparent text-white text-xs focus:outline-none [color-scheme:dark]"
+                    />
+                    {visitorFilterDate && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisitorFilterDate('')
+                          setVisitorPage(1)
+                        }}
+                        className="text-slate-400 hover:text-white p-0.5 ml-1"
+                        title="Bỏ lọc ngày"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {visitorFilterDate && (
+                  <span className="text-[11px] text-amber-300 font-semibold px-2.5 py-1 rounded-lg bg-amber-400/10 border border-amber-400/20">
+                    📅 Đang xem nhật ký ngày: <b>{visitorFilterDate}</b>
+                  </span>
+                )}
               </div>
 
               {/* Content Table */}
@@ -1644,6 +1767,129 @@ export default function AdminDashboard() {
                     </table>
                   </div>
                 )
+              )}
+
+              {/* BỘ PHÂN TRANG (PAGINATION) - TRÁNH TẢI DỒN GÂY LAG */}
+              {!visitorsLoading && (
+                <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+                  {/* Trạng thái hiển thị */}
+                  <div className="flex items-center gap-2">
+                    <span>
+                      Hiển thị{' '}
+                      <b className="text-white">
+                        {Math.min(
+                          (visitorPage - 1) * visitorPageSize + 1,
+                          visitorViewMode === 'aggregated' ? visitorTotalUnique : visitorTotalLive
+                        )}
+                        -
+                        {Math.min(
+                          visitorPage * visitorPageSize,
+                          visitorViewMode === 'aggregated' ? visitorTotalUnique : visitorTotalLive
+                        )}
+                      </b>{' '}
+                      / Tổng số{' '}
+                      <b className="text-cyan-400">
+                        {visitorViewMode === 'aggregated' ? visitorTotalUnique : visitorTotalLive}
+                      </b>{' '}
+                      {visitorViewMode === 'aggregated' ? 'người' : 'lượt'}
+                    </span>
+                    <span className="text-slate-600">•</span>
+                    <div className="flex items-center gap-1.5">
+                      <span>Mỗi trang:</span>
+                      <select
+                        value={visitorPageSize}
+                        onChange={(e) => {
+                          setVisitorPageSize(Number(e.target.value))
+                          setVisitorPage(1)
+                        }}
+                        className="bg-[#162032] border border-slate-700/80 rounded-lg px-2 py-0.5 text-white font-medium focus:outline-none focus:border-cyan-400 cursor-pointer"
+                      >
+                        <option value={10}>10</option>
+                        <option value={15}>15</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Nút chuyển trang */}
+                  {(() => {
+                    const currentTotalPages =
+                      visitorViewMode === 'aggregated' ? visitorTotalPages : visitorTotalLivePages
+                    if (currentTotalPages <= 1) return null
+
+                    const handlePageChange = (newPage: number) => {
+                      if (newPage < 1 || newPage > currentTotalPages) return
+                      setVisitorPage(newPage)
+                      fetchVisitors(newPage)
+                    }
+
+                    return (
+                      <div className="flex items-center gap-1 bg-[#162032] p-1 rounded-xl border border-slate-700/60 font-bold">
+                        <button
+                          type="button"
+                          onClick={() => handlePageChange(1)}
+                          disabled={visitorPage <= 1}
+                          className="p-1.5 rounded-lg hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent text-slate-300 hover:text-white transition"
+                          title="Trang đầu"
+                        >
+                          <ChevronsLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePageChange(visitorPage - 1)}
+                          disabled={visitorPage <= 1}
+                          className="p-1.5 rounded-lg hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent text-slate-300 hover:text-white transition"
+                          title="Trang trước"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        <div className="flex items-center gap-1 px-1">
+                          {Array.from({ length: currentTotalPages }, (_, i) => i + 1)
+                            .filter((p) => p === 1 || p === currentTotalPages || Math.abs(p - visitorPage) <= 1)
+                            .map((p, idx, arr) => (
+                              <React.Fragment key={p}>
+                                {idx > 0 && p - arr[idx - 1] > 1 && (
+                                  <span className="px-1 text-slate-500">...</span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handlePageChange(p)}
+                                  className={`w-7 h-7 rounded-lg text-xs transition ${
+                                    visitorPage === p
+                                      ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                  }`}
+                                >
+                                  {p}
+                                </button>
+                              </React.Fragment>
+                            ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handlePageChange(visitorPage + 1)}
+                          disabled={visitorPage >= currentTotalPages}
+                          className="p-1.5 rounded-lg hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent text-slate-300 hover:text-white transition"
+                          title="Trang sau"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePageChange(currentTotalPages)}
+                          disabled={visitorPage >= currentTotalPages}
+                          className="p-1.5 rounded-lg hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent text-slate-300 hover:text-white transition"
+                          title="Trang cuối"
+                        >
+                          <ChevronsRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )
+                  })()}
+                </div>
               )}
             </div>
           </div>
@@ -2035,6 +2281,18 @@ export default function AdminDashboard() {
                   </button>
 
                   <button
+                    onClick={() => setDetailTab('visits')}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-b-2 transition ${
+                      detailTab === 'visits'
+                        ? 'border-purple-400 text-purple-300'
+                        : 'border-transparent text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>Thiết Bị & Vào Web ({userDetail.visit_history?.length || 0})</span>
+                  </button>
+
+                  <button
                     onClick={() => setDetailTab('cheer')}
                     className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-b-2 transition ${
                       detailTab === 'cheer'
@@ -2185,7 +2443,85 @@ export default function AdminDashboard() {
                     </div>
                   )}
 
-                  {/* TAB 4: CHEER & TELEGRAM */}
+                  {/* TAB 4: VISITS & DEVICES */}
+                  {detailTab === 'visits' && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div className="bg-[#141d2f] border border-slate-700/80 rounded-xl p-3">
+                          <div className="text-[10px] text-slate-400 font-bold uppercase">Lần Mở Web</div>
+                          <div className="text-xl font-black text-white mt-0.5">{userDetail.total_visits || userDetail.visit_history?.length || 0} lần</div>
+                        </div>
+                        <div className="bg-[#141d2f] border border-slate-700/80 rounded-xl p-3">
+                          <div className="text-[10px] text-slate-400 font-bold uppercase">Phiên Pomodoro</div>
+                          <div className="text-xl font-black text-amber-300 mt-0.5">{userDetail.total_sessions_count || userDetail.recent_sessions.length} phiên</div>
+                        </div>
+                        <div className="bg-[#141d2f] border border-slate-700/80 rounded-xl p-3">
+                          <div className="text-[10px] text-slate-400 font-bold uppercase">Việc Ma Trận</div>
+                          <div className="text-xl font-black text-purple-300 mt-0.5">{userDetail.total_matrix_count || userDetail.matrix_tasks.length} task</div>
+                        </div>
+                        <div className="bg-[#141d2f] border border-slate-700/80 rounded-xl p-3">
+                          <div className="text-[10px] text-slate-400 font-bold uppercase">Chòm Sao Thắp Sáng</div>
+                          <div className="text-xl font-black text-cyan-300 mt-0.5">{userDetail.unlocked_constellations?.length || 0} chòm</div>
+                        </div>
+                      </div>
+
+                      {!userDetail.visit_history || userDetail.visit_history.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400 italic border border-dashed border-slate-800 rounded-xl">
+                          Chưa có nhật ký truy cập thiết bị của bạn này.
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto border border-slate-700/80 rounded-xl">
+                          <table className="w-full text-left text-xs text-slate-300">
+                            <thead className="bg-[#162032] text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-800">
+                              <tr>
+                                <th className="py-2.5 px-3">Thời Gian</th>
+                                <th className="py-2.5 px-3">Thiết Bị</th>
+                                <th className="py-2.5 px-3">Trình Duyệt & Hệ Điều Hành</th>
+                                <th className="py-2.5 px-3">Địa Chỉ IP</th>
+                                <th className="py-2.5 px-3">Trang Xem</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/60 bg-black/20">
+                              {userDetail.visit_history.map((v) => (
+                                <tr key={v.id} className="hover:bg-slate-800/40 transition">
+                                  <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px]">
+                                    <div className="text-white font-medium">{formatRelativeTime(v.created_at)}</div>
+                                    <div className="text-[10px] text-slate-500">
+                                      {v.created_at ? new Date(v.created_at).toLocaleString('vi-VN') : ''}
+                                    </div>
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <div className="flex items-center gap-1.5">
+                                      {v.device_type === 'mobile' ? (
+                                        <Smartphone className="w-4 h-4 text-purple-400" />
+                                      ) : (
+                                        <Monitor className="w-4 h-4 text-slate-400" />
+                                      )}
+                                      <span className="capitalize">{v.device_type === 'mobile' ? 'Điện thoại' : 'Máy tính'}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <div className="text-white font-medium">{v.browser}</div>
+                                    <div className="text-[10px] text-slate-400">{v.os}</div>
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
+                                    {v.ip_address}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700">
+                                      {v.path}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB 5: CHEER & TELEGRAM */}
                   {detailTab === 'cheer' && (
                     <div className="space-y-6">
                       {/* Section 1: In-App Cheer */}

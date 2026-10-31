@@ -125,11 +125,29 @@ export interface LiveVisitLogItem {
   created_at: string | null
 }
 
+export interface UserVisitHistoryItem {
+  id: number
+  created_at: string | null
+  visit_date: string
+  ip_address: string
+  device_type: 'mobile' | 'tablet' | 'desktop'
+  browser: string
+  os: string
+  path: string
+}
+
 export interface AdminVisitorsResponse {
   aggregated_visitors: AggregatedVisitorItem[]
   live_recent_logs: LiveVisitLogItem[]
   total_unique_visitors: number
   total_visits: number
+  page?: number
+  page_size?: number
+  total_pages?: number
+  total_live_count?: number
+  total_live_pages?: number
+  available_dates?: string[]
+  selected_date?: string | null
 }
 
 export interface AdminUserItem {
@@ -201,6 +219,11 @@ export interface UserActivityDetail {
     reflection_note: string | null
     completed_at: string | null
   }>
+  visit_history?: UserVisitHistoryItem[]
+  unlocked_constellations?: string[]
+  total_visits?: number
+  total_sessions_count?: number
+  total_matrix_count?: number
 }
 
 export const adminService = {
@@ -307,6 +330,9 @@ export const adminService = {
     filter_type?: string
     search?: string
     timeframe?: string
+    date_str?: string
+    page?: number
+    page_size?: number
     limit?: number
   }): Promise<AdminVisitorsResponse> => {
     const res = await api.get<AdminVisitorsResponse>('/admin/visitors', { params })

@@ -1,4 +1,5 @@
 import datetime
+import math
 from datetime import date
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -291,7 +292,10 @@ def get_admin_visitors(
     filter_type: str = Query("all"),  # all, members, guests
     search: Optional[str] = Query(None),
     timeframe: str = Query("all"),    # day, week, month, all
-    limit: int = Query(100, ge=10, le=500),
+    date_str: Optional[str] = Query(None, description="Lọc theo ngày cụ thể dạng YYYY-MM-DD"),
+    page: int = Query(1, ge=1, description="Số trang hiện tại (bắt đầu từ 1)"),
+    page_size: int = Query(15, ge=5, le=200, description="Số lượng bản ghi mỗi trang"),
+    limit: Optional[int] = Query(None, ge=10, le=500, description="Hỗ trợ tương thích ngược"),
     admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
@@ -299,16 +303,38 @@ def get_admin_visitors(
     Lấy danh sách người truy cập chi tiết:
     - Nếu là thành viên: Tên hiển thị + @username + avatar + số lần vào + thiết bị/trình duyệt.
     - Nếu là khách vãng lai: Địa chỉ IP + số lần vào + thiết bị/trình duyệt.
-    Kèm nhật ký live recent logs 50 lượt mới nhất.
+    - Hỗ trợ lọc theo ngày cụ thể và phân trang mượt mà (tránh tải dồn gây lag).
+    - Kèm nhật ký live recent logs và danh sách các ngày có dữ liệu truy cập.
     """
     today = date.today()
     date_filter = None
-    if timeframe == "day":
-        date_filter = VisitorLog.visit_date == today
-    elif timeframe == "week":
-        date_filter = VisitorLog.visit_date >= today - datetime.timedelta(days=7)
-    elif timeframe == "month":
-        date_filter = VisitorLog.visit_date >= today - datetime.timedelta(days=30)
+    parsed_date = None
+
+    if date_str and date_str.strip():
+        try:
+            parsed_date = datetime.date.fromisoformat(date_str.strip())
+            date_filter = VisitorLog.visit_date == parsed_date
+        except Exception:
+            date_filter = None
+
+    if date_filter is None and not (date_str and date_str.strip()):
+        if timeframe == "day":
+            date_filter = VisitorLog.visit_date == today
+        elif timeframe == "week":
+            date_filter = VisitorLog.visit_date >= today - datetime.timedelta(days=7)
+        elif timeframe == "month":
+            date_filter = VisitorLog.visit_date >= today - datetime.timedelta(days=30)
+
+    # Lấy danh sách 14 ngày gần nhất có phát sinh truy cập để admin chọn nhanh
+    avail_rows = (
+        db.query(VisitorLog.visit_date)
+        .filter(VisitorLog.visit_date.isnot(None))
+        .distinct()
+        .order_by(VisitorLog.visit_date.desc())
+        .limit(14)
+        .all()
+    )
+    available_dates = [str(r[0]) for r in avail_rows if r[0]]
 
     # 1. TỔNG HỢP THÀNH VIÊN (Members)
     member_items = []
@@ -418,9 +444,18 @@ def get_admin_visitors(
 
     # Sắp xếp theo lần truy cập gần nhất (last_visit) giảm dần
     all_aggregated.sort(key=lambda x: x["last_visit"] or "", reverse=True)
-    all_aggregated = all_aggregated[:limit]
+    total_unique_count = len(all_aggregated)
 
-    # 3. NHẬT KÝ LIVE RECENT LOGS (50 lượt truy cập mới nhất)
+    # Phân trang Aggregated Visitors
+    effective_page_size = limit if (limit and limit != 100) else page_size
+    total_pages = max(1, math.ceil(total_unique_count / effective_page_size))
+    current_page = min(max(1, page), total_pages) if total_unique_count > 0 else 1
+
+    start_idx = (current_page - 1) * effective_page_size
+    end_idx = start_idx + effective_page_size
+    paged_aggregated = all_aggregated[start_idx:end_idx]
+
+    # 3. NHẬT KÝ LIVE RECENT LOGS (Phân trang mượt mà)
     recent_query = db.query(VisitorLog)
     if date_filter is not None:
         recent_query = recent_query.filter(date_filter)
@@ -429,7 +464,17 @@ def get_admin_visitors(
     elif filter_type == "guests":
         recent_query = recent_query.filter(VisitorLog.is_member == False)
 
-    recent_logs = recent_query.order_by(VisitorLog.created_at.desc()).limit(50).all()
+    total_live_count = recent_query.count()
+    total_live_pages = max(1, math.ceil(total_live_count / effective_page_size))
+    current_live_page = min(max(1, page), total_live_pages) if total_live_count > 0 else 1
+
+    recent_logs = (
+        recent_query.order_by(VisitorLog.created_at.desc())
+        .offset((current_live_page - 1) * effective_page_size)
+        .limit(effective_page_size)
+        .all()
+    )
+
     live_logs = []
     for log in recent_logs:
         user_obj = db.query(User).filter(User.id == log.user_id).first() if log.user_id else None
@@ -455,8 +500,15 @@ def get_admin_visitors(
         total_visits_count = db.query(VisitorLog).filter(date_filter).count()
 
     return {
-        "aggregated_visitors": all_aggregated,
+        "aggregated_visitors": paged_aggregated,
         "live_recent_logs": live_logs,
-        "total_unique_visitors": len(all_aggregated),
+        "total_unique_visitors": total_unique_count,
         "total_visits": total_visits_count,
+        "page": current_page,
+        "page_size": effective_page_size,
+        "total_pages": total_pages,
+        "total_live_count": total_live_count,
+        "total_live_pages": total_live_pages,
+        "available_dates": available_dates,
+        "selected_date": str(parsed_date) if parsed_date else None,
     }

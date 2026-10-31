@@ -404,10 +404,10 @@ def get_user_activity_detail(
             "created_at": s.created_at.isoformat() if s.created_at else None,
         })
 
-    # Ma trận 4 ô nhiệm vụ (hôm nay và gần đây, tối đa 30 task)
+    # Ma trận 4 ô nhiệm vụ (hôm nay và gần đây, tối đa 50 task)
     tasks = db.query(DailyMatrixTask).filter(
         DailyMatrixTask.user_id == user_id
-    ).order_by(DailyMatrixTask.date.desc(), DailyMatrixTask.quadrant.asc()).limit(30).all()
+    ).order_by(DailyMatrixTask.date.desc(), DailyMatrixTask.quadrant.asc()).limit(50).all()
     matrix_data = []
     for t in tasks:
         matrix_data.append({
@@ -420,6 +420,38 @@ def get_user_activity_detail(
             "reflection_note": t.reflection_note,
             "completed_at": t.completed_at.isoformat() if t.completed_at else None,
         })
+
+    # Lịch sử vào web & thiết bị sử dụng của người dùng này (mới nhất 50 lượt)
+    user_visits = db.query(VisitorLog).filter(
+        VisitorLog.user_id == user_id
+    ).order_by(VisitorLog.created_at.desc()).limit(50).all()
+
+    from app.routers.analytics_feedback import parse_user_agent
+    visits_data = []
+    for v in user_visits:
+        parsed = parse_user_agent(v.user_agent)
+        visits_data.append({
+            "id": v.id,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+            "visit_date": str(v.visit_date),
+            "ip_address": v.ip_address or "Localhost / N/A",
+            "device_type": v.device_type or parsed["device_type"],
+            "browser": parsed["browser"],
+            "os": parsed["os"],
+            "path": v.path or "/",
+        })
+
+    total_visits = db.query(VisitorLog).filter(VisitorLog.user_id == user_id).count()
+    total_sessions_count = db.query(StudySessionLog).filter(StudySessionLog.user_id == user_id).count()
+    total_matrix_count = db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id == user_id).count()
+
+    # Chòm sao đã thắp sáng
+    try:
+        from app.models import UserConstellationUnlock
+        unlocked_rows = db.query(UserConstellationUnlock).filter(UserConstellationUnlock.user_id == user_id).all()
+        unlocked_constellations = [u.constellation_id for u in unlocked_rows]
+    except Exception:
+        unlocked_constellations = []
 
     # Thông tin thông báo
     notif = db.query(NotificationSetting).filter(NotificationSetting.user_id == user_id).first()
@@ -443,6 +475,11 @@ def get_user_activity_detail(
         "goals": goals_data,
         "recent_sessions": sessions_data,
         "matrix_tasks": matrix_data,
+        "visit_history": visits_data,
+        "unlocked_constellations": unlocked_constellations,
+        "total_visits": total_visits,
+        "total_sessions_count": total_sessions_count,
+        "total_matrix_count": total_matrix_count,
     }
 
 
