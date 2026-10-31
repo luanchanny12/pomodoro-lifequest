@@ -107,3 +107,98 @@ def test_ai_buddy_prompt():
     assert "message" in data
     assert "action_type" in data
     assert "action_label" in data
+
+
+def test_past_unfinished_tasks_cannot_be_toggled():
+    from app.routers.focus_hub import vn_today
+    today = vn_today()
+    yesterday = today - datetime.timedelta(days=1)
+
+    # 1. Tạo một công việc trong quá khứ (hôm qua) chưa hoàn thành
+    db = SessionLocal()
+    past_task = DailyMatrixTask(
+        title="Bài tập chưa xong hôm qua",
+        date=yesterday,
+        quadrant=1,
+        is_completed=False,
+    )
+    db.add(past_task)
+    db.commit()
+    db.refresh(past_task)
+    past_task_id = past_task.id
+    db.close()
+
+    # 2. Cố gắng toggle hoàn thành nhiệm vụ hôm qua -> BỊ CHẶN VỚI MÃ LỖI 400
+    toggle_res = client.patch(f"/api/focus/matrix/{past_task_id}/toggle")
+    assert toggle_res.status_code == 400
+    assert "quá khứ" in toggle_res.json()["detail"].lower()
+
+    # 3. Cố gắng update is_completed = True qua endpoint update -> BỊ CHẶN 400
+    update_res = client.put(f"/api/focus/matrix/{past_task_id}", json={"is_completed": True})
+    assert update_res.status_code == 400
+    assert "quá khứ" in update_res.json()["detail"].lower()
+
+
+def test_auto_rollover_to_today_and_tomorrow():
+    from app.routers.focus_hub import vn_today
+    today = vn_today()
+    yesterday = today - datetime.timedelta(days=1)
+    tomorrow = today + datetime.timedelta(days=1)
+
+    # 1. Tạo việc chưa xong ở ngày hôm qua
+    db = SessionLocal()
+    task_yesterday = DailyMatrixTask(
+        title="Lập trình React Native",
+        date=yesterday,
+        quadrant=2,
+        is_completed=False,
+        description="Ôn lại navigation",
+    )
+    db.add(task_yesterday)
+    db.commit()
+    db.close()
+
+    # 2. Gọi GET /matrix cho ngày hôm nay -> Việc của hôm qua phải tự động xuất hiện ở hôm nay!
+    today_res = client.get(f"/api/focus/matrix?date={today.isoformat()}")
+    assert today_res.status_code == 200
+    today_tasks = today_res.json()
+    matching = [t for t in today_tasks if t["title"] == "Lập trình React Native"]
+    assert len(matching) == 1
+    today_task = matching[0]
+    assert today_task["date"] == today.isoformat()
+    assert today_task["quadrant"] == 2
+    assert today_task["is_completed"] is False
+    assert "Tự động chuyển từ" in (today_task["reflection_note"] or "")
+
+    # 3. Ngày hôm nay có thể toggle hoàn thành bình thường!
+    toggle_res = client.patch(f"/api/focus/matrix/{today_task['id']}/toggle")
+    assert toggle_res.status_code == 200
+    assert toggle_res.json()["is_completed"] is True
+
+    # 4. Tạo việc chưa xong ở HÔM NAY
+    create_res = client.post("/api/focus/matrix", json={
+        "title": "Học 50 từ vựng Kanji",
+        "quadrant": 1,
+        "date": today.isoformat(),
+    })
+    assert create_res.status_code == 201
+    kanji_task_id = create_res.json()["id"]
+
+    # 5. Gọi GET /matrix cho NGÀY MAI -> Việc Kanji chưa xong của hôm nay tự động được chuyển sang ngày mai!
+    tomorrow_res = client.get(f"/api/focus/matrix?date={tomorrow.isoformat()}")
+    assert tomorrow_res.status_code == 200
+    tomorrow_tasks = tomorrow_res.json()
+    kanji_tomorrow = [t for t in tomorrow_tasks if t["title"] == "Học 50 từ vựng Kanji"]
+    assert len(kanji_tomorrow) == 1
+    assert kanji_tomorrow[0]["date"] == tomorrow.isoformat()
+
+    # 6. Khi người dùng hoàn thành việc Kanji ở HÔM NAY -> bản sao ở ngày mai tự động dọn sạch
+    done_today = client.patch(f"/api/focus/matrix/{kanji_task_id}/toggle")
+    assert done_today.status_code == 200
+    assert done_today.json()["is_completed"] is True
+
+    # Kiểm tra lại ngày mai: bản sao Kanji đã được dọn sạch vì hôm nay đã hoàn thành!
+    tomorrow_res_after = client.get(f"/api/focus/matrix?date={tomorrow.isoformat()}")
+    assert tomorrow_res_after.status_code == 200
+    tomorrow_tasks_after = tomorrow_res_after.json()
+    assert not any(t["title"] == "Học 50 từ vựng Kanji" for t in tomorrow_tasks_after)

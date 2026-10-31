@@ -20,6 +20,7 @@ import {
   RotateCcw,
   MessageSquare,
   GripVertical,
+  Lock,
 } from 'lucide-react'
 import { format, addDays, isSameDay, parseISO } from 'date-fns'
 import { vi } from 'date-fns/locale'
@@ -89,6 +90,11 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
   // Handle Toggle
   const handleToggle = async (taskId: number) => {
     if (actionLoadingId === taskId) return
+    const targetTask = tasks.find((t) => t.id === taskId)
+    if (targetTask && targetTask.date < todayStr && !targetTask.is_completed) {
+      toast.error('Không thể hoàn thành bù công việc của ngày trong quá khứ! Các việc chưa xong đã được tự động chuyển sang ngày tiếp theo để bạn làm tiếp.')
+      return
+    }
     setActionLoadingId(taskId)
     try {
       const updated = await focusService.toggleMatrixTask(taskId)
@@ -96,8 +102,9 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
       if (updated.is_completed) {
         toast.success(`Đã hoàn thành: ${updated.title}! 👏`)
       }
-    } catch (err) {
-      toast.error('Lỗi khi cập nhật trạng thái')
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || 'Lỗi khi cập nhật trạng thái'
+      toast.error(msg)
     } finally {
       setActionLoadingId(null)
     }
@@ -320,10 +327,10 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
             <button
               onClick={handleRollover}
               className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600/60 hover:bg-indigo-600 text-white transition flex items-center gap-1 shadow-md border border-indigo-400/30 active:scale-95"
-              title="Sao chép toàn bộ việc chưa xong hôm nay sang ngày mai để tối nay chuẩn bị trước"
+              title="Hệ thống tự động chuyển việc dở sang ngày mai. Bạn cũng có thể bấm nút này để đồng bộ ngay lập tức"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Chuyển việc dở sang ngày mai</span>
+              <span className="hidden sm:inline">Chuyển việc dở sang mai (Tự động)</span>
               <span className="sm:hidden">Dở sang mai</span>
             </button>
           )}
@@ -338,6 +345,29 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Past Date Archive Reminder Banner */}
+      {selectedDate < todayStr && (
+        <div className="px-5 py-3.5 rounded-2xl bg-gradient-to-r from-amber-950/40 via-black/40 to-slate-900/40 border border-amber-500/30 backdrop-blur-md flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl">📅</span>
+            <div>
+              <span className="font-bold text-amber-300">
+                Lịch sử ngày {format(parseISO(selectedDate), 'dd/MM/yyyy')}:
+              </span>{' '}
+              <span className="text-white/80">
+                Các việc chưa hoàn thành ở ngày này đã được khóa lại và tự động chuyển sang ngày tiếp theo để bảo toàn tính kỷ luật.
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setSelectedDate(todayStr)}
+            className="text-xs text-amber-400 underline font-semibold flex-shrink-0 hover:text-amber-300"
+          >
+            Về hôm nay
+          </button>
+        </div>
+      )}
 
       {/* Night-before Planning Reminder Banner */}
       {isTomorrow && (
@@ -456,6 +486,7 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
           themeColor="rose"
           tasks={q1Tasks}
           goals={goals}
+          todayStr={todayStr}
           isAdding={addingQuadrant === 1}
           isSubmitting={isCreatingTask}
           actionLoadingId={actionLoadingId}
@@ -494,6 +525,7 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
           badge="Cốt lõi thành công"
           tasks={q2Tasks}
           goals={goals}
+          todayStr={todayStr}
           isAdding={addingQuadrant === 2}
           isSubmitting={isCreatingTask}
           actionLoadingId={actionLoadingId}
@@ -531,6 +563,7 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
           themeColor="amber"
           tasks={q3Tasks}
           goals={goals}
+          todayStr={todayStr}
           isAdding={addingQuadrant === 3}
           isSubmitting={isCreatingTask}
           actionLoadingId={actionLoadingId}
@@ -568,6 +601,7 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
           themeColor="purple"
           tasks={q4Tasks}
           goals={goals}
+          todayStr={todayStr}
           isAdding={addingQuadrant === 4}
           isSubmitting={isCreatingTask}
           actionLoadingId={actionLoadingId}
@@ -618,6 +652,7 @@ interface QuadrantCardProps {
   badge?: string
   tasks: DailyMatrixTask[]
   goals: StudyGoal[]
+  todayStr: string
   isAdding: boolean
   isSubmitting?: boolean
   actionLoadingId?: number | null
@@ -648,6 +683,7 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
   badge,
   tasks,
   goals,
+  todayStr,
   isAdding,
   isSubmitting = false,
   actionLoadingId = null,
@@ -840,10 +876,11 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
           ) : (
             tasks.map((task) => {
               const isEditingRef = editingReflectionTaskId === task.id
+              const isPastUnfinished = task.date < todayStr && !task.is_completed
               return (
                 <div
                   key={task.id}
-                  draggable={!task.is_completed}
+                  draggable={!task.is_completed && !isPastUnfinished}
                   onDragStart={(e) => {
                     e.dataTransfer.setData('text/plain', String(task.id))
                     e.dataTransfer.effectAllowed = 'move'
@@ -851,25 +888,47 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
                   className={`p-3 rounded-2xl border transition-all duration-150 group/task relative ${
                     task.is_completed
                       ? 'bg-white/5 border-white/10 opacity-70'
+                      : isPastUnfinished
+                      ? 'bg-rose-950/20 border-rose-500/20 hover:border-rose-500/30'
                       : 'bg-black/30 border-white/15 hover:border-white/30 cursor-grab active:cursor-grabbing hover:bg-white/5'
                   }`}
-                  title={!task.is_completed ? 'Kéo thả sang ô khác hoặc bấm vào để học' : undefined}
+                  title={!task.is_completed && !isPastUnfinished ? 'Kéo thả sang ô khác hoặc bấm vào để học' : undefined}
                 >
                   <div className="flex items-start justify-between gap-2.5">
                     {/* Grip handle & Checkbox & Title */}
                     <div className="flex items-start gap-1.5 flex-1 min-w-0">
-                      {!task.is_completed && (
+                      {!task.is_completed && !isPastUnfinished && (
                         <div className="mt-1 text-white/20 group-hover/task:text-white/60 transition flex-shrink-0 cursor-grab active:cursor-grabbing" title="Kéo để đổi ô">
                           <GripVertical className="w-3.5 h-3.5" />
                         </div>
                       )}
                       <button
-                        onClick={() => onToggle(task.id)}
+                        onClick={() => {
+                          if (isPastUnfinished) {
+                            toast.error(
+                              'Không thể tích bù công việc của ngày trong quá khứ! Các việc chưa xong đã được tự động chuyển sang ngày tiếp theo để bạn làm tiếp.'
+                            )
+                            return
+                          }
+                          onToggle(task.id)
+                        }}
                         disabled={actionLoadingId === task.id}
-                        className="p-1 sm:p-0.5 mt-0.5 text-white/50 hover:text-emerald-400 active:scale-90 transition flex-shrink-0 disabled:opacity-50"
-                        title={task.is_completed ? 'Đánh dấu chưa xong' : 'Tích hoàn thành'}
+                        className={`p-1 sm:p-0.5 mt-0.5 flex-shrink-0 transition rounded-lg ${
+                          isPastUnfinished
+                            ? 'text-rose-400/80 hover:bg-rose-500/10 cursor-not-allowed'
+                            : 'text-white/50 hover:text-emerald-400 active:scale-90 disabled:opacity-50'
+                        }`}
+                        title={
+                          isPastUnfinished
+                            ? 'Đã khóa - Không thể tích bù việc chưa xong trong quá khứ (đã tự động chuyển tiếp)'
+                            : task.is_completed
+                            ? 'Đánh dấu chưa xong'
+                            : 'Tích hoàn thành'
+                        }
                       >
-                        {task.is_completed ? (
+                        {isPastUnfinished ? (
+                          <Lock className="w-5 h-5 text-rose-400/80" />
+                        ) : task.is_completed ? (
                           <CheckCircle2 className="w-5 h-5 text-emerald-400 fill-emerald-400/20" />
                         ) : (
                           <Circle className="w-5 h-5 text-white/40 hover:text-white" />
@@ -879,7 +938,11 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
                       <div className="flex-1 min-w-0">
                         <div
                           className={`text-xs font-semibold break-words leading-tight ${
-                            task.is_completed ? 'line-through text-white/50' : 'text-white'
+                            task.is_completed
+                              ? 'line-through text-white/50'
+                              : isPastUnfinished
+                              ? 'text-rose-200/90'
+                              : 'text-white'
                           }`}
                         >
                           {task.title}
@@ -887,6 +950,20 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
 
                         {/* Associated Goal Badge & Quick Pomodoro Focus Button */}
                         <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                          {isPastUnfinished && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                              <Lock className="w-2.5 h-2.5" />
+                              <span>Khóa quá khứ</span>
+                            </span>
+                          )}
+
+                          {task.reflection_note && /chuyển từ/i.test(task.reflection_note) && !task.is_completed && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                              <RotateCcw className="w-2.5 h-2.5" />
+                              <span>Tự động chuyển tiếp</span>
+                            </span>
+                          )}
+
                           {task.goal_title && (
                             <span
                               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold"
@@ -902,7 +979,7 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
                             </span>
                           )}
 
-                          {onStartPomodoro && !task.is_completed && (
+                          {onStartPomodoro && !task.is_completed && !isPastUnfinished && (
                             <button
                               onClick={() => onStartPomodoro(task.goal_id || undefined, task.title)}
                               className="text-[10px] text-cyan-300 hover:text-cyan-200 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 px-2 py-0.5 rounded-md font-semibold transition flex items-center gap-1"
@@ -976,9 +1053,10 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
                       {/* Move Quadrant Dropdown */}
                       <select
                         value={task.quadrant}
+                        disabled={isPastUnfinished}
                         onChange={(e) => onMove(task.id, Number(e.target.value))}
-                        className="bg-black/50 border border-white/15 rounded-lg px-2 py-1 min-h-[34px] sm:min-h-0 text-xs sm:text-[10px] text-white/70 focus:outline-none"
-                        title="Chuyển sang ô khác"
+                        className="bg-black/50 border border-white/15 rounded-lg px-2 py-1 min-h-[34px] sm:min-h-0 text-xs sm:text-[10px] text-white/70 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={isPastUnfinished ? "Không thể chuyển ô công việc của ngày trong quá khứ" : "Chuyển sang ô khác"}
                       >
                         <option value={1}>Ô 1 (Làm ngay)</option>
                         <option value={2}>Ô 2 (Lên lịch)</option>

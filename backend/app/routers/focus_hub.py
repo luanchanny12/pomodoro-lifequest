@@ -1667,14 +1667,135 @@ def check_constellation_unlock(
 # ── DAILY 4-QUADRANT MATRIX (EISENHOWER) ──
 # ==========================================
 
+def _auto_rollover_tasks(db: Session, user: Optional[User], target_date: datetime.date) -> int:
+    """
+    Tự động chuyển giao các công việc chưa hoàn thành sang ngày tiếp theo:
+    1. Nếu target_date == vn_today():
+       Tự động gom các việc chưa hoàn thành từ các ngày quá khứ gần nhất (tối đa 14 ngày)
+       chưa từng được hoàn thành hoặc chưa có mặt ở ngày hôm nay -> tự động chuyển sang ngày hôm nay.
+    2. Nếu target_date == vn_today() + 1 ngày (ngày mai):
+       Tự động gom các việc chưa hoàn thành của ngày hôm nay sang ngày mai để lập kế hoạch tối hôm trước.
+    """
+    current_today = vn_today()
+    tomorrow = current_today + datetime.timedelta(days=1)
+
+    if target_date != current_today and target_date != tomorrow:
+        return 0
+
+    target_user_id = user.id if user else None
+
+    # Lấy danh sách tiêu đề công việc đã có ở ngày đích (để chống trùng lặp)
+    dest_query = db.query(DailyMatrixTask).filter(DailyMatrixTask.date == target_date)
+    if user:
+        dest_query = dest_query.filter(DailyMatrixTask.user_id == user.id)
+    else:
+        dest_query = dest_query.filter(DailyMatrixTask.user_id.is_(None))
+    dest_tasks = dest_query.all()
+    existing_dest_titles = {t.title.strip().lower() for t in dest_tasks}
+
+    rolled_count = 0
+
+    if target_date == current_today:
+        min_date = current_today - datetime.timedelta(days=14)
+        past_query = db.query(DailyMatrixTask).filter(
+            DailyMatrixTask.date >= min_date,
+            DailyMatrixTask.date < current_today,
+            DailyMatrixTask.is_completed == False,
+        )
+        if user:
+            past_query = past_query.filter(DailyMatrixTask.user_id == user.id)
+        else:
+            past_query = past_query.filter(DailyMatrixTask.user_id.is_(None))
+        past_uncompleted = past_query.order_by(DailyMatrixTask.date.desc(), DailyMatrixTask.id.desc()).all()
+
+        if not past_uncompleted:
+            return 0
+
+        # Kiểm tra xem các tiêu đề này đã từng được hoàn thành ở ngày nào sau đó chưa
+        completed_query = db.query(DailyMatrixTask.title).filter(
+            DailyMatrixTask.date >= min_date,
+            DailyMatrixTask.date <= current_today,
+            DailyMatrixTask.is_completed == True,
+        )
+        if user:
+            completed_query = completed_query.filter(DailyMatrixTask.user_id == user.id)
+        else:
+            completed_query = completed_query.filter(DailyMatrixTask.user_id.is_(None))
+        completed_titles = {row[0].strip().lower() for row in completed_query.all() if row[0]}
+
+        for t in past_uncompleted:
+            clean_title = t.title.strip().lower()
+            if clean_title in existing_dest_titles:
+                continue
+            if clean_title in completed_titles:
+                continue
+
+            new_task = DailyMatrixTask(
+                user_id=target_user_id,
+                title=t.title,
+                description=t.description,
+                date=current_today,
+                quadrant=t.quadrant,
+                goal_id=t.goal_id,
+                reflection_note=f"Tự động chuyển từ {t.date.strftime('%d/%m')}: {t.reflection_note or 'chưa hoàn thành'}",
+                order_index=t.order_index or 0,
+            )
+            db.add(new_task)
+            existing_dest_titles.add(clean_title)
+            rolled_count += 1
+
+    elif target_date == tomorrow:
+        today_query = db.query(DailyMatrixTask).filter(
+            DailyMatrixTask.date == current_today,
+            DailyMatrixTask.is_completed == False,
+        )
+        if user:
+            today_query = today_query.filter(DailyMatrixTask.user_id == user.id)
+        else:
+            today_query = today_query.filter(DailyMatrixTask.user_id.is_(None))
+        today_uncompleted = today_query.order_by(DailyMatrixTask.order_index.asc(), DailyMatrixTask.id.asc()).all()
+
+        if not today_uncompleted:
+            return 0
+
+        for t in today_uncompleted:
+            clean_title = t.title.strip().lower()
+            if clean_title in existing_dest_titles:
+                continue
+
+            new_task = DailyMatrixTask(
+                user_id=target_user_id,
+                title=t.title,
+                description=t.description,
+                date=tomorrow,
+                quadrant=t.quadrant,
+                goal_id=t.goal_id,
+                reflection_note=f"Tự động chuyển từ hôm nay ({current_today.strftime('%d/%m')}): {t.reflection_note or 'chưa hoàn thành'}",
+                order_index=t.order_index or 0,
+            )
+            db.add(new_task)
+            existing_dest_titles.add(clean_title)
+            rolled_count += 1
+
+    if rolled_count > 0:
+        db.commit()
+        invalidate_user_cache(user)
+
+    return rolled_count
+
+
 @router.get("/matrix", response_model=List[DailyMatrixTaskResponse])
 def get_matrix_tasks(
     task_date: Optional[datetime.date] = Query(None, alias="date"),
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    target_date = task_date or datetime.date.today()
+    target_date = task_date or vn_today()
     real_user = _get_real_user(user)
+
+    # Tự động chuyển giao các công việc chưa hoàn thành sang ngày hôm nay hoặc ngày mai
+    _auto_rollover_tasks(db, real_user, target_date)
+
     uid_str = f"u_{real_user.id}" if real_user else "u_guest"
     cache_key = f"cache:matrix:{uid_str}:{target_date.isoformat()}"
     cached = get_cache(cache_key)
@@ -1842,6 +1963,12 @@ def update_matrix_task(
         else:
             task.goal_id = None
     if data.is_completed is not None:
+        current_today = vn_today()
+        if data.is_completed is True and task.date < current_today and not task.is_completed:
+            raise HTTPException(
+                status_code=400,
+                detail="Không thể hoàn thành bù công việc của ngày trong quá khứ! Công việc chưa xong đã được tự động chuyển sang ngày hôm nay."
+            )
         task.is_completed = data.is_completed
         task.completed_at = datetime.datetime.utcnow() if data.is_completed else None
     if data.reflection_note is not None:
@@ -1884,14 +2011,38 @@ def toggle_matrix_task(
         raise HTTPException(status_code=404, detail="Không tìm thấy công việc")
     _verify_resource_ownership(task, user)
 
+    # KHÔNG ĐƯỢC HOÀN THÀNH BÙ CÔNG VIỆC CHƯA XONG TRONG QUÁ KHỨ
+    current_today = vn_today()
+    if task.date < current_today and not task.is_completed:
+        raise HTTPException(
+            status_code=400,
+            detail="Không thể hoàn thành bù công việc của ngày trong quá khứ! Công việc chưa xong đã được tự động chuyển sang ngày tiếp theo để bạn tiếp tục thực hiện."
+        )
+
     task.is_completed = not task.is_completed
     task.completed_at = datetime.datetime.utcnow() if task.is_completed else None
     task.updated_at = datetime.datetime.utcnow()
 
     if task.is_completed:
         # Chỉ kéo dài streak nếu hoàn thành công việc của ngày hôm nay
-        if task.date == vn_today():
+        if task.date == current_today:
             _update_user_streak(db, user, task.date)
+            # Dọn dẹp bản sao tự động chuyển sang ngày mai nếu hôm nay đã hoàn thành xong
+            tomorrow = current_today + datetime.timedelta(days=1)
+            tomorrow_copy_query = db.query(DailyMatrixTask).filter(
+                DailyMatrixTask.date == tomorrow,
+                DailyMatrixTask.is_completed == False,
+            )
+            real_user = _get_real_user(user)
+            if real_user:
+                tomorrow_copy_query = tomorrow_copy_query.filter(DailyMatrixTask.user_id == real_user.id)
+            else:
+                tomorrow_copy_query = tomorrow_copy_query.filter(DailyMatrixTask.user_id.is_(None))
+            clean_task_title = task.title.strip().lower()
+            for t_copy in tomorrow_copy_query.all():
+                if t_copy.title.strip().lower() == clean_task_title:
+                    if t_copy.reflection_note and "tự động chuyển từ" in t_copy.reflection_note.lower():
+                        db.delete(t_copy)
 
     db.commit()
     db.refresh(task)
