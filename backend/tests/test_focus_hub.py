@@ -10,12 +10,14 @@ client = TestClient(app)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    db.query(StudySessionLog).delete()
-    db.query(StudyGoal).delete()
+    db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).delete(synchronize_session=False)
+    db.query(StudyGoal).filter(StudyGoal.user_id.is_(None)).update({"parent_id": None}, synchronize_session=False)
+    db.query(StudyGoal).filter(StudyGoal.user_id.is_(None)).delete(synchronize_session=False)
     db.commit()
     yield
-    db.query(StudySessionLog).delete()
-    db.query(StudyGoal).delete()
+    db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).delete(synchronize_session=False)
+    db.query(StudyGoal).filter(StudyGoal.user_id.is_(None)).update({"parent_id": None}, synchronize_session=False)
+    db.query(StudyGoal).filter(StudyGoal.user_id.is_(None)).delete(synchronize_session=False)
     db.commit()
     db.close()
 

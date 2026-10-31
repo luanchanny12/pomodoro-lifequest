@@ -23,19 +23,24 @@ client = TestClient(app)
 
 def _cleanup(db):
     _RATE_LIMIT_STORE.clear()
+    test_user_ids = [u[0] for u in db.query(User.id).filter(User.username.like("user%") | User.username.like("admin_zero_loss%")).all()]
+    if test_user_ids:
+        db.query(VisitorLog).filter(VisitorLog.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+        db.query(UserConstellationUnlock).filter(UserConstellationUnlock.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+        db.query(RewardRedemption).filter(RewardRedemption.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+        db.query(RewardItem).filter(RewardItem.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+        db.query(TimeCapsule).filter(TimeCapsule.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+        db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+        db.query(StudySessionLog).filter(StudySessionLog.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+        db.query(StudyGoal).filter(StudyGoal.user_id.in_(test_user_ids)).update({"parent_id": None}, synchronize_session=False)
+        db.query(StudyGoal).filter(StudyGoal.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+        db.query(NotificationSetting).filter(NotificationSetting.user_id.in_(test_user_ids)).delete(synchronize_session=False)
+        p_ids = [p[0] for p in db.query(Player.id).filter(Player.user_id.in_(test_user_ids)).all()]
+        if p_ids:
+            db.query(Achievement).filter(Achievement.player_id.in_(p_ids)).delete(synchronize_session=False)
+            db.query(Player).filter(Player.id.in_(p_ids)).delete(synchronize_session=False)
+        db.query(User).filter(User.id.in_(test_user_ids)).delete(synchronize_session=False)
     db.query(VisitorLog).filter(VisitorLog.visitor_id.like("unique_visitor%")).delete(synchronize_session=False)
-    db.query(UserConstellationUnlock).delete(synchronize_session=False)
-    db.query(RewardRedemption).delete(synchronize_session=False)
-    db.query(RewardItem).delete(synchronize_session=False)
-    db.query(TimeCapsule).delete(synchronize_session=False)
-    db.query(DailyMatrixTask).delete(synchronize_session=False)
-    db.query(StudySessionLog).delete(synchronize_session=False)
-    db.query(StudyGoal).update({"parent_id": None}, synchronize_session=False)
-    db.query(StudyGoal).delete(synchronize_session=False)
-    db.query(NotificationSetting).delete(synchronize_session=False)
-    db.query(Achievement).delete(synchronize_session=False)
-    db.query(Player).filter(Player.user_id.isnot(None)).delete(synchronize_session=False)
-    db.query(User).filter(User.username.like("user%")).delete(synchronize_session=False)
     db.commit()
 
 

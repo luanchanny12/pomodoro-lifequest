@@ -16,27 +16,24 @@ from app.models import (
 
 client = TestClient(app)
 
+def _clean_deep_test(db):
+    db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id.is_(None)).delete(synchronize_session=False)
+    db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).delete(synchronize_session=False)
+    db.query(StudyGoal).filter(StudyGoal.user_id.is_(None)).update({"parent_id": None}, synchronize_session=False)
+    db.query(StudyGoal).filter(StudyGoal.user_id.is_(None)).delete(synchronize_session=False)
+    db.query(TimeCapsule).filter(TimeCapsule.user_id.is_(None)).delete(synchronize_session=False)
+    db.query(RewardRedemption).filter(RewardRedemption.user_id.is_(None)).delete(synchronize_session=False)
+    db.query(UserConstellationUnlock).filter(UserConstellationUnlock.user_id.is_(None)).delete(synchronize_session=False)
+    db.commit()
+
+
 @pytest.fixture(autouse=True)
 def clean_database():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    db.query(DailyMatrixTask).delete()
-    db.query(RewardRedemption).delete()
-    db.query(TimeCapsule).delete()
-    db.query(StudySessionLog).delete()
-    db.query(UserConstellationUnlock).delete()
-    db.query(StudyGoal).delete()
-    db.commit()
-    db.close()
+    _clean_deep_test(db)
     yield
-    db = SessionLocal()
-    db.query(DailyMatrixTask).delete()
-    db.query(RewardRedemption).delete()
-    db.query(TimeCapsule).delete()
-    db.query(StudySessionLog).delete()
-    db.query(UserConstellationUnlock).delete()
-    db.query(StudyGoal).delete()
-    db.commit()
+    _clean_deep_test(db)
     db.close()
 
 # ── 1. Goal Edge Cases & Celestial Palette Cycling ──

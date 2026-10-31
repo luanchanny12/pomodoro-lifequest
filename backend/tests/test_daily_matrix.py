@@ -11,12 +11,9 @@ client = TestClient(app)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    # Clean up tasks created during tests
     db.query(DailyMatrixTask).delete()
     db.commit()
-    db.close()
     yield
-    db = SessionLocal()
     db.query(DailyMatrixTask).delete()
     db.commit()
     db.close()

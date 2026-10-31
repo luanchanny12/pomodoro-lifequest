@@ -13,10 +13,18 @@ client = TestClient(app)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    db.query(DailyMatrixTask).delete()
+    u = db.query(User).filter(User.username == "test_matrix_user").first()
+    if u:
+        db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id == u.id).delete(synchronize_session=False)
+    db.query(DailyMatrixTask).filter(DailyMatrixTask.title.like("Nhiệm vụ kiểm thử %")).delete(synchronize_session=False)
     db.commit()
+    db.close()
     yield
-    db.query(DailyMatrixTask).delete()
+    db = SessionLocal()
+    u = db.query(User).filter(User.username == "test_matrix_user").first()
+    if u:
+        db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id == u.id).delete(synchronize_session=False)
+    db.query(DailyMatrixTask).filter(DailyMatrixTask.title.like("Nhiệm vụ kiểm thử %")).delete(synchronize_session=False)
     db.commit()
     db.close()
 

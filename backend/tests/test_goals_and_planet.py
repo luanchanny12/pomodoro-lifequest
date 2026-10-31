@@ -12,12 +12,19 @@ client = TestClient(app)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    db.query(StudySessionLog).delete()
-    db.query(StudyGoal).delete()
+    test_titles = ["Chinh Phục IELTS 8.0", "Luyện Đề Reading & Listening", "1000 Giờ Học Tiếng Anh", "Khoa Học Dữ Liệu"]
+    g_ids = [g[0] for g in db.query(StudyGoal.id).filter(StudyGoal.title.in_(test_titles)).all()]
+    if g_ids:
+        db.query(StudySessionLog).filter(StudySessionLog.goal_id.in_(g_ids)).delete(synchronize_session=False)
+        db.query(StudyGoal).filter(StudyGoal.id.in_(g_ids)).update({"parent_id": None}, synchronize_session=False)
+        db.query(StudyGoal).filter(StudyGoal.id.in_(g_ids)).delete(synchronize_session=False)
     db.commit()
     yield
-    db.query(StudySessionLog).delete()
-    db.query(StudyGoal).delete()
+    g_ids = [g[0] for g in db.query(StudyGoal.id).filter(StudyGoal.title.in_(test_titles)).all()]
+    if g_ids:
+        db.query(StudySessionLog).filter(StudySessionLog.goal_id.in_(g_ids)).delete(synchronize_session=False)
+        db.query(StudyGoal).filter(StudyGoal.id.in_(g_ids)).update({"parent_id": None}, synchronize_session=False)
+        db.query(StudyGoal).filter(StudyGoal.id.in_(g_ids)).delete(synchronize_session=False)
     db.commit()
     db.close()
 

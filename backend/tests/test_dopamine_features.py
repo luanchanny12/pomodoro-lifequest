@@ -6,23 +6,26 @@ from app.models import StudyGoal, StudySessionLog, RewardItem, RewardRedemption,
 
 client = TestClient(app)
 
+def _clean_test_records(db):
+    test_titles = ["Du lịch thế giới", "Công nghệ tương lai"]
+    g_ids = [g[0] for g in db.query(StudyGoal.id).filter(StudyGoal.title.in_(test_titles)).all()]
+    if g_ids:
+        db.query(StudySessionLog).filter(StudySessionLog.goal_id.in_(g_ids)).delete(synchronize_session=False)
+        db.query(StudyGoal).filter(StudyGoal.id.in_(g_ids)).delete(synchronize_session=False)
+    db.query(StudySessionLog).delete(synchronize_session=False)
+    db.query(TimeCapsule).delete(synchronize_session=False)
+    db.query(RewardRedemption).delete(synchronize_session=False)
+    db.query(RewardItem).filter(RewardItem.title == "Mua tai nghe bluetooth mới").delete(synchronize_session=False)
+    db.commit()
+
+
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    db.query(RewardRedemption).delete()
-    db.query(RewardItem).delete()
-    db.query(TimeCapsule).delete()
-    db.query(StudySessionLog).delete()
-    db.query(StudyGoal).delete()
-    db.commit()
+    _clean_test_records(db)
     yield
-    db.query(RewardRedemption).delete()
-    db.query(RewardItem).delete()
-    db.query(TimeCapsule).delete()
-    db.query(StudySessionLog).delete()
-    db.query(StudyGoal).delete()
-    db.commit()
+    _clean_test_records(db)
     db.close()
 
 

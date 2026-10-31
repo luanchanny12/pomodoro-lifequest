@@ -10,7 +10,22 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-if DATABASE_URL and DATABASE_URL.strip().lower() != "auto":
+import sys
+IS_TESTING = (
+    "pytest" in sys.modules
+    or os.getenv("PYTEST_CURRENT_TEST") is not None
+    or os.getenv("TESTING", "").lower() in ("true", "1")
+)
+
+if IS_TESTING and not os.getenv("ALLOW_PRODUCTION_TEST"):
+    # BẢO VỆ DỮ LIỆU TUYỆT ĐỐI: Khi chạy test, LUÔN LUÔN dùng database SQLite cô lập riêng
+    # Tuyệt đối cấm kết nối vào Neon PostgreSQL production để tránh nguy cơ xóa nhầm dữ liệu người dùng thật!
+    TEST_DB_PATH = os.path.join(BACKEND_DIR, "test_isolated.db")
+    SQLALCHEMY_DATABASE_URL = f"sqlite:///{TEST_DB_PATH}"
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base = declarative_base()
+elif DATABASE_URL and DATABASE_URL.strip().lower() != "auto":
     import re
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
