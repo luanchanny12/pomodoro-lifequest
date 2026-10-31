@@ -7,7 +7,7 @@ import base64
 import hashlib
 import secrets
 import datetime
-from typing import Optional
+from typing import Optional, Any
 from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Header, status, Request
 from pydantic import BaseModel, Field
@@ -39,10 +39,24 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication & Multi-User"])
 
 # --- Security Helpers ---
 
-def get_client_ip(request: Request) -> str:
+def get_client_ip(request: Any) -> str:
+    if not request or not hasattr(request, "headers"):
+        return "unknown"
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[-1].strip()
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            xff_index = int(os.getenv("TRUSTED_XFF_INDEX", "-1"))
+            try:
+                return parts[xff_index]
+            except IndexError:
+                return parts[-1]
     return request.client.host if request.client else "unknown"
 
 def hash_password(password: str, salt: Optional[str] = None) -> tuple:

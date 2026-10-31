@@ -189,32 +189,52 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
     ).distinct().all()
     active_month_set = {u[0] for u in month_session_users} | {u[0] for u in month_matrix_users}
 
-    # 7-day Traffic Trend
+    # High-Performance Aggregated Traffic Trend (1 single GROUP BY query replaces 74 sequential queries)
+    start_30d = today - datetime.timedelta(days=29)
+    grouped_counts = (
+        db.query(
+            VisitorLog.visit_date,
+            VisitorLog.is_member,
+            func.count(VisitorLog.id),
+        )
+        .filter(VisitorLog.visit_date >= start_30d)
+        .group_by(VisitorLog.visit_date, VisitorLog.is_member)
+        .all()
+    )
+
+    traffic_map: Dict[Any, Dict[str, int]] = {}
+    for v_date, is_mem, c_val in grouped_counts:
+        if v_date not in traffic_map:
+            traffic_map[v_date] = {"guest": 0, "member": 0}
+        if is_mem:
+            traffic_map[v_date]["member"] += c_val
+        else:
+            traffic_map[v_date]["guest"] += c_val
+
     traffic_trend_7days = []
     for i in range(6, -1, -1):
         d = today - datetime.timedelta(days=i)
-        d_str = d.strftime("%d/%m")
-        d_guests = db.query(VisitorLog).filter(VisitorLog.visit_date == d, VisitorLog.is_member == False).count()
-        d_members = db.query(VisitorLog).filter(VisitorLog.visit_date == d, VisitorLog.is_member == True).count()
+        counts = traffic_map.get(d, {"guest": 0, "member": 0})
+        g = counts["guest"]
+        m = counts["member"]
         traffic_trend_7days.append({
-            "date": d_str,
-            "guest": d_guests,
-            "member": d_members,
-            "total": d_guests + d_members,
+            "date": d.strftime("%d/%m"),
+            "guest": g,
+            "member": m,
+            "total": g + m,
         })
 
-    # 30-day Traffic Trend
     traffic_trend_30days = []
     for i in range(29, -1, -1):
         d = today - datetime.timedelta(days=i)
-        d_str = d.strftime("%d/%m")
-        d_guests = db.query(VisitorLog).filter(VisitorLog.visit_date == d, VisitorLog.is_member == False).count()
-        d_members = db.query(VisitorLog).filter(VisitorLog.visit_date == d, VisitorLog.is_member == True).count()
+        counts = traffic_map.get(d, {"guest": 0, "member": 0})
+        g = counts["guest"]
+        m = counts["member"]
         traffic_trend_30days.append({
-            "date": d_str,
-            "guest": d_guests,
-            "member": d_members,
-            "total": d_guests + d_members,
+            "date": d.strftime("%d/%m"),
+            "guest": g,
+            "member": m,
+            "total": g + m,
         })
 
     timeframes = {

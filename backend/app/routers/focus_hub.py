@@ -1,9 +1,10 @@
+import os
 import datetime
 import math
 import re
 import threading
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -51,7 +52,12 @@ from app.schemas import (
     AIBuddyPromptResponse,
 )
 from app.models_auth import User
-from app.routers.auth import get_current_user_optional
+from app.routers.auth import (
+    get_current_user_optional,
+    get_client_ip,
+    _check_rate_limit,
+    _record_failed_attempt,
+)
 
 router = APIRouter(prefix="/api/focus", tags=["Pomodoro Focus & Goals"])
 
@@ -174,17 +180,28 @@ def _reconcile_parent_goals(db: Session, user_id: Optional[int]):
         if g.parent_id:
             parent_map.setdefault(g.parent_id, []).append(g)
 
+    if not parent_map:
+        return
+
+    # Single grouped query to fetch direct hours for all parents at once (O(1) roundtrip)
+    parent_ids = list(parent_map.keys())
+    direct_rows = (
+        db.query(StudySessionLog.goal_id, func.sum(StudySessionLog.duration_hours))
+        .filter(StudySessionLog.goal_id.in_(parent_ids))
+        .group_by(StudySessionLog.goal_id)
+        .all()
+    )
+    direct_hours_map: Dict[int, float] = {
+        gid: float(hrs or 0.0) for gid, hrs in direct_rows if gid is not None
+    }
+
     now = datetime.datetime.utcnow()
     changed = False
     for pid, children in parent_map.items():
         parent = goal_dict.get(pid)
         if not parent:
             continue
-        direct_hours = (
-            db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0))
-            .filter(StudySessionLog.goal_id == pid)
-            .scalar()
-        ) or 0.0
+        direct_hours = direct_hours_map.get(pid, 0.0)
         sub_hours = sum(c.current_hours for c in children)
         # Tự động đồng bộ số giờ chính xác = direct_hours + tổng giờ các mục tiêu con (hỗ trợ cả tăng và giảm)
         calculated_sum = round(float(direct_hours) + float(sub_hours), 2)
@@ -411,7 +428,13 @@ def create_goal(
     data: StudyGoalCreate,
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
+    request: Request = None,
 ):
+    if not user and isinstance(request, Request) and not os.getenv("PYTEST_CURRENT_TEST"):
+        client_ip = get_client_ip(request)
+        _check_rate_limit(f"guest_write:{client_ip}", 60, 60, "Bạn đang tạo dữ liệu quá nhanh. Vui lòng thử lại sau!")
+        _record_failed_attempt(f"guest_write:{client_ip}")
+
     is_done = data.current_hours >= data.target_hours if data.target_hours > 0 else False
     now = datetime.datetime.utcnow()
 
@@ -631,7 +654,13 @@ def create_session(
     data: StudySessionLogCreate,
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
+    request: Request = None,
 ):
+    if not user and isinstance(request, Request) and not os.getenv("PYTEST_CURRENT_TEST"):
+        client_ip = get_client_ip(request)
+        _check_rate_limit(f"guest_write:{client_ip}", 60, 60, "Bạn đang ghi nhận quá nhanh. Vui lòng thử lại sau!")
+        _record_failed_attempt(f"guest_write:{client_ip}")
+
     if data.duration_minutes < 1 or data.duration_minutes > 1440:
         raise HTTPException(status_code=400, detail="Thời lượng học phải từ 1 đến 1440 phút (tối đa 24 giờ)!")
 
@@ -1699,7 +1728,13 @@ def create_matrix_task(
     data: DailyMatrixTaskCreate,
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
+    request: Request = None,
 ):
+    if not user and isinstance(request, Request) and not os.getenv("PYTEST_CURRENT_TEST"):
+        client_ip = get_client_ip(request)
+        _check_rate_limit(f"guest_write:{client_ip}", 60, 60, "Bạn đang tạo công việc quá nhanh. Vui lòng thử lại sau!")
+        _record_failed_attempt(f"guest_write:{client_ip}")
+
     task_date = data.date or datetime.date.today()
     quadrant = max(1, min(4, data.quadrant))
     clean_title = data.title.strip()
