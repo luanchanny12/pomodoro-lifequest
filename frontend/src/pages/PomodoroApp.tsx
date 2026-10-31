@@ -217,11 +217,16 @@ export default function PomodoroApp() {
   const [settings, setSettings] = useState<PomodoroSettings>(() => {
     try {
       const saved = localStorage.getItem('pomodoro_settings')
-      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS
+      if (saved) {
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) }
+      }
+      return DEFAULT_SETTINGS
     } catch {
       return DEFAULT_SETTINGS
     }
   })
+  const settingsRef = useRef<PomodoroSettings>(settings)
+  settingsRef.current = settings
 
   // ── Background Configuration (Synchronized with Mood & Ambient) ──
   const [bgConfig, setBgConfig] = useState<BackgroundConfig>(() => {
@@ -445,8 +450,9 @@ export default function PomodoroApp() {
   }
 
   // Save settings
-  const handleSaveSettings = (newSettings: PomodoroSettings) => {
+  const handleSaveSettings = (newSettings: PomodoroSettings, showToast = false) => {
     setSettings(newSettings)
+    settingsRef.current = newSettings
     localStorage.setItem('pomodoro_settings', JSON.stringify(newSettings))
 
     // Update current time if timer is idle
@@ -455,7 +461,9 @@ export default function PomodoroApp() {
       if (mode === 'shortBreak') setTimeLeft(newSettings.shortBreakMinutes * 60)
       if (mode === 'longBreak') setTimeLeft(newSettings.longBreakMinutes * 60)
     }
-    toast.success('Đã lưu cài đặt')
+    if (showToast) {
+      toast.success('Đã lưu cài đặt')
+    }
   }
 
   // Save background theme and synchronize ambient sound
@@ -506,10 +514,11 @@ export default function PomodoroApp() {
 
   // ── Timer Logic ──
   const switchMode = (newMode: TimerMode, autoStart = false) => {
+    const currentSettings = settingsRef.current
     setMode(newMode)
-    let minutes = settings.focusMinutes
-    if (newMode === 'shortBreak') minutes = settings.shortBreakMinutes
-    if (newMode === 'longBreak') minutes = settings.longBreakMinutes
+    let minutes = currentSettings.focusMinutes
+    if (newMode === 'shortBreak') minutes = currentSettings.shortBreakMinutes
+    if (newMode === 'longBreak') minutes = currentSettings.longBreakMinutes
 
     const seconds = minutes * 60
     setTimeLeft(seconds)
@@ -743,11 +752,12 @@ export default function PomodoroApp() {
 
   // Timer complete handler
   const onTimerComplete = async (recordSession = true, customMinutes?: number) => {
+    const currentSettings = settingsRef.current
     // Play alarm sound
-    if (settings.alarmSound === 'bell') {
-      soundManager.playBell(settings.alarmVolume)
+    if (currentSettings.alarmSound === 'bell') {
+      soundManager.playBell(currentSettings.alarmVolume ?? 0.6)
     } else {
-      soundManager.playDing(settings.alarmVolume)
+      soundManager.playDing(currentSettings.alarmVolume ?? 0.6)
     }
 
     if (mode === 'pomodoro') {
@@ -763,7 +773,7 @@ export default function PomodoroApp() {
         toast.success('🎉 Tuyệt vời! Bạn vừa hoàn thành 1 phiên tập trung! Hãy tạo tài khoản để lưu kỷ lục vào Đường Đua bạn bè!')
       } else if (recordSession) {
         try {
-          const durationMins = customMinutes || settings.focusMinutes
+          const durationMins = customMinutes || currentSettings.focusMinutes
           const res = await focusService.createSession({
             goal_id: effectiveGoalId,
             duration_minutes: durationMins,
@@ -798,17 +808,17 @@ export default function PomodoroApp() {
       }
 
       // Next mode: short break or long break
-      const isLongBreak = sessionCount % settings.longBreakInterval === 0
+      const isLongBreak = sessionCount % currentSettings.longBreakInterval === 0
       const nextMode = isLongBreak ? 'longBreak' : 'shortBreak'
       if (recordSession) {
         setSessionCount((prev) => prev + 1)
       }
-      switchMode(nextMode, settings.autoStartBreaks)
+      switchMode(nextMode, currentSettings.autoStartBreaks)
     } else {
       // Finished a break -> back to pomodoro
       notificationManager.notifyBreakEnd()
       toast.info('Hết giờ nghỉ! Hãy sẵn sàng cho phiên tập trung mới nhé.')
-      switchMode('pomodoro', settings.autoStartPomodoro)
+      switchMode('pomodoro', currentSettings.autoStartPomodoro)
     }
   }
   onTimerCompleteRef.current = onTimerComplete
@@ -2081,7 +2091,7 @@ export default function PomodoroApp() {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         settings={settings}
-        onSave={handleSaveSettings}
+        onSave={(newSettings) => handleSaveSettings(newSettings, false)}
       />
 
       <BackgroundPickerModal

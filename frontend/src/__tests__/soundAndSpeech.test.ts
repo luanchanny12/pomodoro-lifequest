@@ -39,6 +39,14 @@ describe('SoundManager', () => {
 
   it('plays bell sound effect without error', async () => {
     await expect(soundManager.playBell(0.5)).resolves.not.toThrow()
+    await expect(soundManager.playBell(0)).resolves.not.toThrow()
+    await expect(soundManager.playBell(1.0)).resolves.not.toThrow()
+  })
+
+  it('plays ding sound effect without error', async () => {
+    await expect(soundManager.playDing(0.5)).resolves.not.toThrow()
+    await expect(soundManager.playDing(0)).resolves.not.toThrow()
+    await expect(soundManager.playDing(1.0)).resolves.not.toThrow()
   })
 
   it('plays cosmic chime sound effect', async () => {

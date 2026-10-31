@@ -36,11 +36,13 @@ class SoundManager {
         await ctx.resume()
       }
       // Play 1-frame silent buffer to satisfy iOS WebKit restriction
-      const buffer = ctx.createBuffer(1, 1, 22050)
-      const source = ctx.createBufferSource()
-      source.buffer = buffer
-      source.connect(ctx.destination)
-      source.start(0)
+      if (typeof ctx.createBuffer === 'function' && typeof ctx.createBufferSource === 'function') {
+        const buffer = ctx.createBuffer(1, 1, 22050)
+        const source = ctx.createBufferSource()
+        source.buffer = buffer
+        source.connect(ctx.destination)
+        source.start(0)
+      }
 
       if (ctx.state === 'running') {
         this.isUnlocked = true
@@ -54,27 +56,55 @@ class SoundManager {
 
   // Play gentle bell sound for session finish
   async playBell(volume = 0.6) {
+    if (volume <= 0.001) return
     try {
+      await this.unlockAudio()
       const ctx = await this.ensureContext()
+      if (ctx.state === 'suspended') {
+        try {
+          await ctx.resume()
+        } catch {}
+      }
       const now = ctx.currentTime
 
       const frequencies = [523.25, 659.25, 783.99, 1046.5] // C major chime
+      const safeVol = Math.max(0.01, Math.min(1.0, volume))
+
       frequencies.forEach((freq, idx) => {
+        const startTime = now + idx * 0.09
+        const duration = 2.2
+
+        // Main sine oscillator
         const osc = ctx.createOscillator()
         const gain = ctx.createGain()
-
         osc.type = 'sine'
-        osc.frequency.setValueAtTime(freq, now + idx * 0.08)
+        osc.frequency.setValueAtTime(freq, startTime)
 
-        gain.gain.setValueAtTime(0, now + idx * 0.08)
-        gain.gain.linearRampToValueAtTime((volume * 0.5) / (idx + 1), now + idx * 0.08 + 0.02)
-        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 2.0)
+        const peakGain = (safeVol * 0.7) / (1 + idx * 0.2)
+        gain.gain.setValueAtTime(0.0001, startTime)
+        gain.gain.exponentialRampToValueAtTime(peakGain, startTime + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration)
 
         osc.connect(gain)
         gain.connect(ctx.destination)
+        osc.start(startTime)
+        osc.stop(startTime + duration)
 
-        osc.start(now + idx * 0.08)
-        osc.stop(now + idx * 0.08 + 2.0)
+        // Resonant harmonic overtone (triangle)
+        const overtone = ctx.createOscillator()
+        const overGain = ctx.createGain()
+        overtone.type = 'triangle'
+        overtone.frequency.setValueAtTime(freq * 2, startTime)
+
+        const overPeak = peakGain * 0.25
+        overGain.gain.setValueAtTime(0.0001, startTime)
+        overGain.gain.exponentialRampToValueAtTime(overPeak, startTime + 0.015)
+        overGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration * 0.6)
+
+        overtone.connect(overGain)
+        overGain.connect(ctx.destination)
+        overtone.start(startTime)
+        overtone.stop(startTime + duration * 0.6)
       })
     } catch (e) {
       console.warn('Audio bell error:', e)
@@ -83,23 +113,60 @@ class SoundManager {
 
   // Play crisp ding sound
   async playDing(volume = 0.6) {
+    if (volume <= 0.001) return
     try {
+      await this.unlockAudio()
       const ctx = await this.ensureContext()
+      if (ctx.state === 'suspended') {
+        try {
+          await ctx.resume()
+        } catch {}
+      }
       const now = ctx.currentTime
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
+      const safeVol = Math.max(0.01, Math.min(1.0, volume))
 
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(880, now) // A5
-      gain.gain.setValueAtTime(volume * 0.6, now)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0)
+      // 2-tone "Kính Koong": First tone 1046.5Hz (C6), second tone 783.99Hz (G5)
+      const tones = [
+        { freq: 1046.5, delay: 0, duration: 1.2, weight: 0.85 },
+        { freq: 783.99, delay: 0.26, duration: 1.8, weight: 1.0 },
+      ]
 
-      osc.connect(gain)
-      gain.connect(ctx.destination)
+      tones.forEach((tone) => {
+        const startTime = now + tone.delay
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(tone.freq, startTime)
 
-      osc.start(now)
-      osc.stop(now + 1.0)
-    } catch {}
+        const peak = safeVol * 0.7 * tone.weight
+        gain.gain.setValueAtTime(0.0001, startTime)
+        gain.gain.exponentialRampToValueAtTime(peak, startTime + 0.015)
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + tone.duration)
+
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.start(startTime)
+        osc.stop(startTime + tone.duration)
+
+        // Harmonic overtone
+        const overtone = ctx.createOscillator()
+        const overGain = ctx.createGain()
+        overtone.type = 'triangle'
+        overtone.frequency.setValueAtTime(tone.freq * 2, startTime)
+
+        const overPeak = peak * 0.3
+        overGain.gain.setValueAtTime(0.0001, startTime)
+        overGain.gain.exponentialRampToValueAtTime(overPeak, startTime + 0.01)
+        overGain.gain.exponentialRampToValueAtTime(0.0001, startTime + tone.duration * 0.5)
+
+        overtone.connect(overGain)
+        overGain.connect(ctx.destination)
+        overtone.start(startTime)
+        overtone.stop(startTime + tone.duration * 0.5)
+      })
+    } catch (e) {
+      console.warn('Audio ding error:', e)
+    }
   }
 
   // Play subtle tactile click
