@@ -105,14 +105,15 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
     total_goals = int(goal_aggregates[0] or 0)
     completed_goals = int(goal_aggregates[1] or 0)
 
-    # 4. Sessions in the last 30 days (covers today, week, month in 1 query)
-    session_rows_30d = (
+    # 4. Sessions in the last 30 days — aggregate bằng SQL (tránh load toàn bộ rows)
+    session_agg_by_date = (
         db.query(
             StudySessionLog.session_date,
-            StudySessionLog.duration_hours,
-            StudySessionLog.user_id,
+            func.count(StudySessionLog.id).label("cnt"),
+            func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0).label("hrs"),
         )
         .filter(StudySessionLog.session_date >= month_start)
+        .group_by(StudySessionLog.session_date)
         .all()
     )
 
@@ -120,43 +121,56 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
     today_study_hours = 0.0
     week_sessions = 0
     week_study_hours = 0.0
-    month_sessions = len(session_rows_30d)
+    month_sessions = 0
     month_study_hours = 0.0
 
-    today_session_users = set()
-    week_session_users = set()
-    month_session_users = set()
-
-    for s_date, dur, uid in session_rows_30d:
-        dur_val = float(dur or 0.0)
-        month_study_hours += dur_val
-        if uid:
-            month_session_users.add(uid)
-
+    for s_date, cnt, hrs in session_agg_by_date:
+        c = int(cnt or 0)
+        h = float(hrs or 0.0)
+        month_sessions += c
+        month_study_hours += h
         if s_date >= week_start:
-            week_sessions += 1
-            week_study_hours += dur_val
-            if uid:
-                week_session_users.add(uid)
-
+            week_sessions += c
+            week_study_hours += h
         if s_date == today:
-            today_sessions += 1
-            today_study_hours += dur_val
-            if uid:
-                today_session_users.add(uid)
+            today_sessions = c
+            today_study_hours = h
 
-    matrix_rows_30d = (
-        db.query(DailyMatrixTask.date, DailyMatrixTask.user_id)
-        .filter(DailyMatrixTask.date >= month_start, DailyMatrixTask.user_id.isnot(None))
-        .all()
-    )
-    today_matrix_users = {uid for d, uid in matrix_rows_30d if d == today}
-    week_matrix_users = {uid for d, uid in matrix_rows_30d if d >= week_start}
-    month_matrix_users = {uid for d, uid in matrix_rows_30d}
+    # Unique users per period (distinct user_id only — nhẹ hơn load toàn bộ rows)
+    sess_month_uids = [r[0] for r in db.query(StudySessionLog.user_id).filter(
+        StudySessionLog.session_date >= month_start, StudySessionLog.user_id.isnot(None)
+    ).distinct().all()]
+    sess_week_uids = [r[0] for r in db.query(StudySessionLog.user_id).filter(
+        StudySessionLog.session_date >= week_start, StudySessionLog.user_id.isnot(None)
+    ).distinct().all()]
+    sess_today_uids = [r[0] for r in db.query(StudySessionLog.user_id).filter(
+        StudySessionLog.session_date == today, StudySessionLog.user_id.isnot(None)
+    ).distinct().all()]
+
+    mat_month_uids = [r[0] for r in db.query(DailyMatrixTask.user_id).filter(
+        DailyMatrixTask.date >= month_start, DailyMatrixTask.user_id.isnot(None)
+    ).distinct().all()]
+    mat_week_uids = [r[0] for r in db.query(DailyMatrixTask.user_id).filter(
+        DailyMatrixTask.date >= week_start, DailyMatrixTask.user_id.isnot(None)
+    ).distinct().all()]
+    mat_today_uids = [r[0] for r in db.query(DailyMatrixTask.user_id).filter(
+        DailyMatrixTask.date == today, DailyMatrixTask.user_id.isnot(None)
+    ).distinct().all()]
+
+    today_session_users = set(sess_today_uids)
+    week_session_users = set(sess_week_uids)
+    month_session_users = set(sess_month_uids)
+    today_matrix_users = set(mat_today_uids)
+    week_matrix_users = set(mat_week_uids)
+    month_matrix_users = set(mat_month_uids)
 
     active_today_set = today_session_users | today_matrix_users
     active_week_set = week_session_users | week_matrix_users
     active_month_set = month_session_users | month_matrix_users
+
+    active_today = len(active_today_set)
+    active_week = len(active_week_set)
+    active_month = len(active_month_set)
 
     # 5. Top 5 Racers (Batch SQL query: 2 queries instead of 2*N queries)
     top_study_rows = (
@@ -585,9 +599,22 @@ def get_user_activity_detail(
 
     # Mục tiêu của user
     goals = db.query(StudyGoal).filter(StudyGoal.user_id == user_id).order_by(StudyGoal.id.desc()).all()
+
+    # Batch: số phiên học theo từng goal (tránh N+1 query)
+    goal_ids = [g.id for g in goals]
+    session_count_map = {}
+    if goal_ids:
+        sc_rows = (
+            db.query(StudySessionLog.goal_id, func.count(StudySessionLog.id))
+            .filter(StudySessionLog.goal_id.in_(goal_ids))
+            .group_by(StudySessionLog.goal_id)
+            .all()
+        )
+        session_count_map = {gid: cnt for gid, cnt in sc_rows}
+
     goals_data = []
     for g in goals:
-        session_count = db.query(StudySessionLog).filter(StudySessionLog.goal_id == g.id).count()
+        session_count = session_count_map.get(g.id, 0)
         progress = round((g.current_hours / g.target_hours * 100.0), 1) if g.target_hours > 0 else 0.0
         goals_data.append({
             "id": g.id,

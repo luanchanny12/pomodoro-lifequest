@@ -8,7 +8,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
-    display_name = Column(String, nullable=False)
+    display_name = Column(String, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
     salt = Column(String, nullable=False)
     racer_avatar = Column(String, default="rocket")  # rocket, cyber_car, quantum_saucer, lightning, lightcycle
@@ -41,7 +41,7 @@ class VisitorLog(Base):
     is_member = Column(Boolean, default=False, index=True)
     device_type = Column(String, default="desktop")  # mobile, tablet, desktop
     path = Column(String, default="/")
-    ip_address = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True, index=True)
     user_agent = Column(String, nullable=True)
     visit_date = Column(Date, default=datetime.date.today, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)

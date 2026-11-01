@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Shield,
@@ -450,7 +450,7 @@ export default function AdminDashboard() {
   }
 
   // Filter Users
-  const filteredUsers = users.filter((u) => {
+  const filteredUsers = useMemo(() => users.filter((u) => {
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase()
       const match = u.username.toLowerCase().includes(term) || u.display_name.toLowerCase().includes(term)
@@ -461,12 +461,12 @@ export default function AdminDashboard() {
     if (roleFilter === 'active') return u.is_active
     if (roleFilter === 'locked') return !u.is_active
     return true
-  })
+  }), [users, searchTerm, roleFilter])
 
-  const adminCount = users.filter((u) => u.is_admin).length
-  const memberCount = users.filter((u) => !u.is_admin).length
-  const activeCount = users.filter((u) => u.is_active).length
-  const lockedCount = users.filter((u) => !u.is_active).length
+  const adminCount = useMemo(() => users.filter((u) => u.is_admin).length, [users])
+  const memberCount = useMemo(() => users.filter((u) => !u.is_admin).length, [users])
+  const activeCount = useMemo(() => users.filter((u) => u.is_active).length, [users])
+  const lockedCount = useMemo(() => users.filter((u) => !u.is_active).length, [users])
 
   const getVehicleIcon = (avatar: string) => {
     switch (avatar) {

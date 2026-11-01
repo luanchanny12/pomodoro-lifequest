@@ -427,6 +427,9 @@ class UserConstellationUnlock(Base):
 
 class DailyMatrixTask(Base):
     __tablename__ = "daily_matrix_tasks"
+    __table_args__ = (
+        Index("idx_matrix_user_date", "user_id", "date"),
+    )
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
     title = Column(String, nullable=False)
