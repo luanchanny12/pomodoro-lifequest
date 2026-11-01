@@ -3,8 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from 'sonner'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
-import { SpeedInsights } from '@vercel/speed-insights/react'
-import { Analytics } from '@vercel/analytics/react'
+import VercelTelemetry from '@/components/common/VercelTelemetry'
 
 const PomodoroApp = lazy(() => import('@/pages/PomodoroApp'))
 const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'))
@@ -123,9 +122,8 @@ function App() {
             />
           </Routes>
           <Toaster position="top-right" richColors closeButton />
-          {/* Vercel Speed Insights & Web Analytics */}
-          <SpeedInsights />
-          <Analytics />
+          {/* Vercel Speed Insights & Web Analytics (Idle-deferred to protect TBT) */}
+          <VercelTelemetry />
         </BrowserRouter>
       </TooltipProvider>
     </ErrorBoundary>

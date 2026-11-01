@@ -63,9 +63,25 @@ const AdminTrafficChart = React.lazy(() => import('@/components/admin/AdminTraff
 export default function AdminDashboard() {
   const navigate = useNavigate()
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authService.getCurrentUser())
-  const [overview, setOverview] = useState<AdminOverview | null>(null)
-  const [users, setUsers] = useState<AdminUserItem[]>([])
-  const [loading, setLoading] = useState<boolean>(true)
+  const [overview, setOverview] = useState<AdminOverview | null>(() => {
+    try {
+      const cached = sessionStorage.getItem('admin_overview_cache')
+      return cached ? JSON.parse(cached) : null
+    } catch {
+      return null
+    }
+  })
+  const [users, setUsers] = useState<AdminUserItem[]>(() => {
+    try {
+      const cached = sessionStorage.getItem('admin_users_cache')
+      return cached ? JSON.parse(cached) : []
+    } catch {
+      return []
+    }
+  })
+  const [loading, setLoading] = useState<boolean>(() => {
+    return !sessionStorage.getItem('admin_overview_cache')
+  })
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'member' | 'active' | 'locked'>('all')
 
@@ -172,6 +188,10 @@ export default function AdminDashboard() {
       ])
       setOverview(overviewData)
       setUsers(usersData.items)
+      try {
+        sessionStorage.setItem('admin_overview_cache', JSON.stringify(overviewData))
+        sessionStorage.setItem('admin_users_cache', JSON.stringify(usersData.items))
+      } catch {}
     } catch (err: any) {
       toast.error(err.message || 'Không thể tải dữ liệu quản trị!')
     } finally {
@@ -610,17 +630,27 @@ export default function AdminDashboard() {
         {/* ── METRIC OVERVIEW CARDS ── */}
         {loading && !overview ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
+            {[
+              { label: 'Người Dùng', color: 'text-cyan-400' },
+              { label: 'Tổng Giờ Học', color: 'text-amber-400' },
+              { label: 'Mục Tiêu', color: 'text-purple-400' },
+              { label: 'Phiên Focus', color: 'text-rose-400' },
+              { label: 'Lưu Lượng', color: 'text-blue-400' },
+              { label: 'Góp Ý', color: 'text-emerald-400' },
+            ].map((item, i) => (
               <div
                 key={i}
-                className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md min-h-[104px] animate-pulse flex flex-col justify-between"
+                className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md min-h-[104px] flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-1.5">
-                  <div className="w-16 h-3 bg-slate-800/80 rounded" />
-                  <div className="w-6 h-6 bg-slate-800/80 rounded-lg" />
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    {item.label}
+                  </span>
                 </div>
-                <div className="w-14 h-6 bg-slate-800/80 rounded my-1" />
-                <div className="w-20 h-2.5 bg-slate-800/80 rounded" />
+                <div className="text-xl font-black text-white">---</div>
+                <span className={`text-[11px] font-semibold ${item.color} animate-pulse`}>
+                  Đang tải...
+                </span>
               </div>
             ))}
           </div>
