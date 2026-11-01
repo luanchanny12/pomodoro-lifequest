@@ -8,12 +8,12 @@
     <meta name="theme-color" content="#0a0a0a" />
     <meta name="mobile-web-app-capable" content="yes" />
     <title>LIFE QUEST</title>
-    <!-- Preload LCP default wallpaper -->
-    <link rel="preload" as="image" href="/backgrounds/rain.jpg" fetchpriority="high" />
     <!-- Google Fonts Preconnect & Display Swap -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" /></noscript>
     <style>
       html, body {
         margin: 0;
@@ -138,36 +138,74 @@
     </style>
     <script>
       (function() {
-        if (window.location.pathname.startsWith('/admin')) {
+        var isAdmin = window.location.pathname.startsWith('/admin');
+        if (isAdmin) {
           var style = document.createElement('style');
           style.innerHTML = '#app-shell-skeleton { display: none !important; } #admin-shell-skeleton { display: flex !important; }';
           document.head.appendChild(style);
+        } else {
+          var link = document.createElement('link');
+          link.rel = 'preload';
+          link.as = 'image';
+          link.href = '/backgrounds/rain.jpg';
+          link.fetchPriority = 'high';
+          document.head.appendChild(link);
         }
       })();
     </script>
   </head>
   <body>
     <div id="root">
-      <!-- Admin Portal Shell Skeleton (Prevents 0.217 CLS on /admin) -->
+      <!-- Admin Portal Shell Skeleton (Immediate FCP < 0.4s & Zero CLS) -->
       <div id="admin-shell-skeleton" style="display: none; min-height: 100vh; background-color: #090d16; flex-direction: column;">
-        <div style="height: 64px; background-color: #0e1424; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; box-sizing: border-box;">
+        <header style="height: 64px; background-color: #0e1424; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; box-sizing: border-box;">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 36px; height: 36px; border-radius: 12px; background: rgba(245, 158, 11, 0.2);"></div>
-            <div style="width: 150px; height: 18px; border-radius: 6px; background: rgba(255, 255, 255, 0.1);"></div>
+            <div style="width: 36px; height: 36px; border-radius: 12px; background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); display: flex; align-items: center; justify-content: center; font-size: 16px;">🛡️</div>
+            <div>
+              <div style="font-size: 13px; font-weight: 700; color: #f8fafc; letter-spacing: 0.05em;">CỔNG QUẢN TRỊ VIÊN</div>
+              <div style="font-size: 10px; color: #94a3b8;">ADMIN PORTAL</div>
+            </div>
           </div>
-          <div style="width: 70px; height: 32px; border-radius: 10px; background: rgba(255, 255, 255, 0.08);"></div>
-        </div>
-        <div style="max-width: 1280px; width: 100%; margin: 0 auto; padding: 16px; box-sizing: border-box;">
-          <div style="height: 52px; border-radius: 16px; background: #0f1523; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 24px;"></div>
+          <div style="padding: 6px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.08); font-size: 12px; color: #cbd5e1; font-weight: 600;">Focus Hub</div>
+        </header>
+        <main style="max-width: 1280px; width: 100%; margin: 0 auto; padding: 16px; box-sizing: border-box;">
+          <div style="padding: 12px 16px; border-radius: 16px; background: #0f1523; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #94a3b8; font-weight: 600;">
+            <span style="color: #cbd5e1;">KHUNG THỜI GIAN THỐNG KÊ</span>
+            <span style="padding: 4px 10px; border-radius: 8px; background: #06b6d4; color: #020617; font-weight: 700;">Toàn thời gian</span>
+          </div>
           <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
-            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
-            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
-            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
-            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
-            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
-            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+              <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Người Dùng</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">---</span>
+              <span style="font-size: 11px; color: #06b6d4;">Đang tải...</span>
+            </div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+              <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Tổng Giờ Học</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">---</span>
+              <span style="font-size: 11px; color: #f59e0b;">Đang tải...</span>
+            </div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+              <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Mục Tiêu</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">---</span>
+              <span style="font-size: 11px; color: #a855f7;">Đang tải...</span>
+            </div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+              <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Phiên Focus</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">---</span>
+              <span style="font-size: 11px; color: #f43f5e;">Đang tải...</span>
+            </div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+              <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Lưu Lượng</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">---</span>
+              <span style="font-size: 11px; color: #3b82f6;">Đang tải...</span>
+            </div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between;">
+              <span style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Góp Ý</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">---</span>
+              <span style="font-size: 11px; color: #10b981;">Đang tải...</span>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
 
       <!-- Main Focus Hub Shell Skeleton -->
