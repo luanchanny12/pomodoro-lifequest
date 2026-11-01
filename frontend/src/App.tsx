@@ -4,36 +4,31 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from 'sonner'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 
-import PomodoroApp from '@/pages/PomodoroApp'
-
+const PomodoroApp = lazy(() => import('@/pages/PomodoroApp'))
 const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'))
+
+const PageFallback = () => (
+  <div className="min-h-screen bg-[#090a0f] flex flex-col items-center justify-center text-slate-400 gap-3">
+    <div className="w-9 h-9 border-2 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin" />
+    <span className="text-xs text-slate-500 font-medium tracking-wide">Đang tải trang...</span>
+  </div>
+)
 
 function App() {
   return (
     <ErrorBoundary>
       <TooltipProvider>
         <BrowserRouter>
-          <Routes>
-            {/* Main streamlined Pomodoro & Goal Focus App */}
-            <Route path="/" element={<PomodoroApp />} />
-            <Route path="/focus" element={<PomodoroApp />} />
-            <Route
-              path="/admin"
-              element={
-                <Suspense
-                  fallback={
-                    <div className="min-h-screen bg-[#090a0f] flex items-center justify-center text-slate-400">
-                      Đang tải Admin Dashboard...
-                    </div>
-                  }
-                >
-                  <AdminDashboard />
-                </Suspense>
-              }
-            />
-            {/* Wildcard fallback để chống màn hình trắng khi gõ nhầm URL */}
-            <Route path="*" element={<PomodoroApp />} />
-          </Routes>
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              {/* Main streamlined Pomodoro & Goal Focus App */}
+              <Route path="/" element={<PomodoroApp />} />
+              <Route path="/focus" element={<PomodoroApp />} />
+              <Route path="/admin" element={<AdminDashboard />} />
+              {/* Wildcard fallback để chống màn hình trắng khi gõ nhầm URL */}
+              <Route path="*" element={<PomodoroApp />} />
+            </Routes>
+          </Suspense>
           <Toaster position="top-right" richColors closeButton />
         </BrowserRouter>
       </TooltipProvider>

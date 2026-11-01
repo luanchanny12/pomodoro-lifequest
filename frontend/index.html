@@ -130,6 +130,15 @@
         box-shadow: 0 10px 25px rgba(186, 73, 73, 0.35);
       }
     </style>
+    <script>
+      (function() {
+        if (window.location.pathname.startsWith('/admin')) {
+          var style = document.createElement('style');
+          style.innerHTML = '#app-shell-skeleton { display: none !important; }';
+          document.head.appendChild(style);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root">

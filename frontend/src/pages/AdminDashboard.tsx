@@ -145,14 +145,25 @@ export default function AdminDashboard() {
       return
     }
 
+    const cachedUser = authService.getCurrentUser()
+    if (cachedUser) {
+      setCurrentUser(cachedUser)
+      if (!cachedUser.is_admin) {
+        toast.error('Tài khoản của bạn không có quyền Quản trị viên!')
+        navigate('/')
+        return
+      }
+    }
+
+    // Tải dữ liệu ngay lập tức song song, không chờ đợi round-trip getMe()
+    fetchData()
+
     authService.getMe().then((me) => {
       setCurrentUser(me)
       if (!me.is_admin) {
         toast.error('Tài khoản của bạn không có quyền Quản trị viên!')
         navigate('/')
-        return
       }
-      fetchData()
     }).catch(() => {
       toast.error('Phiên đăng nhập hết hạn, vui lòng đăng nhập lại!')
       navigate('/')
@@ -606,7 +617,23 @@ export default function AdminDashboard() {
         )}
 
         {/* ── METRIC OVERVIEW CARDS ── */}
-        {overview && (() => {
+        {loading && !overview ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={i}
+                className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md h-24 animate-pulse flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="w-16 h-3 bg-slate-800/80 rounded" />
+                  <div className="w-6 h-6 bg-slate-800/80 rounded-lg" />
+                </div>
+                <div className="w-14 h-6 bg-slate-800/80 rounded" />
+                <div className="w-20 h-2.5 bg-slate-800/80 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : overview ? (() => {
           const tf = overview.timeframes?.[selectedTimeframe]
           const cardHours = selectedTimeframe === 'all' ? overview.total_study_hours : (tf?.study_hours ?? overview.today_study_hours)
           const cardSessions = selectedTimeframe === 'all' ? overview.total_sessions : (tf?.study_sessions ?? overview.today_sessions)
@@ -741,7 +768,7 @@ export default function AdminDashboard() {
               </div>
             </div>
           )
-        })()}
+        })() : null}
 
         {/* ── 3 NAVIGATION TABS ── */}
         <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto no-scrollbar">
@@ -754,7 +781,7 @@ export default function AdminDashboard() {
             }`}
           >
             <Users className="w-4 h-4 text-cyan-400" />
-            <span>Người Dùng & Phân Quyền ({users.length})</span>
+            <span>Người Dùng & Phân Quyền ({loading && users.length === 0 ? '...' : users.length})</span>
           </button>
 
           <button
@@ -802,7 +829,7 @@ export default function AdminDashboard() {
                   <ShieldCheck className="w-5 h-5 text-amber-400" />
                   <span>Danh Sách Người Dùng & Gán Quyền Quản Trị</span>
                   <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                    {filteredUsers.length} tài khoản
+                    {loading && users.length === 0 ? 'Đang tải...' : `${filteredUsers.length} tài khoản`}
                   </span>
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
@@ -908,7 +935,25 @@ export default function AdminDashboard() {
 
             {/* Mobile Cards (Mobile Responsive) */}
             <div className="block md:hidden space-y-3.5">
-              {filteredUsers.length === 0 ? (
+              {loading && users.length === 0 ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div
+                      key={i}
+                      className="p-4 rounded-2xl bg-[#141d2f] border border-slate-700/80 space-y-3 shadow-md animate-pulse"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-slate-800" />
+                        <div className="space-y-2 flex-1">
+                          <div className="w-28 h-3.5 bg-slate-800 rounded" />
+                          <div className="w-20 h-2.5 bg-slate-800 rounded" />
+                        </div>
+                      </div>
+                      <div className="h-8 bg-slate-800/80 rounded-xl" />
+                    </div>
+                  ))}
+                </div>
+              ) : filteredUsers.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 italic">
                   Không tìm thấy người dùng nào phù hợp.
                 </div>
@@ -1033,7 +1078,27 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80 text-xs">
-                  {filteredUsers.length === 0 ? (
+                  {loading && users.length === 0 ? (
+                    [1, 2, 3, 4, 5].map((i) => (
+                      <tr key={i} className="animate-pulse">
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-800" />
+                            <div className="space-y-1.5">
+                              <div className="w-28 h-3.5 bg-slate-800 rounded" />
+                              <div className="w-20 h-2.5 bg-slate-800 rounded" />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4"><div className="w-16 h-3 bg-slate-800 rounded mx-auto" /></td>
+                        <td className="py-3.5 px-4"><div className="w-12 h-3 bg-slate-800 rounded mx-auto" /></td>
+                        <td className="py-3.5 px-4"><div className="w-14 h-3 bg-slate-800 rounded mx-auto" /></td>
+                        <td className="py-3.5 px-4"><div className="w-12 h-3 bg-slate-800 rounded mx-auto" /></td>
+                        <td className="py-3.5 px-4"><div className="w-16 h-5 bg-slate-800 rounded-full mx-auto" /></td>
+                        <td className="py-3.5 px-4"><div className="w-24 h-7 bg-slate-800 rounded-xl ml-auto" /></td>
+                      </tr>
+                    ))
+                  ) : filteredUsers.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-12 text-center text-slate-400 italic">
                         Không tìm thấy người dùng nào phù hợp.
