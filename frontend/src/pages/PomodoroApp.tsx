@@ -923,7 +923,7 @@ export default function PomodoroApp() {
       <DynamicBackground config={bgConfig} fallbackColor={currentTheme.bg} />
 
       {/* ── FLOATING GLASS ISLAND TOP NAVIGATION ── */}
-      <header className="max-w-5xl mx-auto px-4 pt-3 pb-1 relative z-30">
+      <header className="max-w-6xl mx-auto px-4 pt-3 pb-1 relative z-30">
         <div className="bg-black/45 backdrop-blur-2xl border border-white/15 rounded-3xl px-4 sm:px-6 py-2.5 shadow-2xl flex items-center justify-between gap-3">
           {/* Brand logo & Streak */}
           <div className="flex items-center gap-2.5 sm:gap-3">
@@ -1177,9 +1177,9 @@ export default function PomodoroApp() {
       </header>
 
       {/* ── MAIN CONTENT CONTAINER ── */}
-      <main className="max-w-xl mx-auto px-4 pt-6 pb-16 relative z-10">
+      <main className="max-w-6xl mx-auto px-4 pt-6 pb-16 relative z-10">
         {/* ── POMODORO TIMER CARD (CYBER FOCUS COCKPIT) ── */}
-        <div className="bg-[#0b0f19]/80 backdrop-blur-2xl border border-white/20 hover:border-cyan-500/40 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden transition-all duration-300">
+        <div className="max-w-xl mx-auto bg-[#0b0f19]/80 backdrop-blur-2xl border border-white/20 hover:border-cyan-500/40 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden transition-all duration-300">
           {/* Top Bar inside Card: Session Info on Left, PiP & Zen on Right */}
           <div className="flex items-center justify-between gap-2 mb-4">
             <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5 shadow-sm">
@@ -1619,7 +1619,7 @@ export default function PomodoroApp() {
         </div>
 
         {/* ── SECONDARY NAVIGATION TABS (MACOS DOCK STYLE) ── */}
-        <div className="mt-8 p-1.5 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/15 flex items-center gap-1.5 overflow-x-auto no-scrollbar justify-start sm:justify-center shadow-xl">
+        <div className="mt-8 max-w-3xl mx-auto p-1.5 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/15 flex items-center gap-1.5 overflow-x-auto no-scrollbar justify-start sm:justify-center shadow-xl">
           <button
             onClick={() => setActiveTab('goals')}
             className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${

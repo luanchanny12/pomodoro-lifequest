@@ -477,7 +477,7 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
       </div>
 
       {/* ── 4-QUADRANT GRID ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 w-full">
         {/* ================= Ô 1 ================= */}
         <QuadrantCard
           quadrantNumber={1}
@@ -896,7 +896,7 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
                 >
                   <div className="flex items-start justify-between gap-2.5">
                     {/* Grip handle & Checkbox & Title */}
-                    <div className="flex items-start gap-1.5 flex-1 min-w-0">
+                    <div className="flex items-start gap-2 flex-1 min-w-[120px]">
                       {!task.is_completed && !isPastUnfinished && (
                         <div className="mt-1 text-white/20 group-hover/task:text-white/60 transition flex-shrink-0 cursor-grab active:cursor-grabbing" title="Kéo để đổi ô">
                           <GripVertical className="w-3.5 h-3.5" />
@@ -1055,13 +1055,13 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
                         value={task.quadrant}
                         disabled={isPastUnfinished}
                         onChange={(e) => onMove(task.id, Number(e.target.value))}
-                        className="bg-black/50 border border-white/15 rounded-lg px-2 py-1 min-h-[34px] sm:min-h-0 text-xs sm:text-[10px] text-white/70 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
-                        title={isPastUnfinished ? "Không thể chuyển ô công việc của ngày trong quá khứ" : "Chuyển sang ô khác"}
+                        className="bg-black/50 border border-white/15 rounded-lg px-2 py-1 min-h-[34px] sm:min-h-0 text-xs sm:text-[10px] text-white/70 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed max-w-[70px] sm:max-w-[85px] truncate"
+                        title={isPastUnfinished ? "Không thể chuyển ô công việc của ngày trong quá khứ" : "Chuyển sang ô khác (Ô 1: Làm ngay, Ô 2: Lên lịch, Ô 3: Nhanh, Ô 4: Bỏ)"}
                       >
-                        <option value={1}>Ô 1 (Làm ngay)</option>
-                        <option value={2}>Ô 2 (Lên lịch)</option>
-                        <option value={3}>Ô 3 (Nhanh)</option>
-                        <option value={4}>Ô 4 (Loại bỏ)</option>
+                        <option value={1}>Ô 1</option>
+                        <option value={2}>Ô 2</option>
+                        <option value={3}>Ô 3</option>
+                        <option value={4}>Ô 4</option>
                       </select>
 
                       {/* Delete */}
