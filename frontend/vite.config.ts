@@ -48,6 +48,7 @@ export default defineConfig({
               normalized.includes('/tailwind-merge/') ||
               normalized.includes('/class-variance-authority/') ||
               normalized.includes('/@babel/runtime/') ||
+              normalized.includes('/@vercel/') ||
               normalized.includes('/tslib/') ||
               normalized.includes('vite/') ||
               normalized.includes('commonjsHelpers')
