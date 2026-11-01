@@ -197,3 +197,53 @@ def test_admin_update_role_and_status(admin_and_normal_user):
         json={"is_active": True},
     )
     assert res_status.status_code == 200
+
+
+def test_admin_overview_cache_and_batch_aggregation(admin_and_normal_user):
+    from app.cache import get_cache
+    data = admin_and_normal_user
+    admin_token = data["admin_token"]
+    norm_id = data["normal_user"].id
+
+    # 1. Fetch overview (populates cache)
+    res1 = client.get(
+        "/api/admin/overview",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert res1.status_code == 200
+    res1_data = res1.json()
+    assert "total_users" in res1_data
+    assert "top_racers" in res1_data
+    assert "timeframes" in res1_data
+    assert isinstance(res1_data["top_racers"], list)
+
+    # Verify cache key exists
+    cached = get_cache("cache:admin:overview")
+    assert cached is not None
+    assert cached["total_users"] == res1_data["total_users"]
+
+    # 2. Fetch users (verifies batch aggregation)
+    res_users = client.get(
+        "/api/admin/users",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert res_users.status_code == 200
+    users_data = res_users.json()
+    assert "total" in users_data
+    assert "items" in users_data
+    # Normal user should have at least 1 goal and total_hours >= 0.42
+    norm_item = next((u for u in users_data["items"] if u["id"] == norm_id), None)
+    assert norm_item is not None
+    assert norm_item["total_hours"] >= 0.42
+    assert norm_item["goal_count"] >= 1
+
+    # 3. Test mutation invalidates admin cache
+    res_cheer = client.post(
+        f"/api/admin/users/{norm_id}/cheer",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"emoji": "⚡", "message": "Siêu tốc độ!"},
+    )
+    assert res_cheer.status_code == 200
+    cached_after_mutation = get_cache("cache:admin:overview")
+    assert cached_after_mutation is None
+

@@ -10,7 +10,7 @@ from sqlalchemy import func
 from app.database import get_db
 from app.models_auth import User, VisitorLog, UserFeedback
 from app.routers.auth import get_current_admin, get_current_user_optional
-from app.cache import get_cache, set_cache
+from app.cache import get_cache, set_cache, invalidate_admin_cache
 
 router = APIRouter(tags=["Analytics & Feedback"])
 
@@ -276,6 +276,7 @@ def update_feedback_status(
     if data.admin_note is not None:
         feedback.admin_note = data.admin_note.strip()
     db.commit()
+    invalidate_admin_cache()
 
     return {"status": "ok", "message": f"Đã cập nhật trạng thái nhận xét thành '{data.status}'"}
 
@@ -294,6 +295,7 @@ def delete_feedback(
 
     db.delete(feedback)
     db.commit()
+    invalidate_admin_cache()
     return {"status": "ok", "message": "Đã xóa nhận xét thành công"}
 
 
@@ -363,19 +365,13 @@ def get_admin_visitors(
             m_query = m_query.filter(date_filter)
 
         m_groups = m_query.group_by(VisitorLog.user_id).all()
+        m_user_ids = [g.user_id for g in m_groups]
+        m_users_map = {u.id: u for u in db.query(User).filter(User.id.in_(m_user_ids)).all()} if m_user_ids else {}
+
         for g in m_groups:
-            user_obj = db.query(User).filter(User.id == g.user_id).first()
+            user_obj = m_users_map.get(g.user_id)
             if not user_obj:
                 continue
-
-            # Lấy bản ghi truy cập mới nhất để lấy path, ip, device, ua
-            latest_v = (
-                db.query(VisitorLog)
-                .filter(VisitorLog.user_id == g.user_id)
-                .order_by(VisitorLog.created_at.desc())
-                .first()
-            )
-            parsed = parse_user_agent(latest_v.user_agent if latest_v else None)
 
             member_items.append({
                 "id": f"member_{user_obj.id}",
@@ -384,21 +380,22 @@ def get_admin_visitors(
                 "user_id": user_obj.id,
                 "avatar": user_obj.racer_avatar or "cyber_car",
                 "is_member": True,
-                "ip_address": (latest_v.ip_address if latest_v and latest_v.ip_address else "Localhost / N/A"),
+                "ip_address": "Localhost / N/A",
                 "visit_count": g.visit_count,
                 "first_visit": g.first_visit.isoformat() if g.first_visit else None,
                 "last_visit": g.last_visit.isoformat() if g.last_visit else None,
-                "last_path": latest_v.path if latest_v else "/",
-                "device_type": latest_v.device_type if latest_v else parsed["device_type"],
-                "browser": parsed["browser"],
-                "os": parsed["os"],
+                "last_path": "/",
+                "device_type": "desktop",
+                "browser": "N/A",
+                "os": "N/A",
+                "_lookup_type": "member",
+                "_lookup_id": user_obj.id,
             })
 
     # 2. TỔNG HỢP KHÁCH VÃNG LAI (Guests - theo IP hoặc visitor_id)
     guest_items = []
+    guest_key = func.coalesce(VisitorLog.ip_address, VisitorLog.visitor_id)
     if filter_type in ["all", "guests"]:
-        # Gom nhóm theo IP (hoặc visitor_id nếu IP null)
-        guest_key = func.coalesce(VisitorLog.ip_address, VisitorLog.visitor_id)
         g_query = (
             db.query(
                 guest_key.label("guest_id"),
@@ -415,15 +412,7 @@ def get_admin_visitors(
 
         g_groups = g_query.group_by(guest_key).all()
         for g in g_groups:
-            latest_v = (
-                db.query(VisitorLog)
-                .filter(guest_key == g.guest_id)
-                .order_by(VisitorLog.created_at.desc())
-                .first()
-            )
-            parsed = parse_user_agent(latest_v.user_agent if latest_v else None)
-
-            ip_str = g.ip_address if g.ip_address else "Khách ẩn danh"
+            ip_str = g.ip_address if g.ip_address else (g.visitor_id if g.visitor_id else "Khách ẩn danh")
             guest_items.append({
                 "id": f"guest_{g.guest_id}",
                 "identity": ip_str,
@@ -435,10 +424,12 @@ def get_admin_visitors(
                 "visit_count": g.visit_count,
                 "first_visit": g.first_visit.isoformat() if g.first_visit else None,
                 "last_visit": g.last_visit.isoformat() if g.last_visit else None,
-                "last_path": latest_v.path if latest_v else "/",
-                "device_type": latest_v.device_type if latest_v else parsed["device_type"],
-                "browser": parsed["browser"],
-                "os": parsed["os"],
+                "last_path": "/",
+                "device_type": "desktop",
+                "browser": "N/A",
+                "os": "N/A",
+                "_lookup_type": "guest",
+                "_lookup_id": g.guest_id,
             })
 
     # Kết hợp và lọc theo search
@@ -450,7 +441,6 @@ def get_admin_visitors(
             if kw in item["identity"].lower()
             or (item["username"] and kw in item["username"].lower())
             or (item["ip_address"] and kw in item["ip_address"].lower())
-            or (item["last_path"] and kw in item["last_path"].lower())
         ]
 
     # Sắp xếp theo lần truy cập gần nhất (last_visit) giảm dần
@@ -465,6 +455,33 @@ def get_admin_visitors(
     start_idx = (current_page - 1) * effective_page_size
     end_idx = start_idx + effective_page_size
     paged_aggregated = all_aggregated[start_idx:end_idx]
+
+    # Điền thông tin chi tiết (path, device, ua, ip) CHỈ CHO các bản ghi trong trang hiện tại (tối đa 15 items)
+    for item in paged_aggregated:
+        l_type = item.pop("_lookup_type", None)
+        l_id = item.pop("_lookup_id", None)
+        latest_v = None
+        if l_type == "member" and l_id:
+            latest_v = (
+                db.query(VisitorLog)
+                .filter(VisitorLog.user_id == l_id)
+                .order_by(VisitorLog.created_at.desc())
+                .first()
+            )
+        elif l_type == "guest" and l_id:
+            latest_v = (
+                db.query(VisitorLog)
+                .filter(guest_key == l_id)
+                .order_by(VisitorLog.created_at.desc())
+                .first()
+            )
+        if latest_v:
+            parsed = parse_user_agent(latest_v.user_agent)
+            item["ip_address"] = latest_v.ip_address if latest_v.ip_address else (item["ip_address"] or "Localhost / N/A")
+            item["last_path"] = latest_v.path or "/"
+            item["device_type"] = latest_v.device_type if latest_v.device_type else parsed["device_type"]
+            item["browser"] = parsed["browser"]
+            item["os"] = parsed["os"]
 
     # 3. NHẬT KÝ LIVE RECENT LOGS (Phân trang mượt mà)
     recent_query = db.query(VisitorLog)
@@ -486,9 +503,12 @@ def get_admin_visitors(
         .all()
     )
 
+    live_user_ids = [log.user_id for log in recent_logs if log.user_id]
+    live_users_map = {u.id: u for u in db.query(User).filter(User.id.in_(live_user_ids)).all()} if live_user_ids else {}
+
     live_logs = []
     for log in recent_logs:
-        user_obj = db.query(User).filter(User.id == log.user_id).first() if log.user_id else None
+        user_obj = live_users_map.get(log.user_id) if log.user_id else None
         parsed = parse_user_agent(log.user_agent)
         live_logs.append({
             "id": log.id,

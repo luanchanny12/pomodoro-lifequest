@@ -4,7 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, confloat
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 
 from app.database import get_db
 from app.models_auth import User, CheerLog, VisitorLog, UserFeedback
@@ -21,7 +21,7 @@ from app.models import (
     UserConstellationUnlock,
 )
 from app.routers.auth import get_current_admin, hash_password
-from app.cache import invalidate_user_cache
+from app.cache import invalidate_user_cache, invalidate_admin_cache, get_cache, set_cache
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Portal & User Management"])
 
@@ -54,74 +54,14 @@ class AdminTelegramMessageRequest(BaseModel):
 
 @router.get("/overview")
 def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
-    """Thống kê tổng quan nền tảng học tập & tay đua."""
-    total_users = db.query(User).count()
-    active_users_count = db.query(User).filter(User.is_active == True).count()
-
-    total_study_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).scalar()
-    total_sessions = db.query(StudySessionLog).count()
+    """Thống kê tổng quan nền tảng học tập & tay đua (Tối ưu hóa hiệu năng cao & có bộ đệm cache 60s)."""
+    cached_overview = get_cache("cache:admin:overview")
+    if cached_overview is not None and isinstance(cached_overview, dict):
+        return cached_overview
 
     VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
     today = datetime.datetime.now(VN_TZ).date()
-    today_sessions = db.query(StudySessionLog).filter(StudySessionLog.session_date == today).count()
-    today_study_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).filter(
-        StudySessionLog.session_date == today
-    ).scalar()
-
-    total_goals = db.query(StudyGoal).count()
-    completed_goals = db.query(StudyGoal).filter(StudyGoal.is_completed == True).count()
-
-    # Active users today (users who did pomodoro or created/checked matrix tasks)
-    session_user_ids = db.query(StudySessionLog.user_id).filter(
-        StudySessionLog.session_date == today,
-        StudySessionLog.user_id.isnot(None)
-    ).distinct().all()
-    matrix_user_ids = db.query(DailyMatrixTask.user_id).filter(
-        DailyMatrixTask.date == today,
-        DailyMatrixTask.user_id.isnot(None)
-    ).distinct().all()
-    active_today_set = {u[0] for u in session_user_ids} | {u[0] for u in matrix_user_ids}
-
-    # Top racers by total study hours
-    all_users = db.query(User).filter(User.is_active == True).all()
-    user_ranking = []
-    for u in all_users:
-        hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).filter(
-            StudySessionLog.user_id == u.id
-        ).scalar()
-        player = db.query(Player).filter(Player.user_id == u.id).first()
-        user_ranking.append({
-            "id": u.id,
-            "username": u.username,
-            "display_name": u.display_name,
-            "racer_avatar": u.racer_avatar or "rocket",
-            "total_hours": round(float(hours), 2),
-            "level": player.level if player else 1,
-            "streak": (player.streak if (player and (not player.last_streak_date or player.last_streak_date >= datetime.date.today() - datetime.timedelta(days=1))) else 0) if player else 0,
-        })
-    user_ranking.sort(key=lambda x: x["total_hours"], reverse=True)
-
-    # --- Traffic & Visitor Breakdown ---
-    total_visits = db.query(VisitorLog).count()
-    guest_visits = db.query(VisitorLog).filter(VisitorLog.is_member == False).count()
-    member_visits = db.query(VisitorLog).filter(VisitorLog.is_member == True).count()
-    unique_guests = db.query(func.count(func.distinct(VisitorLog.visitor_id))).filter(VisitorLog.is_member == False).scalar() or 0
-    unique_members = db.query(func.count(func.distinct(VisitorLog.user_id))).filter(VisitorLog.is_member == True).scalar() or 0
-
-    today_visits = db.query(VisitorLog).filter(VisitorLog.visit_date == today).count()
-    today_guest_visits = db.query(VisitorLog).filter(VisitorLog.visit_date == today, VisitorLog.is_member == False).count()
-    today_member_visits = db.query(VisitorLog).filter(VisitorLog.visit_date == today, VisitorLog.is_member == True).count()
-
-    mobile_visits = db.query(VisitorLog).filter(VisitorLog.device_type.in_(["mobile", "tablet"])).count()
-    desktop_visits = db.query(VisitorLog).filter(VisitorLog.device_type == "desktop").count()
-
-    # --- Feedback Overview ---
-    total_feedbacks = db.query(UserFeedback).count()
-    new_feedbacks = db.query(UserFeedback).filter(UserFeedback.status == "new").count()
-    avg_rating_raw = db.query(func.avg(UserFeedback.rating)).scalar()
-    feedback_avg_rating = round(float(avg_rating_raw), 1) if avg_rating_raw is not None else 5.0
-
-    # --- Timeframe Analytics: Day, Week, Month ---
+    yesterday = today - datetime.timedelta(days=1)
     week_start = today - datetime.timedelta(days=6)
     month_start = today - datetime.timedelta(days=29)
 
@@ -129,67 +69,199 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
     week_dt_start = datetime.datetime.combine(week_start, datetime.time.min)
     month_dt_start = datetime.datetime.combine(month_start, datetime.time.min)
 
-    # 1. Day (Hôm nay)
-    today_new_users = db.query(User).filter(User.created_at >= today_dt_start).count()
-    today_feedbacks = db.query(UserFeedback).filter(UserFeedback.created_at >= today_dt_start).count()
-    today_unique_guests = db.query(func.count(func.distinct(VisitorLog.visitor_id))).filter(
-        VisitorLog.visit_date == today, VisitorLog.is_member == False
-    ).scalar() or 0
-    today_unique_members = db.query(func.count(func.distinct(VisitorLog.user_id))).filter(
-        VisitorLog.visit_date == today, VisitorLog.is_member == True
-    ).scalar() or 0
+    # 1. User stats (1 query)
+    user_counts = (
+        db.query(
+            func.count(User.id),
+            func.coalesce(func.sum(case((User.is_active == True, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((User.created_at >= today_dt_start, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((User.created_at >= week_dt_start, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((User.created_at >= month_dt_start, 1), else_=0)), 0),
+        ).first()
+    )
+    total_users = user_counts[0] or 0
+    active_users_count = int(user_counts[1] or 0)
+    today_new_users = int(user_counts[2] or 0)
+    week_new_users = int(user_counts[3] or 0)
+    month_new_users = int(user_counts[4] or 0)
 
-    # 2. Week (7 ngày qua)
-    week_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= week_start).count()
-    week_guest_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= week_start, VisitorLog.is_member == False).count()
-    week_member_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= week_start, VisitorLog.is_member == True).count()
-    week_unique_guests = db.query(func.count(func.distinct(VisitorLog.visitor_id))).filter(
-        VisitorLog.visit_date >= week_start, VisitorLog.is_member == False
-    ).scalar() or 0
-    week_unique_members = db.query(func.count(func.distinct(VisitorLog.user_id))).filter(
-        VisitorLog.visit_date >= week_start, VisitorLog.is_member == True
-    ).scalar() or 0
-    week_study_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).filter(
-        StudySessionLog.session_date >= week_start
-    ).scalar() or 0.0
-    week_sessions = db.query(StudySessionLog).filter(StudySessionLog.session_date >= week_start).count()
-    week_new_users = db.query(User).filter(User.created_at >= week_dt_start).count()
-    week_feedbacks = db.query(UserFeedback).filter(UserFeedback.created_at >= week_dt_start).count()
+    # 2. Overall study hours & total sessions (1 query)
+    study_aggregates = (
+        db.query(
+            func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0),
+            func.count(StudySessionLog.id),
+        ).first() or (0.0, 0)
+    )
+    total_study_hours = float(study_aggregates[0] or 0.0)
+    total_sessions = int(study_aggregates[1] or 0)
 
-    week_session_users = db.query(StudySessionLog.user_id).filter(
-        StudySessionLog.session_date >= week_start, StudySessionLog.user_id.isnot(None)
-    ).distinct().all()
-    week_matrix_users = db.query(DailyMatrixTask.user_id).filter(
-        DailyMatrixTask.date >= week_start, DailyMatrixTask.user_id.isnot(None)
-    ).distinct().all()
-    active_week_set = {u[0] for u in week_session_users} | {u[0] for u in week_matrix_users}
+    # 3. Overall goals (1 query)
+    goal_aggregates = (
+        db.query(
+            func.count(StudyGoal.id),
+            func.coalesce(func.sum(case((StudyGoal.is_completed == True, 1), else_=0)), 0),
+        ).first() or (0, 0)
+    )
+    total_goals = int(goal_aggregates[0] or 0)
+    completed_goals = int(goal_aggregates[1] or 0)
 
-    # 3. Month (30 ngày qua)
-    month_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= month_start).count()
-    month_guest_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= month_start, VisitorLog.is_member == False).count()
-    month_member_visits = db.query(VisitorLog).filter(VisitorLog.visit_date >= month_start, VisitorLog.is_member == True).count()
-    month_unique_guests = db.query(func.count(func.distinct(VisitorLog.visitor_id))).filter(
-        VisitorLog.visit_date >= month_start, VisitorLog.is_member == False
-    ).scalar() or 0
-    month_unique_members = db.query(func.count(func.distinct(VisitorLog.user_id))).filter(
-        VisitorLog.visit_date >= month_start, VisitorLog.is_member == True
-    ).scalar() or 0
-    month_study_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).filter(
-        StudySessionLog.session_date >= month_start
-    ).scalar() or 0.0
-    month_sessions = db.query(StudySessionLog).filter(StudySessionLog.session_date >= month_start).count()
-    month_new_users = db.query(User).filter(User.created_at >= month_dt_start).count()
-    month_feedbacks = db.query(UserFeedback).filter(UserFeedback.created_at >= month_dt_start).count()
+    # 4. Sessions in the last 30 days (covers today, week, month in 1 query)
+    session_rows_30d = (
+        db.query(
+            StudySessionLog.session_date,
+            StudySessionLog.duration_hours,
+            StudySessionLog.user_id,
+        )
+        .filter(StudySessionLog.session_date >= month_start)
+        .all()
+    )
 
-    month_session_users = db.query(StudySessionLog.user_id).filter(
-        StudySessionLog.session_date >= month_start, StudySessionLog.user_id.isnot(None)
-    ).distinct().all()
-    month_matrix_users = db.query(DailyMatrixTask.user_id).filter(
-        DailyMatrixTask.date >= month_start, DailyMatrixTask.user_id.isnot(None)
-    ).distinct().all()
-    active_month_set = {u[0] for u in month_session_users} | {u[0] for u in month_matrix_users}
+    today_sessions = 0
+    today_study_hours = 0.0
+    week_sessions = 0
+    week_study_hours = 0.0
+    month_sessions = len(session_rows_30d)
+    month_study_hours = 0.0
 
-    # High-Performance Aggregated Traffic Trend (1 single GROUP BY query replaces 74 sequential queries)
+    today_session_users = set()
+    week_session_users = set()
+    month_session_users = set()
+
+    for s_date, dur, uid in session_rows_30d:
+        dur_val = float(dur or 0.0)
+        month_study_hours += dur_val
+        if uid:
+            month_session_users.add(uid)
+
+        if s_date >= week_start:
+            week_sessions += 1
+            week_study_hours += dur_val
+            if uid:
+                week_session_users.add(uid)
+
+        if s_date == today:
+            today_sessions += 1
+            today_study_hours += dur_val
+            if uid:
+                today_session_users.add(uid)
+
+    matrix_rows_30d = (
+        db.query(DailyMatrixTask.date, DailyMatrixTask.user_id)
+        .filter(DailyMatrixTask.date >= month_start, DailyMatrixTask.user_id.isnot(None))
+        .all()
+    )
+    today_matrix_users = {uid for d, uid in matrix_rows_30d if d == today}
+    week_matrix_users = {uid for d, uid in matrix_rows_30d if d >= week_start}
+    month_matrix_users = {uid for d, uid in matrix_rows_30d}
+
+    active_today_set = today_session_users | today_matrix_users
+    active_week_set = week_session_users | week_matrix_users
+    active_month_set = month_session_users | month_matrix_users
+
+    # 5. Top 5 Racers (Batch SQL query: 2 queries instead of 2*N queries)
+    top_study_rows = (
+        db.query(
+            StudySessionLog.user_id,
+            func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0).label("total_hours"),
+        )
+        .join(User, User.id == StudySessionLog.user_id)
+        .filter(User.is_active == True, StudySessionLog.user_id.isnot(None))
+        .group_by(StudySessionLog.user_id)
+        .order_by(func.sum(StudySessionLog.duration_hours).desc())
+        .limit(5)
+        .all()
+    )
+
+    top_user_ids = [r[0] for r in top_study_rows]
+    top_users_map = {u.id: u for u in db.query(User).filter(User.id.in_(top_user_ids)).all()} if top_user_ids else {}
+    top_players_map = {p.user_id: p for p in db.query(Player).filter(Player.user_id.in_(top_user_ids)).all()} if top_user_ids else {}
+
+    top_racers = []
+    for uid, hours in top_study_rows:
+        u = top_users_map.get(uid)
+        if not u:
+            continue
+        p = top_players_map.get(uid)
+        streak_val = 0
+        if p:
+            if not p.last_streak_date or p.last_streak_date >= yesterday:
+                streak_val = p.streak
+
+        top_racers.append({
+            "id": u.id,
+            "username": u.username,
+            "display_name": u.display_name,
+            "racer_avatar": u.racer_avatar or "rocket",
+            "total_hours": round(float(hours), 2),
+            "level": p.level if p else 1,
+            "streak": streak_val,
+        })
+
+    if len(top_racers) < 5:
+        existing_ids = set(top_user_ids)
+        remaining_users = (
+            db.query(User)
+            .filter(User.is_active == True, ~User.id.in_(existing_ids) if existing_ids else True)
+            .limit(5 - len(top_racers))
+            .all()
+        )
+        rem_uids = [u.id for u in remaining_users]
+        rem_players = {p.user_id: p for p in db.query(Player).filter(Player.user_id.in_(rem_uids)).all()} if rem_uids else {}
+        for u in remaining_users:
+            p = rem_players.get(u.id)
+            streak_val = 0
+            if p:
+                if not p.last_streak_date or p.last_streak_date >= yesterday:
+                    streak_val = p.streak
+            top_racers.append({
+                "id": u.id,
+                "username": u.username,
+                "display_name": u.display_name,
+                "racer_avatar": u.racer_avatar or "rocket",
+                "total_hours": 0.0,
+                "level": p.level if p else 1,
+                "streak": streak_val,
+            })
+
+    # 6. Visitor aggregates (1 consolidated query for overall counts)
+    visitor_aggregates = (
+        db.query(
+            func.count(VisitorLog.id),
+            func.coalesce(func.sum(case((VisitorLog.is_member == False, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((VisitorLog.is_member == True, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((VisitorLog.device_type.in_(["mobile", "tablet"]), 1), else_=0)), 0),
+            func.coalesce(func.sum(case((VisitorLog.device_type == "desktop", 1), else_=0)), 0),
+        ).first()
+    )
+    total_visits = visitor_aggregates[0] or 0
+    guest_visits = int(visitor_aggregates[1] or 0)
+    member_visits = int(visitor_aggregates[2] or 0)
+    mobile_visits = int(visitor_aggregates[3] or 0)
+    desktop_visits = int(visitor_aggregates[4] or 0)
+
+    unique_guests = db.query(func.count(func.distinct(VisitorLog.visitor_id))).filter(VisitorLog.is_member == False).scalar() or 0
+    unique_members = db.query(func.count(func.distinct(VisitorLog.user_id))).filter(VisitorLog.is_member == True).scalar() or 0
+
+    # 7. Feedback overview (1 consolidated query)
+    feedback_stats = (
+        db.query(
+            func.count(UserFeedback.id),
+            func.coalesce(func.sum(case((UserFeedback.status == "new", 1), else_=0)), 0),
+            func.avg(UserFeedback.rating),
+            func.coalesce(func.sum(case((UserFeedback.created_at >= today_dt_start, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((UserFeedback.created_at >= week_dt_start, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((UserFeedback.created_at >= month_dt_start, 1), else_=0)), 0),
+        ).first()
+    )
+    total_feedbacks = feedback_stats[0] or 0
+    new_feedbacks = int(feedback_stats[1] or 0)
+    avg_rating_raw = feedback_stats[2]
+    feedback_avg_rating = round(float(avg_rating_raw), 1) if avg_rating_raw is not None else 5.0
+    today_feedbacks = int(feedback_stats[3] or 0)
+    week_feedbacks = int(feedback_stats[4] or 0)
+    month_feedbacks = int(feedback_stats[5] or 0)
+
+    # 8. High-Performance Aggregated Traffic Trend (1 single GROUP BY query)
     start_30d = today - datetime.timedelta(days=29)
     grouped_counts = (
         db.query(
@@ -202,7 +274,7 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
         .all()
     )
 
-    traffic_map: Dict[Any, Dict[str, int]] = {}
+    traffic_map = {}
     for v_date, is_mem, c_val in grouped_counts:
         if v_date not in traffic_map:
             traffic_map[v_date] = {"guest": 0, "member": 0}
@@ -210,6 +282,63 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
             traffic_map[v_date]["member"] += c_val
         else:
             traffic_map[v_date]["guest"] += c_val
+
+    # Derive day, week, month traffic totals from traffic_map in memory
+    today_traffic = traffic_map.get(today, {"guest": 0, "member": 0})
+    today_visits = today_traffic["guest"] + today_traffic["member"]
+    today_guest_visits = today_traffic["guest"]
+    today_member_visits = today_traffic["member"]
+
+    week_visits = 0
+    week_guest_visits = 0
+    week_member_visits = 0
+    month_visits = 0
+    month_guest_visits = 0
+    month_member_visits = 0
+
+    for d, counts in traffic_map.items():
+        if d >= month_start:
+            month_visits += counts["guest"] + counts["member"]
+            month_guest_visits += counts["guest"]
+            month_member_visits += counts["member"]
+        if d >= week_start:
+            week_visits += counts["guest"] + counts["member"]
+            week_guest_visits += counts["guest"]
+            week_member_visits += counts["member"]
+
+    # Unique visitors in day, week, month (3 fast distinct queries)
+    unique_day_rows = (
+        db.query(
+            func.count(func.distinct(case((VisitorLog.is_member == False, VisitorLog.visitor_id), else_=None))),
+            func.count(func.distinct(case((VisitorLog.is_member == True, VisitorLog.user_id), else_=None))),
+        )
+        .filter(VisitorLog.visit_date == today)
+        .first()
+    )
+    today_unique_guests = unique_day_rows[0] or 0
+    today_unique_members = unique_day_rows[1] or 0
+
+    unique_week_rows = (
+        db.query(
+            func.count(func.distinct(case((VisitorLog.is_member == False, VisitorLog.visitor_id), else_=None))),
+            func.count(func.distinct(case((VisitorLog.is_member == True, VisitorLog.user_id), else_=None))),
+        )
+        .filter(VisitorLog.visit_date >= week_start)
+        .first()
+    )
+    week_unique_guests = unique_week_rows[0] or 0
+    week_unique_members = unique_week_rows[1] or 0
+
+    unique_month_rows = (
+        db.query(
+            func.count(func.distinct(case((VisitorLog.is_member == False, VisitorLog.visitor_id), else_=None))),
+            func.count(func.distinct(case((VisitorLog.is_member == True, VisitorLog.user_id), else_=None))),
+        )
+        .filter(VisitorLog.visit_date >= month_start)
+        .first()
+    )
+    month_unique_guests = unique_month_rows[0] or 0
+    month_unique_members = unique_month_rows[1] or 0
 
     traffic_trend_7days = []
     for i in range(6, -1, -1):
@@ -296,7 +425,7 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
         },
     }
 
-    return {
+    overview_result = {
         "total_users": total_users,
         "active_users_count": active_users_count,
         "active_today_count": len(active_today_set),
@@ -306,7 +435,7 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
         "today_study_hours": round(float(today_study_hours), 2),
         "total_goals": total_goals,
         "completed_goals": completed_goals,
-        "top_racers": user_ranking[:5],
+        "top_racers": top_racers,
         # Analytics & Feedback
         "total_visits": total_visits,
         "guest_visits": guest_visits,
@@ -326,6 +455,9 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
         "timeframes": timeframes,
     }
 
+    set_cache("cache:admin:overview", overview_result, ttl_seconds=60)
+    return overview_result
+
 
 @router.get("/users")
 def get_admin_users(
@@ -335,7 +467,7 @@ def get_admin_users(
     admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """Lấy danh sách tất cả người dùng kèm chỉ số học tập để quản lý."""
+    """Lấy danh sách tất cả người dùng kèm chỉ số học tập để quản lý (Tối ưu hóa Batch SQL không lặp N+1)."""
     query = db.query(User)
     if search and search.strip():
         term = f"%{search.strip().lower()}%"
@@ -346,18 +478,73 @@ def get_admin_users(
 
     VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
     today = datetime.datetime.now(VN_TZ).date()
+    yesterday = today - datetime.timedelta(days=1)
+
+    user_ids = [u.id for u in users]
+
+    total_hours_map = {}
+    today_hours_map = {}
+    goal_count_map = {}
+    player_map = {}
+    notif_map = {}
+
+    if user_ids:
+        # 1. Batch total hours
+        total_hours_rows = (
+            db.query(
+                StudySessionLog.user_id,
+                func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0),
+            )
+            .filter(StudySessionLog.user_id.in_(user_ids))
+            .group_by(StudySessionLog.user_id)
+            .all()
+        )
+        total_hours_map = {uid: float(h) for uid, h in total_hours_rows}
+
+        # 2. Batch today hours
+        today_hours_rows = (
+            db.query(
+                StudySessionLog.user_id,
+                func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0),
+            )
+            .filter(
+                StudySessionLog.user_id.in_(user_ids),
+                StudySessionLog.session_date == today,
+            )
+            .group_by(StudySessionLog.user_id)
+            .all()
+        )
+        today_hours_map = {uid: float(h) for uid, h in today_hours_rows}
+
+        # 3. Batch goal count
+        goal_count_rows = (
+            db.query(StudyGoal.user_id, func.count(StudyGoal.id))
+            .filter(StudyGoal.user_id.in_(user_ids))
+            .group_by(StudyGoal.user_id)
+            .all()
+        )
+        goal_count_map = {uid: cnt for uid, cnt in goal_count_rows}
+
+        # 4. Batch players
+        players = db.query(Player).filter(Player.user_id.in_(user_ids)).all()
+        player_map = {p.user_id: p for p in players}
+
+        # 5. Batch notifications
+        notifs = db.query(NotificationSetting).filter(NotificationSetting.user_id.in_(user_ids)).all()
+        notif_map = {n.user_id: n for n in notifs}
+
     results = []
     for u in users:
-        total_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).filter(
-            StudySessionLog.user_id == u.id
-        ).scalar()
-        today_hours = db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)).filter(
-            StudySessionLog.user_id == u.id,
-            StudySessionLog.session_date == today
-        ).scalar()
-        goal_count = db.query(StudyGoal).filter(StudyGoal.user_id == u.id).count()
-        player = db.query(Player).filter(Player.user_id == u.id).first()
-        notification = db.query(NotificationSetting).filter(NotificationSetting.user_id == u.id).first()
+        total_hours = total_hours_map.get(u.id, 0.0)
+        today_hours = today_hours_map.get(u.id, 0.0)
+        goal_count = goal_count_map.get(u.id, 0)
+        player = player_map.get(u.id)
+        notification = notif_map.get(u.id)
+
+        streak_val = 0
+        if player:
+            if not player.last_streak_date or player.last_streak_date >= yesterday:
+                streak_val = player.streak
 
         results.append({
             "id": u.id,
@@ -370,9 +557,9 @@ def get_admin_users(
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "level": player.level if player else 1,
             "exp": player.exp if player else 0,
-            "streak": (player.streak if (player and (not player.last_streak_date or player.last_streak_date >= datetime.date.today() - datetime.timedelta(days=1))) else 0) if player else 0,
-            "total_hours": round(float(total_hours), 2),
-            "today_hours": round(float(today_hours), 2),
+            "streak": streak_val,
+            "total_hours": round(total_hours, 2),
+            "today_hours": round(today_hours, 2),
             "goal_count": goal_count,
             "has_telegram": bool(notification and notification.telegram_chat_id),
         })
@@ -531,6 +718,7 @@ def admin_reset_password(
     user.password_hash = pwd_hash
     user.salt = salt
     db.commit()
+    invalidate_admin_cache()
 
     return {"message": f"Đã đặt lại mật khẩu thành công cho tài khoản @{user.username}!"}
 
@@ -554,6 +742,7 @@ def admin_update_role(
 
     user.is_admin = data.is_admin
     db.commit()
+    invalidate_admin_cache()
 
     role_str = "Quản trị viên (Admin)" if data.is_admin else "Người dùng thông thường"
     return {"message": f"Đã cập nhật vai trò của @{user.username} thành {role_str}!"}
@@ -576,6 +765,7 @@ def admin_update_status(
 
     user.is_active = data.is_active
     db.commit()
+    invalidate_admin_cache()
 
     status_str = "Kích hoạt" if data.is_active else "Đã khóa"
     return {"message": f"Đã cập nhật trạng thái tài khoản @{user.username}: {status_str}!"}
@@ -618,6 +808,7 @@ def admin_delete_user(
     db.delete(user)
     db.commit()
     invalidate_user_cache(user_id)
+    invalidate_admin_cache()
 
     return {"message": f"Đã xóa hoàn toàn tài khoản @{user.username} và các dữ liệu liên quan!"}
 
@@ -669,6 +860,7 @@ def admin_update_goal(
     db.commit()
     db.refresh(goal)
     invalidate_user_cache(goal.user_id)
+    invalidate_admin_cache()
     return {"message": "Đã cập nhật mục tiêu thành công!", "goal_id": goal.id}
 
 
@@ -698,6 +890,7 @@ def admin_delete_goal(
     db.delete(goal)
     db.commit()
     invalidate_user_cache(target_user_id)
+    invalidate_admin_cache()
 
     return {"message": "Đã xóa mục tiêu thành công!"}
 
@@ -724,6 +917,7 @@ def admin_cheer_user(
     )
     db.add(cheer_log)
     db.commit()
+    invalidate_admin_cache()
 
     return {"message": f"Đã gửi cổ vũ {data.emoji} thành công đến {user.display_name}!"}
 

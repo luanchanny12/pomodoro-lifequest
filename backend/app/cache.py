@@ -171,3 +171,9 @@ def invalidate_user_cache(user_or_id: Any = None) -> None:
     delete_cache_pattern(f"cache:matrix:{uid_str}*")
     delete_cache_pattern(f"cache:galaxy:{uid_str}*")
     delete_cache("cache:race:track")
+
+
+def invalidate_admin_cache() -> None:
+    """Invalidate cached data for admin portal overview and stats."""
+    delete_cache_pattern("cache:admin:*")
+

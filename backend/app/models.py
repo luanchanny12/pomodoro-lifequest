@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, Boolean, ForeignKey, DateTime, Text, JSON
+from sqlalchemy import Column, Integer, String, Float, Date, Boolean, ForeignKey, DateTime, Text, JSON, Index
 from sqlalchemy.orm import relationship
 from datetime import date, datetime
 from app.database import Base
@@ -343,6 +343,9 @@ class StudyGoal(Base):
 
 class StudySessionLog(Base):
     __tablename__ = "study_session_logs"
+    __table_args__ = (
+        Index("idx_study_session_user_date", "user_id", "session_date"),
+    )
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
     goal_id = Column(Integer, ForeignKey("study_goals.id"), nullable=True)

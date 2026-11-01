@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Date
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Date, Index
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -31,17 +31,20 @@ class CheerLog(Base):
 
 class VisitorLog(Base):
     __tablename__ = "visitor_logs"
+    __table_args__ = (
+        Index("idx_visitor_date_member", "visit_date", "is_member"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     visitor_id = Column(String, index=True, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    is_member = Column(Boolean, default=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    is_member = Column(Boolean, default=False, index=True)
     device_type = Column(String, default="desktop")  # mobile, tablet, desktop
     path = Column(String, default="/")
     ip_address = Column(String, nullable=True)
     user_agent = Column(String, nullable=True)
     visit_date = Column(Date, default=datetime.date.today, index=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
 
 class UserFeedback(Base):
     __tablename__ = "user_feedbacks"
