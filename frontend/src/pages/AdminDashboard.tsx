@@ -545,76 +545,74 @@ export default function AdminDashboard() {
 
       {/* ── MAIN CONTENT ── */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* ── TIMEFRAME SELECTOR PILL ── */}
-        {overview && (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-[#0f1523] border border-slate-800 rounded-2xl p-3 px-4 shadow-sm">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-md shadow-cyan-400/50" />
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Khung Thời Gian Thống Kê:
-              </span>
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 font-semibold border border-cyan-500/30">
-                {selectedTimeframe === 'day'
-                  ? 'Hôm nay'
-                  : selectedTimeframe === 'week'
-                  ? '7 ngày (Tuần)'
-                  : selectedTimeframe === 'month'
-                  ? '30 ngày (Tháng)'
-                  : 'Toàn thời gian'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1.5 bg-[#141c2e] p-1 rounded-xl border border-slate-700/60 overflow-x-auto max-w-full">
-              <button
-                type="button"
-                onClick={() => setSelectedTimeframe('day')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                  selectedTimeframe === 'day'
-                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
-              >
-                <span>📅 Hôm Nay</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedTimeframe('week')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                  selectedTimeframe === 'week'
-                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
-              >
-                <span>📊 7 Ngày (Tuần)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedTimeframe('month')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                  selectedTimeframe === 'month'
-                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
-              >
-                <span>📈 30 Ngày (Tháng)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedTimeframe('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                  selectedTimeframe === 'all'
-                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
-              >
-                <span>🌐 Toàn Thời Gian</span>
-              </button>
-            </div>
+        {/* ── TIMEFRAME SELECTOR PILL (Rendered statically to eliminate 0.217 CLS) ── */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-[#0f1523] border border-slate-800 rounded-2xl p-3 px-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-md shadow-cyan-400/50" />
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+              Khung Thời Gian Thống Kê:
+            </span>
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 font-semibold border border-cyan-500/30">
+              {selectedTimeframe === 'day'
+                ? 'Hôm nay'
+                : selectedTimeframe === 'week'
+                ? '7 ngày (Tuần)'
+                : selectedTimeframe === 'month'
+                ? '30 ngày (Tháng)'
+                : 'Toàn thời gian'}
+            </span>
           </div>
-        )}
+
+          <div className="flex items-center gap-1.5 bg-[#141c2e] p-1 rounded-xl border border-slate-700/60 overflow-x-auto max-w-full">
+            <button
+              type="button"
+              onClick={() => setSelectedTimeframe('day')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                selectedTimeframe === 'day'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <span>📅 Hôm Nay</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedTimeframe('week')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                selectedTimeframe === 'week'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <span>📊 7 Ngày (Tuần)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedTimeframe('month')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                selectedTimeframe === 'month'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <span>📈 30 Ngày (Tháng)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedTimeframe('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
+                selectedTimeframe === 'all'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <span>🌐 Toàn Thời Gian</span>
+            </button>
+          </div>
+        </div>
 
         {/* ── METRIC OVERVIEW CARDS ── */}
         {loading && !overview ? (
@@ -622,13 +620,13 @@ export default function AdminDashboard() {
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div
                 key={i}
-                className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md h-24 animate-pulse flex flex-col justify-between"
+                className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md min-h-[104px] animate-pulse flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="w-16 h-3 bg-slate-800/80 rounded" />
                   <div className="w-6 h-6 bg-slate-800/80 rounded-lg" />
                 </div>
-                <div className="w-14 h-6 bg-slate-800/80 rounded" />
+                <div className="w-14 h-6 bg-slate-800/80 rounded my-1" />
                 <div className="w-20 h-2.5 bg-slate-800/80 rounded" />
               </div>
             ))}
@@ -645,7 +643,7 @@ export default function AdminDashboard() {
           return (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
               {/* Card 1: Users */}
-              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-cyan-500/50 transition">
+              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-cyan-500/50 transition flex flex-col justify-between min-h-[104px]">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                     {selectedTimeframe === 'all' ? 'Người Dùng' : 'Đăng Ký Mới'}
@@ -668,7 +666,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Card 2: Hours */}
-              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-amber-500/50 transition">
+              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-amber-500/50 transition flex flex-col justify-between min-h-[104px]">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                     {selectedTimeframe === 'all' ? 'Tổng Giờ Học' : 'Giờ Học'}
@@ -690,7 +688,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Card 3: Goals */}
-              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-purple-500/50 transition">
+              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-purple-500/50 transition flex flex-col justify-between min-h-[104px]">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mục Tiêu</span>
                   <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400">
@@ -704,7 +702,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Card 4: Sessions */}
-              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-rose-500/50 transition">
+              <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 shadow-md group hover:border-rose-500/50 transition flex flex-col justify-between min-h-[104px]">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Phiên Focus</span>
                   <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400">
@@ -722,7 +720,7 @@ export default function AdminDashboard() {
               {/* Card 5: Traffic */}
               <div
                 onClick={() => setActiveAdminTab('traffic')}
-                className={`bg-[#111827] border rounded-2xl p-4 shadow-md cursor-pointer transition ${
+                className={`bg-[#111827] border rounded-2xl p-4 shadow-md cursor-pointer transition flex flex-col justify-between min-h-[104px] ${
                   activeAdminTab === 'traffic'
                     ? 'border-blue-500/80 ring-1 ring-blue-500/50'
                     : 'border-slate-800 hover:border-blue-500/50'
@@ -743,7 +741,7 @@ export default function AdminDashboard() {
               {/* Card 6: Feedbacks */}
               <div
                 onClick={() => setActiveAdminTab('feedbacks')}
-                className={`bg-[#111827] border rounded-2xl p-4 shadow-md cursor-pointer transition ${
+                className={`bg-[#111827] border rounded-2xl p-4 shadow-md cursor-pointer transition flex flex-col justify-between min-h-[104px] ${
                   activeAdminTab === 'feedbacks'
                     ? 'border-emerald-500/80 ring-1 ring-emerald-500/50'
                     : 'border-slate-800 hover:border-emerald-500/50'

@@ -140,7 +140,7 @@
       (function() {
         if (window.location.pathname.startsWith('/admin')) {
           var style = document.createElement('style');
-          style.innerHTML = '#app-shell-skeleton { display: none !important; }';
+          style.innerHTML = '#app-shell-skeleton { display: none !important; } #admin-shell-skeleton { display: flex !important; }';
           document.head.appendChild(style);
         }
       })();
@@ -148,6 +148,29 @@
   </head>
   <body>
     <div id="root">
+      <!-- Admin Portal Shell Skeleton (Prevents 0.217 CLS on /admin) -->
+      <div id="admin-shell-skeleton" style="display: none; min-height: 100vh; background-color: #090d16; flex-direction: column;">
+        <div style="height: 64px; background-color: #0e1424; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; box-sizing: border-box;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 36px; height: 36px; border-radius: 12px; background: rgba(245, 158, 11, 0.2);"></div>
+            <div style="width: 150px; height: 18px; border-radius: 6px; background: rgba(255, 255, 255, 0.1);"></div>
+          </div>
+          <div style="width: 70px; height: 32px; border-radius: 10px; background: rgba(255, 255, 255, 0.08);"></div>
+        </div>
+        <div style="max-width: 1280px; width: 100%; margin: 0 auto; padding: 16px; box-sizing: border-box;">
+          <div style="height: 52px; border-radius: 16px; background: #0f1523; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 24px;"></div>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
+            <div style="min-height: 104px; border-radius: 16px; background: #111827; border: 1px solid rgba(255,255,255,0.06);"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Focus Hub Shell Skeleton -->
       <div id="app-shell-skeleton">
         <div class="shell-header">
           <div class="shell-logo">
