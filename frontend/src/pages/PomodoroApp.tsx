@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react'
 import {
   Play,
   Pause,
@@ -42,14 +42,6 @@ import {
   Flame,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-} from 'recharts'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 
@@ -60,42 +52,43 @@ import {
   FocusStats,
 } from '@/services/focusService'
 import { soundManager } from '@/utils/soundEffects'
-import { ManualLogModal } from '@/components/pomodoro/ManualLogModal'
-import { GoalModal } from '@/components/pomodoro/GoalModal'
-import {
-  SettingsModal,
-  PomodoroSettings,
-} from '@/components/pomodoro/SettingsModal'
+import type { PomodoroSettings } from '@/components/pomodoro/SettingsModal'
 import {
   DynamicBackground,
   BackgroundConfig,
   PRESET_THEMES,
 } from '@/components/pomodoro/DynamicBackground'
-import { BackgroundPickerModal } from '@/components/pomodoro/BackgroundPickerModal'
 import { DailyQuoteCard } from '@/components/pomodoro/DailyQuoteCard'
-import { RewardShopModal } from '@/components/pomodoro/RewardShopModal'
-import { TopicGalaxyView } from '@/components/pomodoro/TopicGalaxyView'
-import { TimeWarpCard } from '@/components/pomodoro/TimeWarpCard'
-import { TimeCapsuleModal } from '@/components/pomodoro/TimeCapsuleModal'
-import { EisenhowerMatrixView } from '@/components/pomodoro/EisenhowerMatrixView'
 import { AIFloatingBuddy } from '@/components/pomodoro/AIFloatingBuddy'
-import { NotificationSettingsModal } from '@/components/pomodoro/NotificationSettingsModal'
-import { AuthModal } from '@/components/auth/AuthModal'
-import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
-import { CosmicRaceTrackModal } from '@/components/race/CosmicRaceTrackModal'
-import { CheerCelebrationModal } from '@/components/race/CheerCelebrationModal'
 import { raceService, CheerItem } from '@/services/raceService'
-import { DonateModal } from '@/components/common/DonateModal'
-import { FeedbackModal } from '@/components/common/FeedbackModal'
 import { Footer } from '@/components/common/Footer'
 import { pipTimerManager } from '@/utils/pipTimer'
-import { ZenDeskClockModal } from '@/components/pomodoro/ZenDeskClockModal'
 import { CloudStatusBanner } from '@/components/common/CloudStatusBanner'
 import { usePWAInstall } from '@/utils/usePWAInstall'
-import { ShareableAchievementModal } from '@/components/pomodoro/ShareableAchievementModal'
 import { authService, UserProfile } from '@/services/authService'
 import { notificationManager } from '@/utils/notificationManager'
 import { trackVisit } from '@/utils/analytics'
+
+// ── LAZY-LOADED SECONDARY VIEWS & MODALS (Eliminates ~1.4MB bundle from initial load) ──
+const PomodoroStatsChart = lazy(() => import('@/components/pomodoro/PomodoroStatsChart'))
+const ManualLogModal = lazy(() => import('@/components/pomodoro/ManualLogModal').then(m => ({ default: m.ManualLogModal })))
+const GoalModal = lazy(() => import('@/components/pomodoro/GoalModal').then(m => ({ default: m.GoalModal })))
+const SettingsModal = lazy(() => import('@/components/pomodoro/SettingsModal').then(m => ({ default: m.SettingsModal })))
+const BackgroundPickerModal = lazy(() => import('@/components/pomodoro/BackgroundPickerModal').then(m => ({ default: m.BackgroundPickerModal })))
+const RewardShopModal = lazy(() => import('@/components/pomodoro/RewardShopModal').then(m => ({ default: m.RewardShopModal })))
+const TopicGalaxyView = lazy(() => import('@/components/pomodoro/TopicGalaxyView').then(m => ({ default: m.TopicGalaxyView })))
+const TimeWarpCard = lazy(() => import('@/components/pomodoro/TimeWarpCard').then(m => ({ default: m.TimeWarpCard })))
+const TimeCapsuleModal = lazy(() => import('@/components/pomodoro/TimeCapsuleModal').then(m => ({ default: m.TimeCapsuleModal })))
+const EisenhowerMatrixView = lazy(() => import('@/components/pomodoro/EisenhowerMatrixView').then(m => ({ default: m.EisenhowerMatrixView })))
+const NotificationSettingsModal = lazy(() => import('@/components/pomodoro/NotificationSettingsModal').then(m => ({ default: m.NotificationSettingsModal })))
+const AuthModal = lazy(() => import('@/components/auth/AuthModal').then(m => ({ default: m.AuthModal })))
+const ChangePasswordModal = lazy(() => import('@/components/auth/ChangePasswordModal').then(m => ({ default: m.ChangePasswordModal })))
+const CosmicRaceTrackModal = lazy(() => import('@/components/race/CosmicRaceTrackModal').then(m => ({ default: m.CosmicRaceTrackModal })))
+const CheerCelebrationModal = lazy(() => import('@/components/race/CheerCelebrationModal').then(m => ({ default: m.CheerCelebrationModal })))
+const DonateModal = lazy(() => import('@/components/common/DonateModal').then(m => ({ default: m.DonateModal })))
+const FeedbackModal = lazy(() => import('@/components/common/FeedbackModal').then(m => ({ default: m.FeedbackModal })))
+const ZenDeskClockModal = lazy(() => import('@/components/pomodoro/ZenDeskClockModal').then(m => ({ default: m.ZenDeskClockModal })))
+const ShareableAchievementModal = lazy(() => import('@/components/pomodoro/ShareableAchievementModal').then(m => ({ default: m.ShareableAchievementModal })))
 
 type TimerMode = 'pomodoro' | 'shortBreak' | 'longBreak'
 
@@ -1704,23 +1697,29 @@ export default function PomodoroApp() {
             {/* ── TAB: DAILY 4-QUADRANT MATRIX ── */}
         {activeTab === 'matrix' && (
           <div className="mt-6 space-y-4 animate-in fade-in duration-200">
-            <EisenhowerMatrixView
-              onStartPomodoroWithGoal={handleStartMatrixPomodoro}
-            />
+            <Suspense fallback={<div className="py-12 flex justify-center"><div className="w-6 h-6 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" /></div>}>
+              <EisenhowerMatrixView
+                onStartPomodoroWithGoal={handleStartMatrixPomodoro}
+              />
+            </Suspense>
           </div>
         )}
 
         {/* ── TAB: TOPIC GALAXY ── */}
         {activeTab === 'galaxy' && (
           <div className="mt-6 space-y-4 animate-in fade-in duration-200">
-            <TopicGalaxyView onBackToGoals={() => setActiveTab('goals')} />
+            <Suspense fallback={<div className="py-12 flex justify-center"><div className="w-6 h-6 border-2 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin" /></div>}>
+              <TopicGalaxyView onBackToGoals={() => setActiveTab('goals')} />
+            </Suspense>
           </div>
         )}
 
         {/* ── TAB: TIME WARP ORACLE & CAPSULES ── */}
         {activeTab === 'timewarp' && (
           <div className="mt-6 space-y-5 animate-in fade-in duration-200">
-            <TimeWarpCard />
+            <Suspense fallback={<div className="py-12 flex justify-center"><div className="w-6 h-6 border-2 border-rose-500/20 border-t-rose-500 rounded-full animate-spin" /></div>}>
+              <TimeWarpCard />
+            </Suspense>
 
             <div className="bg-gradient-to-r from-amber-500/15 via-rose-500/15 to-indigo-500/15 border border-amber-500/30 rounded-3xl p-5 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
               <div className="flex items-center gap-3">
@@ -1973,48 +1972,10 @@ export default function PomodoroApp() {
               </div>
             </div>
 
-            {/* Recharts 7-Day Chart */}
-            <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-white/80 mb-4">
-                Giờ học 7 ngày qua
-              </h4>
-              <div className="h-44 w-full">
-                {stats && stats.last_7_days.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={stats.last_7_days}>
-                      <XAxis
-                        dataKey="date"
-                        stroke="rgba(255,255,255,0.6)"
-                        fontSize={11}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        stroke="rgba(255,255,255,0.6)"
-                        fontSize={11}
-                        tickLine={false}
-                        axisLine={false}
-                        unit="h"
-                      />
-                      <RechartsTooltip
-                        contentStyle={{
-                          backgroundColor: '#1F232B',
-                          borderColor: 'rgba(255,255,255,0.2)',
-                          borderRadius: '12px',
-                          color: '#fff',
-                          fontSize: '12px',
-                        }}
-                        formatter={(val: any) => [`${val} giờ`, 'Thời gian']}
-                      />
-                      <Bar dataKey="hours" fill="#ffffff" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-xs text-white/50">
-                    Chưa có đủ dữ liệu
-                  </div>
-                )}
-              </div>
-            </div>
+            {/* Recharts 7-Day Chart (Lazy-Loaded) */}
+            <Suspense fallback={<div className="h-44 w-full bg-white/5 rounded-2xl animate-pulse" />}>
+              <PomodoroStatsChart stats={stats} />
+            </Suspense>
           </div>
         )}
           </>
@@ -2053,143 +2014,142 @@ export default function PomodoroApp() {
         </div>
       )}
 
-      {/* ── MODALS ── */}
-      <ManualLogModal
-        isOpen={isManualModalOpen}
-        onClose={() => setIsManualModalOpen(false)}
-        goals={goals}
-        selectedGoalId={selectedGoalId}
-        onSuccess={async (newHours, isCompleted, goalTitle) => {
-          soundManager.playPearlDrop()
-          toast.success('💎 Đã ghi nhận giờ học & cộng ngọc pha lê vào lọ!')
-          if (isCompleted) {
-            setShowCelebration({
-              title: goalTitle,
-              hours: newHours,
-            })
-            const checkRes = await focusService.checkConstellations()
-            if (checkRes.newly_unlocked) {
-              soundManager.playConstellationVictory()
-              toast.success(`⭐ Khai mở Chòm Sao ${checkRes.newly_unlocked.title}!`)
+      {/* ── MODALS (LAZY-LOADED ON DEMAND) ── */}
+      <Suspense fallback={null}>
+        <ManualLogModal
+          isOpen={isManualModalOpen}
+          onClose={() => setIsManualModalOpen(false)}
+          goals={goals}
+          selectedGoalId={selectedGoalId}
+          onSuccess={async (newHours, isCompleted, goalTitle) => {
+            soundManager.playPearlDrop()
+            toast.success('💎 Đã ghi nhận giờ học & cộng ngọc pha lê vào lọ!')
+            if (isCompleted) {
+              setShowCelebration({
+                title: goalTitle,
+                hours: newHours,
+              })
+              const checkRes = await focusService.checkConstellations()
+              if (checkRes.newly_unlocked) {
+                soundManager.playConstellationVictory()
+                toast.success(`⭐ Khai mở Chòm Sao ${checkRes.newly_unlocked.title}!`)
+              }
             }
+            await loadData()
+          }}
+        />
+
+        <GoalModal
+          isOpen={isGoalModalOpen}
+          onClose={() => {
+            setIsGoalModalOpen(false)
+            setGoalToEdit(null)
+          }}
+          goalToEdit={goalToEdit}
+          onSuccess={loadData}
+        />
+
+        <SettingsModal
+          isOpen={isSettingsModalOpen}
+          onClose={() => setIsSettingsModalOpen(false)}
+          settings={settings}
+          onSave={(newSettings) => handleSaveSettings(newSettings, false)}
+        />
+
+        <BackgroundPickerModal
+          isOpen={isBgPickerOpen}
+          onClose={() => setIsBgPickerOpen(false)}
+          currentConfig={bgConfig}
+          onSelect={handleSelectBackground}
+        />
+
+        <RewardShopModal
+          isOpen={isRewardShopOpen}
+          onClose={() => setIsRewardShopOpen(false)}
+          onRewardRedeemed={loadData}
+        />
+
+        <TimeCapsuleModal
+          isOpen={isTimeCapsuleOpen}
+          onClose={() => setIsTimeCapsuleOpen(false)}
+          currentHours={stats?.total_hours || 0}
+        />
+
+        <NotificationSettingsModal
+          isOpen={isNotificationModalOpen}
+          onClose={() => setIsNotificationModalOpen(false)}
+        />
+
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          onSuccess={(u) => {
+            setCurrentUser(u)
+            loadData()
+          }}
+        />
+
+        <CosmicRaceTrackModal
+          isOpen={isRaceModalOpen}
+          onClose={() => setIsRaceModalOpen(false)}
+          onOpenAuth={() => setIsAuthModalOpen(true)}
+          currentUser={currentUser}
+        />
+
+        <DonateModal
+          isOpen={isDonateModalOpen}
+          onClose={() => setIsDonateModalOpen(false)}
+        />
+
+        <FeedbackModal
+          isOpen={isFeedbackModalOpen}
+          onClose={() => setIsFeedbackModalOpen(false)}
+          currentUser={currentUser}
+        />
+
+        <ChangePasswordModal
+          isOpen={isChangePasswordOpen}
+          onClose={() => setIsChangePasswordOpen(false)}
+        />
+
+        {/* ── ZEN DESK CLOCK FULLSCREEN MODAL ── */}
+        <ZenDeskClockModal
+          isOpen={isZenClockOpen}
+          onClose={() => setIsZenClockOpen(false)}
+          timeLeft={timeLeft}
+          isRunning={isRunning}
+          mode={mode}
+          onStartPause={handleStartPause}
+          onReset={handleReset}
+          onSkip={handleSkip}
+          onSwitchMode={switchMode}
+          totalDurationSeconds={
+            (mode === 'pomodoro'
+              ? settings.focusMinutes
+              : mode === 'shortBreak'
+              ? settings.shortBreakMinutes
+              : settings.longBreakMinutes) * 60
           }
-          await loadData()
-        }}
-      />
+          topicNote={sessionNote}
+          goalTitle={goals.find((g) => g.id === selectedGoalId)?.title}
+        />
 
-      <GoalModal
-        isOpen={isGoalModalOpen}
-        onClose={() => {
-          setIsGoalModalOpen(false)
-          setGoalToEdit(null)
-        }}
-        goalToEdit={goalToEdit}
-        onSuccess={loadData}
-      />
+        {/* ── SHAREABLE ACHIEVEMENT INFOGRAPHIC MODAL ── */}
+        <ShareableAchievementModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          currentUser={currentUser}
+          stats={stats}
+        />
 
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        settings={settings}
-        onSave={(newSettings) => handleSaveSettings(newSettings, false)}
-      />
-
-      <BackgroundPickerModal
-        isOpen={isBgPickerOpen}
-        onClose={() => setIsBgPickerOpen(false)}
-        currentConfig={bgConfig}
-        onSelect={handleSelectBackground}
-      />
-
-      <RewardShopModal
-        isOpen={isRewardShopOpen}
-        onClose={() => setIsRewardShopOpen(false)}
-        onRewardRedeemed={loadData}
-      />
-
-      <TimeCapsuleModal
-        isOpen={isTimeCapsuleOpen}
-        onClose={() => setIsTimeCapsuleOpen(false)}
-        currentHours={stats?.total_hours || 0}
-      />
-
-      <NotificationSettingsModal
-        isOpen={isNotificationModalOpen}
-        onClose={() => setIsNotificationModalOpen(false)}
-      />
-
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onSuccess={(u) => {
-          setCurrentUser(u)
-          loadData()
-        }}
-      />
-
-      <CosmicRaceTrackModal
-        isOpen={isRaceModalOpen}
-        onClose={() => setIsRaceModalOpen(false)}
-        onOpenAuth={() => setIsAuthModalOpen(true)}
-        currentUser={currentUser}
-      />
-
-      <DonateModal
-        isOpen={isDonateModalOpen}
-        onClose={() => setIsDonateModalOpen(false)}
-      />
-
-      <FeedbackModal
-        isOpen={isFeedbackModalOpen}
-        onClose={() => setIsFeedbackModalOpen(false)}
-        currentUser={currentUser}
-      />
-
-      <ChangePasswordModal
-        isOpen={isChangePasswordOpen}
-        onClose={() => setIsChangePasswordOpen(false)}
-      />
-
-      {/* ── ZEN DESK CLOCK FULLSCREEN MODAL ── */}
-      <ZenDeskClockModal
-        isOpen={isZenClockOpen}
-        onClose={() => setIsZenClockOpen(false)}
-        timeLeft={timeLeft}
-        isRunning={isRunning}
-        mode={mode}
-        onStartPause={handleStartPause}
-        onReset={handleReset}
-        onSkip={handleSkip}
-        onSwitchMode={switchMode}
-        totalDurationSeconds={
-          (mode === 'pomodoro'
-            ? settings.focusMinutes
-            : mode === 'shortBreak'
-            ? settings.shortBreakMinutes
-            : settings.longBreakMinutes) * 60
-        }
-        topicNote={sessionNote}
-        goalTitle={goals.find((g) => g.id === selectedGoalId)?.title}
-      />
-
-      {/* ── SHAREABLE ACHIEVEMENT INFOGRAPHIC MODAL ── */}
-      <ShareableAchievementModal
-        isOpen={isShareModalOpen}
-        onClose={() => setIsShareModalOpen(false)}
-        currentUser={currentUser}
-        stats={stats}
-      />
-
-      {/* ── CLOUD COLD-START INDICATOR ── */}
-      <CloudStatusBanner />
-
-      {/* ── CHEER CELEBRATION MODAL ── */}
-      <CheerCelebrationModal
-        isOpen={isCheerModalOpen}
-        cheers={unreadCheers}
-        onClose={() => setIsCheerModalOpen(false)}
-        onAcknowledgeAll={handleAcknowledgeAllCheers}
-      />
+        {/* ── CHEER CELEBRATION MODAL ── */}
+        <CheerCelebrationModal
+          isOpen={isCheerModalOpen}
+          cheers={unreadCheers}
+          onClose={() => setIsCheerModalOpen(false)}
+          onAcknowledgeAll={handleAcknowledgeAllCheers}
+        />
+      </Suspense>
 
       {/* ── AI FLOATING BUDDY COMPANION ── */}
       <AIFloatingBuddy

@@ -261,6 +261,8 @@ const DynamicBackgroundComponent: React.FC<DynamicBackgroundProps> = ({ config }
         src={config.imageUrl}
         alt=""
         key={config.imageUrl}
+        fetchPriority="high"
+        decoding="async"
         className="absolute inset-0 w-full h-full object-cover transition-all duration-700 brightness-95"
       />
 
