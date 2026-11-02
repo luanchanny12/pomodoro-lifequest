@@ -85,6 +85,7 @@ const AuthModal = lazy(() => import('@/components/auth/AuthModal').then(m => ({ 
 const ChangePasswordModal = lazy(() => import('@/components/auth/ChangePasswordModal').then(m => ({ default: m.ChangePasswordModal })))
 const CosmicRaceTrackModal = lazy(() => import('@/components/race/CosmicRaceTrackModal').then(m => ({ default: m.CosmicRaceTrackModal })))
 const CheerCelebrationModal = lazy(() => import('@/components/race/CheerCelebrationModal').then(m => ({ default: m.CheerCelebrationModal })))
+const CheerHistoryModal = lazy(() => import('@/components/race/CheerHistoryModal').then(m => ({ default: m.CheerHistoryModal })))
 const DonateModal = lazy(() => import('@/components/common/DonateModal').then(m => ({ default: m.DonateModal })))
 const FeedbackModal = lazy(() => import('@/components/common/FeedbackModal').then(m => ({ default: m.FeedbackModal })))
 const ZenDeskClockModal = lazy(() => import('@/components/pomodoro/ZenDeskClockModal').then(m => ({ default: m.ZenDeskClockModal })))
@@ -282,6 +283,7 @@ export default function PomodoroApp() {
   // Cheer Delivery & Anti-Double-Click state
   const [unreadCheers, setUnreadCheers] = useState<CheerItem[]>([])
   const [isCheerModalOpen, setIsCheerModalOpen] = useState<boolean>(false)
+  const [isCheerHistoryModalOpen, setIsCheerHistoryModalOpen] = useState<boolean>(false)
   const [isTimerToggling, setIsTimerToggling] = useState<boolean>(false)
   const [isSavingEarly, setIsSavingEarly] = useState<boolean>(false)
   const isSavingEarlyRef = useRef<boolean>(false)
@@ -402,22 +404,34 @@ export default function PomodoroApp() {
     return () => window.removeEventListener('pomodoro_auth_expired', handleAuthExpired)
   }, [])
 
-  // Check unread cheers from admin/friends
+  // Check unread cheers from admin/friends & periodic poll
   useEffect(() => {
-    if (currentUser) {
+    if (!currentUser) {
+      setUnreadCheers([])
+      return
+    }
+
+    const fetchUnread = () => {
       raceService
         .getUnreadCheers()
         .then((res) => {
-          if (res && res.unread_count > 0) {
+          if (res && Array.isArray(res.cheers)) {
             setUnreadCheers(res.cheers)
-            setIsCheerModalOpen(true)
           }
         })
         .catch(() => {})
-    } else {
-      setUnreadCheers([])
     }
-  }, [currentUser])
+
+    fetchUnread()
+    const interval = setInterval(fetchUnread, 45 * 1000)
+    const handleFocus = () => fetchUnread()
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [currentUser?.id])
 
   const handleAcknowledgeAllCheers = async () => {
     try {
@@ -976,26 +990,24 @@ export default function PomodoroApp() {
             {/* Cheer Messages Bell/Flame */}
             {currentUser && (
               <button
+                type="button"
                 onClick={() => {
                   if (unreadCheers.length > 0) {
                     setIsCheerModalOpen(true)
                   } else {
-                    raceService.getMyRecentCheers().then((logs) => {
-                      if (logs && logs.length > 0) {
-                        setUnreadCheers(logs)
-                        setIsCheerModalOpen(true)
-                      } else {
-                        toast.info(`Bạn đã nhận ${currentUser.cheer_count || 0} lượt cổ vũ! 🔥 Tiếp tục giữ vững phong độ nhé!`)
-                      }
-                    })
+                    setIsCheerHistoryModalOpen(true)
                   }
                 }}
                 className="relative p-2 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/30 text-amber-300 transition active:scale-95 flex items-center justify-center min-w-[36px] min-h-[36px]"
-                title="Lời cổ vũ & Tiếp lửa từ Admin / Bạn bè"
+                title={
+                  unreadCheers.length > 0
+                    ? `Bạn có ${unreadCheers.length} lời cổ vũ mới! Bấm để nhận năng lượng!`
+                    : 'Hộp thư cổ vũ & Tiếp lửa từ bạn bè'
+                }
               >
-                <Flame className="w-4 h-4 fill-amber-400 text-amber-400" />
+                <Flame className={`w-4 h-4 fill-amber-400 text-amber-400 ${unreadCheers.length > 0 ? 'animate-pulse' : ''}`} />
                 {unreadCheers.length > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white font-black text-[10px] flex items-center justify-center animate-bounce shadow">
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-r from-rose-500 to-amber-500 text-white font-black text-[10px] flex items-center justify-center animate-bounce shadow-md ring-2 ring-[#0B0D14]">
                     {unreadCheers.length}
                   </span>
                 )}
@@ -2148,6 +2160,18 @@ export default function PomodoroApp() {
           cheers={unreadCheers}
           onClose={() => setIsCheerModalOpen(false)}
           onAcknowledgeAll={handleAcknowledgeAllCheers}
+          onOpenHistory={() => {
+            setIsCheerModalOpen(false)
+            setIsCheerHistoryModalOpen(true)
+          }}
+        />
+
+        {/* ── CHEER HISTORY MODAL ── */}
+        <CheerHistoryModal
+          isOpen={isCheerHistoryModalOpen}
+          onClose={() => setIsCheerHistoryModalOpen(false)}
+          currentUser={currentUser}
+          onOpenRaceTrack={() => setIsRaceModalOpen(true)}
         />
       </Suspense>
 

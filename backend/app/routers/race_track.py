@@ -299,7 +299,7 @@ def get_my_recent_cheers(
         db.query(CheerLog)
         .filter(CheerLog.target_user_id == user.id)
         .order_by(CheerLog.created_at.desc())
-        .limit(20)
+        .limit(50)
         .all()
     )
     return logs

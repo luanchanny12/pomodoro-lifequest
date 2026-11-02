@@ -8,6 +8,7 @@ interface CheerCelebrationModalProps {
   cheers: CheerItem[]
   onClose: () => void
   onAcknowledgeAll: () => void
+  onOpenHistory?: () => void
 }
 
 export const CheerCelebrationModal: React.FC<CheerCelebrationModalProps> = ({
@@ -15,6 +16,7 @@ export const CheerCelebrationModal: React.FC<CheerCelebrationModalProps> = ({
   cheers,
   onClose,
   onAcknowledgeAll,
+  onOpenHistory,
 }) => {
   if (!isOpen || cheers.length === 0) return null
 
@@ -94,6 +96,20 @@ export const CheerCelebrationModal: React.FC<CheerCelebrationModalProps> = ({
           <Sparkles className="w-5 h-5 fill-black" />
           <span>Nhận năng lượng & Bứt phá ngay! 🚀</span>
         </button>
+
+        {/* Secondary Action: View History */}
+        {onOpenHistory && (
+          <button
+            type="button"
+            onClick={() => {
+              handleAccept()
+              onOpenHistory()
+            }}
+            className="mt-2.5 w-full py-2 text-xs font-semibold text-amber-200/80 hover:text-amber-100 hover:underline transition flex items-center justify-center gap-1.5"
+          >
+            <span>📜 Xem Hộp Thư & Toàn Bộ Lời Cổ Vũ</span>
+          </button>
+        )}
       </div>
     </div>
   )
