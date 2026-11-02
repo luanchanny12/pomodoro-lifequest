@@ -182,6 +182,32 @@ export const TopicGalaxyViewComponent: React.FC<TopicGalaxyViewProps> = ({ onBac
     let lastTimestamp = performance.now()
     let planetCoords: { x: number; y: number; r: number; planet: TopicPlanet; index: number }[] = []
 
+    // Kích thước canvas được tính toán và đồng bộ qua Resize / Mount (Không gọi getBoundingClientRect mỗi frame!)
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    let width = canvas.clientWidth || 600
+    let height = canvas.clientHeight || 450
+
+    const updateCanvasSize = () => {
+      if (!canvas) return
+      const rect = canvas.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        width = rect.width
+        height = rect.height
+        if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+          canvas.width = Math.round(width * dpr)
+          canvas.height = Math.round(height * dpr)
+        }
+      }
+    }
+    updateCanvasSize()
+
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null
+    const handleResize = () => {
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(updateCanvasSize, 120)
+    }
+    window.addEventListener('resize', handleResize)
+
     const render = (now: number) => {
       if (document.hidden) return
       const dt = (now - lastTimestamp) / 1000
@@ -191,17 +217,6 @@ export const TopicGalaxyViewComponent: React.FC<TopicGalaxyViewProps> = ({ onBac
         timeRef.current += dt * speedMultiplier
       }
       const t = timeRef.current
-
-      // Handle Resize / High DPI
-      const rect = canvas.getBoundingClientRect()
-      const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      const width = rect.width
-      const height = rect.height
-
-      if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-        canvas.width = width * dpr
-        canvas.height = height * dpr
-      }
 
       ctx.save()
       ctx.scale(dpr, dpr)
@@ -583,6 +598,8 @@ export const TopicGalaxyViewComponent: React.FC<TopicGalaxyViewProps> = ({ onBac
     animFrameRef.current = requestAnimationFrame(render)
 
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer)
+      window.removeEventListener('resize', handleResize)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     }

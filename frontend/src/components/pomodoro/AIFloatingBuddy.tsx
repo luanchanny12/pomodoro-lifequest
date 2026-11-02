@@ -92,7 +92,10 @@ const AIFloatingBuddyComponent: React.FC<AIFloatingBuddyProps> = ({
           {/* AI Header */}
           <div className="flex items-center gap-2 mb-2">
             <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+              {/* animate-ping chỉ chạy khi bubble đang hiện — tránh CSS animation vô ích */}
+              {isBubbleVisible && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+              )}
               <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
             </span>
             <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-1">

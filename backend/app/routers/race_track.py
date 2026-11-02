@@ -86,21 +86,28 @@ def get_race_track_status(
         players = db.query(Player).filter(Player.user_id.in_(user_ids)).all()
         players_map = {p.user_id: p for p in players}
 
-        today_logs = (
-            db.query(StudySessionLog)
+        # Tối ưu hóa SQL Group By - Tính toán tại DB, không tải toàn bộ ORM objects vào RAM
+        today_sums = (
+            db.query(
+                StudySessionLog.user_id,
+                func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)
+            )
             .filter(StudySessionLog.user_id.in_(user_ids), StudySessionLog.session_date == today)
+            .group_by(StudySessionLog.user_id)
             .all()
         )
-        for log in today_logs:
-            today_hours_map[log.user_id] = today_hours_map.get(log.user_id, 0.0) + (log.duration_hours or 0.0)
+        today_hours_map = {uid: float(total) for uid, total in today_sums}
 
-        weekly_logs = (
-            db.query(StudySessionLog)
+        weekly_sums = (
+            db.query(
+                StudySessionLog.user_id,
+                func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0)
+            )
             .filter(StudySessionLog.user_id.in_(user_ids), StudySessionLog.session_date >= seven_days_ago)
+            .group_by(StudySessionLog.user_id)
             .all()
         )
-        for log in weekly_logs:
-            weekly_hours_map[log.user_id] = weekly_hours_map.get(log.user_id, 0.0) + (log.duration_hours or 0.0)
+        weekly_hours_map = {uid: float(total) for uid, total in weekly_sums}
 
         recent_logs = (
             db.query(StudySessionLog.user_id)

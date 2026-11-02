@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback, startTransition, lazy, Suspense } from 'react'
 import {
   Play,
   Pause,
@@ -61,6 +61,7 @@ import {
 } from '@/components/pomodoro/DynamicBackground'
 import { DailyQuoteCard } from '@/components/pomodoro/DailyQuoteCard'
 import { AIFloatingBuddy } from '@/components/pomodoro/AIFloatingBuddy'
+import { PomodoroCockpit } from '@/components/pomodoro/PomodoroCockpit'
 import { raceService, CheerItem } from '@/services/raceService'
 import { Footer } from '@/components/common/Footer'
 import { pipTimerManager } from '@/utils/pipTimer'
@@ -207,6 +208,133 @@ function GuestFeatureLockCard({
   )
 }
 
+const GoalCardItem = React.memo(function GoalCardItem({
+  goal,
+  onRecordHours,
+  onEditGoal,
+}: {
+  goal: StudyGoal
+  onRecordHours: (id: number) => void
+  onEditGoal: (g: StudyGoal) => void
+}) {
+  return (
+    <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-4 transition hover:border-white/40">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span
+              className="w-3 h-3 rounded-full flex-shrink-0"
+              style={{ backgroundColor: goal.color || '#E24A4A' }}
+            />
+            <h3 className="font-semibold text-base text-white">{goal.title}</h3>
+            {goal.is_completed && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-400 text-black text-[10px] font-bold rounded-full">
+                <Trophy className="w-3 h-3" /> DONE
+              </span>
+            )}
+          </div>
+          {goal.notes && <p className="text-xs text-white/70 mt-1">{goal.notes}</p>}
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => onRecordHours(goal.id)}
+            className="p-2 sm:p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center text-white/80 hover:text-white bg-white/10 active:scale-95 rounded-xl text-xs gap-1 transition"
+            title="Thêm giờ cho mục tiêu này"
+          >
+            <Plus className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">Ghi giờ</span>
+          </button>
+          <button
+            onClick={() => onEditGoal(goal)}
+            className="p-2 sm:p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center text-white/60 hover:text-white active:scale-95 rounded-xl transition"
+            title="Chỉnh sửa"
+          >
+            <Edit2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="mt-3">
+        <div className="flex justify-between text-xs text-white/80 mb-1">
+          <span>
+            {goal.current_hours} / {goal.target_hours} giờ
+          </span>
+          <span className="font-semibold">{goal.progress_percent}%</span>
+        </div>
+        <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden border border-white/10">
+          <div
+            className={`h-full rounded-full transition-all duration-300 ${
+              goal.is_completed
+                ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
+                : 'bg-white'
+            }`}
+            style={{ width: `${Math.min(100, goal.progress_percent)}%` }}
+          />
+        </div>
+        <div className="mt-1 text-[11px] text-white/60 text-right">
+          {goal.is_completed
+            ? '🎉 Hoàn thành mục tiêu!'
+            : `Còn ${goal.remaining_hours} giờ`}
+        </div>
+      </div>
+    </div>
+  )
+})
+
+const SessionLogRowItem = React.memo(function SessionLogRowItem({
+  session,
+  onDeleteSession,
+}: {
+  session: StudySessionLog
+  onDeleteSession: (id: number) => void
+}) {
+  return (
+    <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-3.5 flex items-start justify-between gap-3 text-xs">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+              session.source === 'pomodoro'
+                ? 'bg-red-500/30 text-red-200'
+                : 'bg-emerald-500/30 text-emerald-200'
+            }`}
+          >
+            {session.source === 'pomodoro' ? '🍅 Pomodoro' : '✍️ Thủ công'}
+          </span>
+          <span className="font-bold text-white text-sm">
+            +{session.duration_minutes} phút ({session.duration_hours}h)
+          </span>
+          <span className="text-white/60">
+            {format(new Date(session.session_date), 'dd/MM/yyyy')}
+          </span>
+        </div>
+
+        {session.goal_title && (
+          <div className="text-white/90 font-medium">
+            🎯 Mục tiêu: {session.goal_title}
+          </div>
+        )}
+
+        {session.topic_note && (
+          <p className="text-white/80 italic text-[11px] bg-black/40 px-2.5 py-1 rounded-lg">
+            "{session.topic_note}"
+          </p>
+        )}
+      </div>
+
+      <button
+        onClick={() => onDeleteSession(session.id)}
+        className="p-1.5 text-white/40 hover:text-red-300 rounded-lg hover:bg-red-500/20 transition"
+        title="Xóa buổi học này"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  )
+})
+
 export default function PomodoroApp() {
   const navigate = useNavigate()
   // ── Settings ──
@@ -261,10 +389,6 @@ export default function PomodoroApp() {
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false)
   const profileMenuRef = useRef<HTMLDivElement | null>(null)
-
-  // Custom Time Input Popover
-  const [showCustomTimeInput, setShowCustomTimeInput] = useState<boolean>(false)
-  const [customTimeMinutes, setCustomTimeMinutes] = useState<number>(settings.focusMinutes)
 
   // Modals
   const [isManualModalOpen, setIsManualModalOpen] = useState<boolean>(false)
@@ -380,6 +504,7 @@ export default function PomodoroApp() {
   // Scheduled background notifications check (Golden hours & inactivity)
   useEffect(() => {
     const reminderInterval = setInterval(() => {
+      if (document.hidden) return
       notificationManager.checkScheduledReminders()
     }, 30 * 1000)
     return () => clearInterval(reminderInterval)
@@ -426,13 +551,17 @@ export default function PomodoroApp() {
     }
 
     fetchUnread()
-    const interval = setInterval(fetchUnread, 45 * 1000)
-    const handleFocus = () => fetchUnread()
-    window.addEventListener('focus', handleFocus)
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchUnread()
+    }, 45 * 1000)
+    const handleActive = () => fetchUnread()
+    window.addEventListener('focus', handleActive)
+    document.addEventListener('visibilitychange', handleActive)
 
     return () => {
       clearInterval(interval)
-      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('focus', handleActive)
+      document.removeEventListener('visibilitychange', handleActive)
     }
   }, [currentUser?.id])
 
@@ -519,7 +648,6 @@ export default function PomodoroApp() {
       setTimeLeft(minutes * 60)
       toast.success(`Đã đặt nghỉ dài: ${minutes} phút`)
     }
-    setShowCustomTimeInput(false)
   }
 
   // ── Timer Logic ──
@@ -901,8 +1029,18 @@ export default function PomodoroApp() {
     return goals
   }, [goals, goalFilter])
 
+  const handleRecordHours = useCallback((id: number) => {
+    setSelectedGoalId(id)
+    setIsManualModalOpen(true)
+  }, [])
+
+  const handleEditGoal = useCallback((g: StudyGoal) => {
+    setGoalToEdit(g)
+    setIsGoalModalOpen(true)
+  }, [])
+
   // Delete session
-  const handleDeleteSession = async (sessionId: number) => {
+  const handleDeleteSession = useCallback(async (sessionId: number) => {
     if (!confirm('Bạn có chắc muốn xóa bản ghi này? Số giờ tương ứng sẽ được trừ lại.')) return
     try {
       await focusService.deleteSession(sessionId)
@@ -911,7 +1049,7 @@ export default function PomodoroApp() {
     } catch (err: any) {
       toast.error('Lỗi xóa: ' + err.message)
     }
-  }
+  }, [])
 
   const currentTheme = THEME_COLORS[mode]
   const currentPresets =
@@ -934,7 +1072,7 @@ export default function PomodoroApp() {
 
       {/* ── FLOATING GLASS ISLAND TOP NAVIGATION ── */}
       <header className="max-w-6xl mx-auto px-4 pt-3 pb-1 relative z-30">
-        <div className="bg-black/45 backdrop-blur-2xl border border-white/15 rounded-3xl px-4 sm:px-6 py-2.5 shadow-2xl flex items-center justify-between gap-3">
+        <div className="bg-black/75 backdrop-blur-md border border-white/15 rounded-3xl px-4 sm:px-6 py-2.5 shadow-2xl flex items-center justify-between gap-3">
           {/* Brand logo & Streak */}
           <div className="flex items-center gap-2.5 sm:gap-3">
             <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-lg shadow-lg shadow-cyan-500/20 font-black text-black flex-shrink-0">
@@ -1034,7 +1172,7 @@ export default function PomodoroApp() {
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-extrabold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl shadow-lg shadow-cyan-500/25 border border-cyan-400/40 transition active:scale-95"
               title="Đường Đua Bạn Bè & Bảng Vàng Pomodoro"
             >
-              <Trophy className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <Trophy className="w-3.5 h-3.5 text-amber-300" />
               <span className="hidden sm:inline">Đường Đua F1</span>
               <span className="sm:hidden">Đua F1</span>
             </button>
@@ -1198,311 +1336,41 @@ export default function PomodoroApp() {
       {/* ── MAIN CONTENT CONTAINER ── */}
       <main className="max-w-6xl mx-auto px-4 pt-6 pb-16 relative z-10">
         {/* ── POMODORO TIMER CARD (CYBER FOCUS COCKPIT) ── */}
-        <div className="max-w-xl mx-auto bg-[#0b0f19]/80 backdrop-blur-2xl border border-white/20 hover:border-cyan-500/40 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden transition-all duration-300">
-          {/* Top Bar inside Card: Session Info on Left, PiP & Zen on Right */}
-          <div className="flex items-center justify-between gap-2 mb-4">
-            <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-xl bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5 shadow-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-              <span>#{sessionCount} {mode === 'pomodoro' ? 'Phiên tập trung' : 'Phiên nghỉ ngơi'}</span>
-            </span>
-
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={handleTogglePip}
-                className={`p-2 rounded-xl transition backdrop-blur-md border flex items-center gap-1 text-xs active:scale-95 ${
-                  isPipActive
-                    ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-md ring-1 ring-cyan-400'
-                    : 'bg-white/10 hover:bg-white/20 border-white/10 text-white/80 hover:text-white'
-                }`}
-                title="Cửa sổ nổi ghim trên mọi ứng dụng khi lướt web / code (Picture-in-Picture)"
-              >
-                <Tv className="w-3.5 h-3.5 text-cyan-300" />
-                <span className="hidden sm:inline text-[11px] font-bold">Nổi</span>
-              </button>
-              <button
-                onClick={() => setIsZenClockOpen(true)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition backdrop-blur-md border border-white/10 flex items-center gap-1 text-xs active:scale-95"
-                title="Chế độ toàn màn hình đồng hồ để bàn (Zen Desk Clock - giữ màn hình luôn sáng)"
-              >
-                <Maximize2 className="w-3.5 h-3.5 text-amber-300" />
-                <span className="hidden sm:inline text-[11px] font-bold">Zen</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Mode Switcher: Segmented Sliding Pill */}
-          <div className="inline-flex items-center p-1 rounded-2xl bg-black/50 border border-white/15 mb-4 shadow-inner">
-            <button
-              onClick={() => switchMode('pomodoro')}
-              className={`px-4 py-1.5 text-xs sm:text-sm font-black rounded-xl transition-all duration-200 ${
-                mode === 'pomodoro'
-                  ? 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-lg shadow-rose-500/25'
-                  : 'text-white/60 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              Pomodoro
-            </button>
-            <button
-              onClick={() => switchMode('shortBreak')}
-              className={`px-4 py-1.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 ${
-                mode === 'shortBreak'
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25'
-                  : 'text-white/60 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              Nghỉ ngắn
-            </button>
-            <button
-              onClick={() => switchMode('longBreak')}
-              className={`px-4 py-1.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 ${
-                mode === 'longBreak'
-                  ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/25'
-                  : 'text-white/60 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              Nghỉ dài
-            </button>
-          </div>
-
-          {/* ── QUICK STUDY TIME SELECTOR ROW ── */}
-          <div className="flex items-center justify-center gap-1.5 mb-5 flex-wrap">
-            <span className="text-[11px] text-white/50 mr-1 flex items-center gap-1 font-mono">
-              <Clock className="w-3 h-3 text-cyan-400" /> Thời gian:
-            </span>
-            {currentPresets.map((m) => {
-              const isActive = currentMinutesSetting === m
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => handleSetStudyTime(m)}
-                  className={`px-2.5 py-1 text-xs font-bold rounded-xl transition border ${
-                    isActive
-                      ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 shadow-md shadow-cyan-500/20'
-                      : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/15'
-                  }`}
-                >
-                  {m}p
-                </button>
-              )
-            })}
-
-            {/* Custom Time Button */}
-            <button
-              type="button"
-              onClick={() => {
-                setCustomTimeMinutes(currentMinutesSetting)
-                setShowCustomTimeInput(!showCustomTimeInput)
-              }}
-              className="px-2.5 py-1 text-xs font-semibold rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white/80 transition"
-              title="Nhập số phút tùy chỉnh"
-            >
-              Tùy chỉnh ✏️
-            </button>
-          </div>
-
-          {/* Custom Time Input Popup */}
-          {showCustomTimeInput && (
-            <div className="mb-4 p-3 bg-black/60 border border-white/20 rounded-2xl max-w-xs mx-auto animate-in fade-in duration-150">
-              <div className="text-xs text-white/80 mb-2">Nhập số phút muốn học:</div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  max="180"
-                  value={customTimeMinutes}
-                  onChange={(e) => setCustomTimeMinutes(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full px-3 py-1.5 bg-black/40 border border-white/20 rounded-xl text-center text-sm font-bold text-white focus:outline-none focus:border-white"
-                />
-                <button
-                  onClick={() => handleSetStudyTime(customTimeMinutes)}
-                  className="px-3 py-1.5 bg-white text-black font-bold text-xs rounded-xl shadow hover:bg-white/90"
-                >
-                  Xác nhận
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Big Digital Countdown */}
-          <div className="my-4 sm:my-5 relative select-none">
-            <h2 className="text-7xl sm:text-8xl font-black tracking-tighter font-mono drop-shadow-[0_0_35px_rgba(255,255,255,0.4)] text-white">
-              {formatTimeDisplay(timeLeft)}
-            </h2>
-            {activeGoal && (
-              <div className="text-xs text-cyan-300 font-semibold mt-1 flex items-center justify-center gap-1.5">
-                <Target className="w-3.5 h-3.5" />
-                <span className="text-white/90 truncate max-w-xs">{activeGoal.title}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Main Controls: START / PAUSE + SKIP + RESET + FINISH EARLY */}
-          <div className="flex items-center justify-center gap-3 my-2">
-            <button
-              onClick={handleStartPause}
-              className="w-44 sm:w-52 py-3.5 sm:py-4 bg-gradient-to-r from-white via-slate-100 to-slate-200 hover:from-white hover:to-white text-black text-lg sm:text-xl font-black uppercase rounded-2xl shadow-2xl hover:shadow-cyan-500/25 transition-all duration-150 active:scale-95 flex items-center justify-center gap-2"
-            >
-              {isRunning ? (
-                <>
-                  <Pause className="w-6 h-6 fill-current text-rose-600" />
-                  <span>TẠM DỪNG</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-6 h-6 fill-current text-cyan-600" />
-                  <span>BẮT ĐẦU</span>
-                </>
-              )}
-            </button>
-
-            {mode === 'pomodoro' && Math.floor((settings.focusMinutes * 60 - timeLeft) / 60) >= 1 && (
-              <button
-                onClick={handleFinishEarly}
-                disabled={isSavingEarly}
-                className={`px-3.5 sm:px-4 py-3.5 sm:py-4 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-2xl transition active:scale-95 flex items-center justify-center gap-1.5 text-xs sm:text-sm font-bold shadow-md shadow-emerald-950/30 ${
-                  isSavingEarly ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                title={`Lưu và kết thúc sớm ${Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)} phút đã học`}
-              >
-                <CheckCircle className="w-4 h-4 text-emerald-400" />
-                <span className="hidden sm:inline">
-                  {isSavingEarly ? 'Đang lưu...' : `Lưu sớm (${Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)}p)`}
-                </span>
-                <span className="sm:hidden">
-                  {isSavingEarly ? 'Lưu...' : `Lưu ${Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)}p`}
-                </span>
-              </button>
-            )}
-
-            {isRunning && (
-              <button
-                onClick={handleSkip}
-                className="p-3.5 sm:p-4 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition active:scale-95 border border-white/15 shadow-sm"
-                title="Bỏ qua phiên này"
-              >
-                <SkipForward className="w-5 h-5" />
-              </button>
-            )}
-
-            {!isRunning &&
-              timeLeft !==
-                (mode === 'pomodoro'
-                  ? settings.focusMinutes * 60
-                  : mode === 'shortBreak'
-                  ? settings.shortBreakMinutes * 60
-                  : settings.longBreakMinutes * 60) && (
-                <button
-                  onClick={handleReset}
-                  className="p-3.5 sm:p-4 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition active:scale-95 border border-white/15 shadow-sm"
-                  title="Đặt lại thời gian"
-                >
-                  <RotateCcw className="w-5 h-5" />
-                </button>
-              )}
-          </div>
-
-          {/* Session count info */}
-          <div className="mt-4 text-xs text-white/70 font-medium">
-            {mode === 'pomodoro'
-              ? `#${sessionCount} - Phiên tập trung hiện tại (${settings.focusMinutes} phút)`
-              : 'Thời gian nghỉ ngơi, hãy thư giãn mắt và uống nước!'}
-          </div>
-
-          {/* Ambient sound quick toggles */}
-          <div className="mt-4 pt-3.5 border-t border-white/15 flex flex-wrap items-center justify-center gap-2 text-xs">
-            <span className="text-white/70 text-[11px] mr-1 flex items-center gap-1 font-medium">
-              <Volume2 className="w-3.5 h-3.5 text-amber-300" /> Âm nền:
-            </span>
-            <button
-              onClick={() => toggleAmbientSound('rain')}
-              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
-                ambientSound === 'rain'
-                  ? 'bg-amber-400 text-black font-bold shadow'
-                  : 'text-white/70 hover:bg-white/15'
-              }`}
-            >
-              <CloudRain className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> Mưa
-            </button>
-            <button
-              onClick={() => toggleAmbientSound('waves')}
-              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
-                ambientSound === 'waves'
-                  ? 'bg-amber-400 text-black font-bold shadow'
-                  : 'text-white/70 hover:bg-white/15'
-              }`}
-            >
-              <Waves className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> Sóng
-            </button>
-            <button
-              onClick={() => toggleAmbientSound('ticking')}
-              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
-                ambientSound === 'ticking'
-                  ? 'bg-amber-400 text-black font-bold shadow'
-                  : 'text-white/70 hover:bg-white/15'
-              }`}
-            >
-              <TimerIcon className="w-4 h-4 sm:w-3.5 sm:h-3.5" /> Tích tắc
-            </button>
-            <button
-              onClick={() => toggleAmbientSound('fire')}
-              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
-                ambientSound === 'fire'
-                  ? 'bg-amber-400 text-black font-bold shadow'
-                  : 'text-white/70 hover:bg-white/15'
-              }`}
-            >
-              🔥 Lò sưởi
-            </button>
-            <button
-              onClick={() => toggleAmbientSound('binaural')}
-              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
-                ambientSound === 'binaural'
-                  ? 'bg-cyan-400 text-black font-bold shadow'
-                  : 'text-white/70 hover:bg-white/15'
-              }`}
-              title="Sóng não Gamma 40Hz kích hoạt tập trung sâu & trí nhớ"
-            >
-              <Brain className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-cyan-300" /> Sóng 40Hz
-            </button>
-            <button
-              onClick={() => toggleAmbientSound('lofi')}
-              className={`px-3 py-2 sm:py-1 min-h-[38px] rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition text-xs font-semibold ${
-                ambientSound === 'lofi'
-                  ? 'bg-amber-400 text-black font-bold shadow'
-                  : 'text-white/70 hover:bg-white/15'
-              }`}
-              title="Lo-Fi Chill Cozy thư giãn với tiếng đĩa than"
-            >
-              <Radio className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-amber-300" /> Lo-Fi Chill
-            </button>
-
-            {ambientSound !== 'none' && (
-              <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-white/20">
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1"
-                  step="0.05"
-                  value={settings.ambientVolume}
-                  onChange={(e) => handleAmbientVolumeChange(parseFloat(e.target.value))}
-                  className="w-16 accent-amber-400 h-1 cursor-pointer"
-                  title="Âm lượng âm nền"
-                />
-                <button
-                  onClick={() => {
-                    soundManager.stopAmbient()
-                    setAmbientSound('none')
-                  }}
-                  className="p-1 text-white/50 hover:text-white"
-                  title="Tắt âm nền"
-                >
-                  <VolumeX className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        <PomodoroCockpit
+          mode={mode}
+          timeLeft={timeLeft}
+          isRunning={isRunning}
+          sessionCount={sessionCount}
+          isPipActive={isPipActive}
+          currentMinutesSetting={currentMinutesSetting}
+          currentPresets={currentPresets}
+          activeGoalTitle={activeGoal?.title}
+          isSavingEarly={isSavingEarly}
+          focusMinutesSetting={settings.focusMinutes}
+          defaultMinutesForMode={
+            mode === 'pomodoro'
+              ? settings.focusMinutes
+              : mode === 'shortBreak'
+              ? settings.shortBreakMinutes
+              : settings.longBreakMinutes
+          }
+          ambientSound={ambientSound}
+          ambientVolume={settings.ambientVolume ?? 0.6}
+          onTogglePip={handleTogglePip}
+          onOpenZenClock={() => setIsZenClockOpen(true)}
+          onSwitchMode={switchMode}
+          onSetStudyTime={handleSetStudyTime}
+          onStartPause={handleStartPause}
+          onSkip={handleSkip}
+          onReset={handleReset}
+          onFinishEarly={handleFinishEarly}
+          onToggleAmbientSound={toggleAmbientSound}
+          onAmbientVolumeChange={handleAmbientVolumeChange}
+          onStopAmbient={() => {
+            soundManager.stopAmbient()
+            setAmbientSound('none')
+          }}
+        />
 
         {/* ── DAILY MOTIVATIONAL QUOTE CARD ("BUFF ĐỘNG LỰC") ── */}
         <div className="mt-5">
@@ -1510,7 +1378,7 @@ export default function PomodoroApp() {
         </div>
 
         {/* ── UNIFIED EPIC QUEST & CRYSTAL DOPAMINE CARD ── */}
-        <div className="mt-5 bg-[#0b0f19]/80 backdrop-blur-2xl border border-amber-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl relative overflow-hidden transition-all">
+        <div className="mt-5 bg-[#0b0f19]/92 backdrop-blur-md border border-amber-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl relative overflow-hidden transition-all">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-center">
             {/* Left 2 cols: Goal & Progress */}
             <div className="md:col-span-2 space-y-3">
@@ -1638,9 +1506,9 @@ export default function PomodoroApp() {
         </div>
 
         {/* ── SECONDARY NAVIGATION TABS (MACOS DOCK STYLE) ── */}
-        <div className="mt-8 max-w-3xl mx-auto p-1.5 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/15 flex items-center gap-1.5 overflow-x-auto no-scrollbar justify-start sm:justify-center shadow-xl">
+        <div className="mt-8 max-w-3xl mx-auto p-1.5 rounded-2xl bg-black/75 backdrop-blur-md border border-white/15 flex items-center gap-1.5 overflow-x-auto no-scrollbar justify-start sm:justify-center shadow-xl">
           <button
-            onClick={() => setActiveTab('goals')}
+            onClick={() => startTransition(() => setActiveTab('goals'))}
             className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'goals'
                 ? 'bg-white text-black shadow-lg'
@@ -1652,7 +1520,7 @@ export default function PomodoroApp() {
           </button>
 
           <button
-            onClick={() => setActiveTab('matrix')}
+            onClick={() => startTransition(() => setActiveTab('matrix'))}
             className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'matrix'
                 ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-lg shadow-amber-500/25'
@@ -1664,7 +1532,7 @@ export default function PomodoroApp() {
           </button>
 
           <button
-            onClick={() => setActiveTab('galaxy')}
+            onClick={() => startTransition(() => setActiveTab('galaxy'))}
             className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'galaxy'
                 ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25'
@@ -1676,7 +1544,7 @@ export default function PomodoroApp() {
           </button>
 
           <button
-            onClick={() => setActiveTab('timewarp')}
+            onClick={() => startTransition(() => setActiveTab('timewarp'))}
             className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'timewarp'
                 ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/25'
@@ -1688,7 +1556,7 @@ export default function PomodoroApp() {
           </button>
 
           <button
-            onClick={() => setActiveTab('logs')}
+            onClick={() => startTransition(() => setActiveTab('logs'))}
             className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'logs'
                 ? 'bg-white text-black shadow-lg'
@@ -1700,7 +1568,7 @@ export default function PomodoroApp() {
           </button>
 
           <button
-            onClick={() => setActiveTab('stats')}
+            onClick={() => startTransition(() => setActiveTab('stats'))}
             className={`px-3.5 py-2 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-1.5 transition flex-shrink-0 ${
               activeTab === 'stats'
                 ? 'bg-white text-black shadow-lg'
@@ -1823,77 +1691,12 @@ export default function PomodoroApp() {
               </div>
             ) : (
               filteredGoals.map((g) => (
-                <div
+                <GoalCardItem
                   key={g.id}
-                  className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-4 transition hover:border-white/40"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: g.color || '#E24A4A' }}
-                        />
-                        <h3 className="font-semibold text-base text-white">{g.title}</h3>
-                        {g.is_completed && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-400 text-black text-[10px] font-bold rounded-full">
-                            <Trophy className="w-3 h-3" /> DONE
-                          </span>
-                        )}
-                      </div>
-                      {g.notes && <p className="text-xs text-white/70 mt-1">{g.notes}</p>}
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => {
-                          setSelectedGoalId(g.id)
-                          setIsManualModalOpen(true)
-                        }}
-                        className="p-2 sm:p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center text-white/80 hover:text-white bg-white/10 active:scale-95 rounded-xl text-xs gap-1 transition"
-                        title="Thêm giờ cho mục tiêu này"
-                      >
-                        <Plus className="w-4 h-4 text-emerald-400" />
-                        <span className="hidden sm:inline">Ghi giờ</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setGoalToEdit(g)
-                          setIsGoalModalOpen(true)
-                        }}
-                        className="p-2 sm:p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center text-white/60 hover:text-white active:scale-95 rounded-xl transition"
-                        title="Chỉnh sửa"
-                      >
-                        <Edit2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="mt-3">
-                    <div className="flex justify-between text-xs text-white/80 mb-1">
-                      <span>
-                        {g.current_hours} / {g.target_hours} giờ
-                      </span>
-                      <span className="font-semibold">{g.progress_percent}%</span>
-                    </div>
-                    <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden border border-white/10">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          g.is_completed
-                            ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
-                            : 'bg-white'
-                        }`}
-                        style={{ width: `${Math.min(100, g.progress_percent)}%` }}
-                      />
-                    </div>
-                    <div className="mt-1 text-[11px] text-white/60 text-right">
-                      {g.is_completed
-                        ? '🎉 Hoàn thành mục tiêu!'
-                        : `Còn ${g.remaining_hours} giờ`}
-                    </div>
-                  </div>
-                </div>
+                  goal={g}
+                  onRecordHours={handleRecordHours}
+                  onEditGoal={handleEditGoal}
+                />
               ))
             )}
           </div>
@@ -1918,50 +1721,11 @@ export default function PomodoroApp() {
               </div>
             ) : (
               sessions.map((s) => (
-                <div
+                <SessionLogRowItem
                   key={s.id}
-                  className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-3.5 flex items-start justify-between gap-3 text-xs"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          s.source === 'pomodoro'
-                            ? 'bg-red-500/30 text-red-200'
-                            : 'bg-emerald-500/30 text-emerald-200'
-                        }`}
-                      >
-                        {s.source === 'pomodoro' ? '🍅 Pomodoro' : '✍️ Thủ công'}
-                      </span>
-                      <span className="font-bold text-white text-sm">
-                        +{s.duration_minutes} phút ({s.duration_hours}h)
-                      </span>
-                      <span className="text-white/60">
-                        {format(new Date(s.session_date), 'dd/MM/yyyy')}
-                      </span>
-                    </div>
-
-                    {s.goal_title && (
-                      <div className="text-white/90 font-medium">
-                        🎯 Mục tiêu: {s.goal_title}
-                      </div>
-                    )}
-
-                    {s.topic_note && (
-                      <p className="text-white/80 italic text-[11px] bg-black/40 px-2.5 py-1 rounded-lg">
-                        "{s.topic_note}"
-                      </p>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => handleDeleteSession(s.id)}
-                    className="p-1.5 text-white/40 hover:text-red-300 rounded-lg hover:bg-red-500/20 transition"
-                    title="Xóa buổi học này"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                  session={s}
+                  onDeleteSession={handleDeleteSession}
+                />
               ))
             )}
           </div>
@@ -2042,159 +1806,193 @@ export default function PomodoroApp() {
 
       {/* ── MODALS (LAZY-LOADED ON DEMAND) ── */}
       <Suspense fallback={null}>
-        <ManualLogModal
-          isOpen={isManualModalOpen}
-          onClose={() => setIsManualModalOpen(false)}
-          goals={goals}
-          selectedGoalId={selectedGoalId}
-          onSuccess={async (newHours, isCompleted, goalTitle) => {
-            soundManager.playPearlDrop()
-            toast.success('💎 Đã ghi nhận giờ học & cộng ngọc pha lê vào lọ!')
-            if (isCompleted) {
-              setShowCelebration({
-                title: goalTitle,
-                hours: newHours,
-              })
-              const checkRes = await focusService.checkConstellations()
-              if (checkRes.newly_unlocked) {
-                soundManager.playConstellationVictory()
-                toast.success(`⭐ Khai mở Chòm Sao ${checkRes.newly_unlocked.title}!`)
+        {isManualModalOpen && (
+          <ManualLogModal
+            isOpen={isManualModalOpen}
+            onClose={() => setIsManualModalOpen(false)}
+            goals={goals}
+            selectedGoalId={selectedGoalId}
+            onSuccess={async (newHours, isCompleted, goalTitle) => {
+              soundManager.playPearlDrop()
+              toast.success('💎 Đã ghi nhận giờ học & cộng ngọc pha lê vào lọ!')
+              if (isCompleted) {
+                setShowCelebration({
+                  title: goalTitle,
+                  hours: newHours,
+                })
+                const checkRes = await focusService.checkConstellations()
+                if (checkRes.newly_unlocked) {
+                  soundManager.playConstellationVictory()
+                  toast.success(`⭐ Khai mở Chòm Sao ${checkRes.newly_unlocked.title}!`)
+                }
               }
-            }
-            await loadData()
-          }}
-        />
+              await loadData()
+            }}
+          />
+        )}
 
-        <GoalModal
-          isOpen={isGoalModalOpen}
-          onClose={() => {
-            setIsGoalModalOpen(false)
-            setGoalToEdit(null)
-          }}
-          goalToEdit={goalToEdit}
-          onSuccess={loadData}
-        />
+        {isGoalModalOpen && (
+          <GoalModal
+            isOpen={isGoalModalOpen}
+            onClose={() => {
+              setIsGoalModalOpen(false)
+              setGoalToEdit(null)
+            }}
+            goalToEdit={goalToEdit}
+            onSuccess={loadData}
+          />
+        )}
 
-        <SettingsModal
-          isOpen={isSettingsModalOpen}
-          onClose={() => setIsSettingsModalOpen(false)}
-          settings={settings}
-          onSave={(newSettings) => handleSaveSettings(newSettings, false)}
-        />
+        {isSettingsModalOpen && (
+          <SettingsModal
+            isOpen={isSettingsModalOpen}
+            onClose={() => setIsSettingsModalOpen(false)}
+            settings={settings}
+            onSave={(newSettings) => handleSaveSettings(newSettings, false)}
+          />
+        )}
 
-        <BackgroundPickerModal
-          isOpen={isBgPickerOpen}
-          onClose={() => setIsBgPickerOpen(false)}
-          currentConfig={bgConfig}
-          onSelect={handleSelectBackground}
-        />
+        {isBgPickerOpen && (
+          <BackgroundPickerModal
+            isOpen={isBgPickerOpen}
+            onClose={() => setIsBgPickerOpen(false)}
+            currentConfig={bgConfig}
+            onSelect={handleSelectBackground}
+          />
+        )}
 
-        <RewardShopModal
-          isOpen={isRewardShopOpen}
-          onClose={() => setIsRewardShopOpen(false)}
-          onRewardRedeemed={loadData}
-        />
+        {isRewardShopOpen && (
+          <RewardShopModal
+            isOpen={isRewardShopOpen}
+            onClose={() => setIsRewardShopOpen(false)}
+            onRewardRedeemed={loadData}
+          />
+        )}
 
-        <TimeCapsuleModal
-          isOpen={isTimeCapsuleOpen}
-          onClose={() => setIsTimeCapsuleOpen(false)}
-          currentHours={stats?.total_hours || 0}
-        />
+        {isTimeCapsuleOpen && (
+          <TimeCapsuleModal
+            isOpen={isTimeCapsuleOpen}
+            onClose={() => setIsTimeCapsuleOpen(false)}
+            currentHours={stats?.total_hours || 0}
+          />
+        )}
 
-        <NotificationSettingsModal
-          isOpen={isNotificationModalOpen}
-          onClose={() => setIsNotificationModalOpen(false)}
-        />
+        {isNotificationModalOpen && (
+          <NotificationSettingsModal
+            isOpen={isNotificationModalOpen}
+            onClose={() => setIsNotificationModalOpen(false)}
+          />
+        )}
 
-        <AuthModal
-          isOpen={isAuthModalOpen}
-          onClose={() => setIsAuthModalOpen(false)}
-          onSuccess={(u) => {
-            setCurrentUser(u)
-            loadData()
-          }}
-        />
+        {isAuthModalOpen && (
+          <AuthModal
+            isOpen={isAuthModalOpen}
+            onClose={() => setIsAuthModalOpen(false)}
+            onSuccess={(u) => {
+              setCurrentUser(u)
+              loadData()
+            }}
+          />
+        )}
 
-        <CosmicRaceTrackModal
-          isOpen={isRaceModalOpen}
-          onClose={() => setIsRaceModalOpen(false)}
-          onOpenAuth={() => setIsAuthModalOpen(true)}
-          currentUser={currentUser}
-        />
+        {isRaceModalOpen && (
+          <CosmicRaceTrackModal
+            isOpen={isRaceModalOpen}
+            onClose={() => setIsRaceModalOpen(false)}
+            onOpenAuth={() => setIsAuthModalOpen(true)}
+            currentUser={currentUser}
+          />
+        )}
 
-        <DonateModal
-          isOpen={isDonateModalOpen}
-          onClose={() => setIsDonateModalOpen(false)}
-        />
+        {isDonateModalOpen && (
+          <DonateModal
+            isOpen={isDonateModalOpen}
+            onClose={() => setIsDonateModalOpen(false)}
+          />
+        )}
 
-        <FeedbackModal
-          isOpen={isFeedbackModalOpen}
-          onClose={() => setIsFeedbackModalOpen(false)}
-          currentUser={currentUser}
-        />
+        {isFeedbackModalOpen && (
+          <FeedbackModal
+            isOpen={isFeedbackModalOpen}
+            onClose={() => setIsFeedbackModalOpen(false)}
+            currentUser={currentUser}
+          />
+        )}
 
-        <ChangePasswordModal
-          isOpen={isChangePasswordOpen}
-          onClose={() => setIsChangePasswordOpen(false)}
-        />
+        {isChangePasswordOpen && (
+          <ChangePasswordModal
+            isOpen={isChangePasswordOpen}
+            onClose={() => setIsChangePasswordOpen(false)}
+          />
+        )}
 
         {/* ── ZEN DESK CLOCK FULLSCREEN MODAL ── */}
-        <ZenDeskClockModal
-          isOpen={isZenClockOpen}
-          onClose={() => setIsZenClockOpen(false)}
-          timeLeft={timeLeft}
-          isRunning={isRunning}
-          mode={mode}
-          onStartPause={handleStartPause}
-          onReset={handleReset}
-          onSkip={handleSkip}
-          onSwitchMode={switchMode}
-          totalDurationSeconds={
-            (mode === 'pomodoro'
-              ? settings.focusMinutes
-              : mode === 'shortBreak'
-              ? settings.shortBreakMinutes
-              : settings.longBreakMinutes) * 60
-          }
-          topicNote={sessionNote}
-          goalTitle={goals.find((g) => g.id === selectedGoalId)?.title}
-        />
+        {isZenClockOpen && (
+          <ZenDeskClockModal
+            isOpen={isZenClockOpen}
+            onClose={() => setIsZenClockOpen(false)}
+            timeLeft={timeLeft}
+            isRunning={isRunning}
+            mode={mode}
+            onStartPause={handleStartPause}
+            onReset={handleReset}
+            onSkip={handleSkip}
+            onSwitchMode={switchMode}
+            totalDurationSeconds={
+              (mode === 'pomodoro'
+                ? settings.focusMinutes
+                : mode === 'shortBreak'
+                ? settings.shortBreakMinutes
+                : settings.longBreakMinutes) * 60
+            }
+            topicNote={sessionNote}
+            goalTitle={goals.find((g) => g.id === selectedGoalId)?.title}
+          />
+        )}
 
         {/* ── SHAREABLE ACHIEVEMENT INFOGRAPHIC MODAL ── */}
-        <ShareableAchievementModal
-          isOpen={isShareModalOpen}
-          onClose={() => setIsShareModalOpen(false)}
-          currentUser={currentUser}
-          stats={stats}
-        />
+        {isShareModalOpen && (
+          <ShareableAchievementModal
+            isOpen={isShareModalOpen}
+            onClose={() => setIsShareModalOpen(false)}
+            currentUser={currentUser}
+            stats={stats}
+          />
+        )}
 
         {/* ── CHEER CELEBRATION MODAL ── */}
-        <CheerCelebrationModal
-          isOpen={isCheerModalOpen}
-          cheers={unreadCheers}
-          onClose={() => setIsCheerModalOpen(false)}
-          onAcknowledgeAll={handleAcknowledgeAllCheers}
-          onOpenHistory={() => {
-            setIsCheerModalOpen(false)
-            setIsCheerHistoryModalOpen(true)
-          }}
-        />
+        {isCheerModalOpen && (
+          <CheerCelebrationModal
+            isOpen={isCheerModalOpen}
+            cheers={unreadCheers}
+            onClose={() => setIsCheerModalOpen(false)}
+            onAcknowledgeAll={handleAcknowledgeAllCheers}
+            onOpenHistory={() => {
+              setIsCheerModalOpen(false)
+              setIsCheerHistoryModalOpen(true)
+            }}
+          />
+        )}
 
         {/* ── CHEER HISTORY MODAL ── */}
-        <CheerHistoryModal
-          isOpen={isCheerHistoryModalOpen}
-          onClose={() => setIsCheerHistoryModalOpen(false)}
-          currentUser={currentUser}
-          onOpenRaceTrack={() => setIsRaceModalOpen(true)}
-        />
+        {isCheerHistoryModalOpen && (
+          <CheerHistoryModal
+            isOpen={isCheerHistoryModalOpen}
+            onClose={() => setIsCheerHistoryModalOpen(false)}
+            currentUser={currentUser}
+            onOpenRaceTrack={() => setIsRaceModalOpen(true)}
+          />
+        )}
 
         {/* ── STUDY SQUADS MODAL ── */}
-        <StudySquadModal
-          isOpen={isSquadsModalOpen}
-          onClose={() => setIsSquadsModalOpen(false)}
-          userGoals={goals}
-          currentUser={currentUser}
-        />
+        {isSquadsModalOpen && (
+          <StudySquadModal
+            isOpen={isSquadsModalOpen}
+            onClose={() => setIsSquadsModalOpen(false)}
+            userGoals={goals}
+            currentUser={currentUser}
+          />
+        )}
       </Suspense>
 
       {/* ── AI FLOATING BUDDY COMPANION ── */}

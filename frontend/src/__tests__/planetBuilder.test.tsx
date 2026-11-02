@@ -45,6 +45,7 @@ describe('PlanetBuilderModal Mobile Tap-Through Defense', () => {
   })
 
   it('prevents accidental close immediately upon mount (within 600ms safety window)', () => {
+    vi.useFakeTimers()
     const onClose = vi.fn()
     render(
       <PlanetBuilderModal
@@ -60,6 +61,12 @@ describe('PlanetBuilderModal Mobile Tap-Through Defense', () => {
 
     // Should NOT close because Date.now() - mountTime < 600ms
     expect(onClose).not.toHaveBeenCalled()
+
+    // Advance time past 600ms window -> now clicking should close properly
+    vi.advanceTimersByTime(700)
+    fireEvent.click(closeButtons[0])
+    expect(onClose).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
   })
 
   it('handles malformed or string-array planet_data without crashing', () => {

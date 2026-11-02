@@ -5,7 +5,7 @@ import re
 import threading
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
 from app.database import get_db
@@ -646,7 +646,12 @@ def get_sessions(
     if date_to:
         query = query.filter(StudySessionLog.session_date <= date_to)
 
-    sessions = query.order_by(StudySessionLog.session_date.desc(), StudySessionLog.created_at.desc()).limit(limit).all()
+    sessions = (
+        query.options(joinedload(StudySessionLog.goal))
+        .order_by(StudySessionLog.session_date.desc(), StudySessionLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
     return [_format_session_response(s) for s in sessions]
 
 
@@ -879,33 +884,75 @@ def get_focus_stats(
     today = datetime.date.today()
     week_start = today - datetime.timedelta(days=today.weekday())
 
-    if real_user:
-        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == real_user.id).all()
-        completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id == real_user.id, StudyGoal.is_completed == True).count()
-        active_goals = db.query(StudyGoal).filter(StudyGoal.user_id == real_user.id, StudyGoal.is_completed == False).count()
-    else:
-        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).all()
-        completed_goals = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None), StudyGoal.is_completed == True).count()
-        active_goals = db.query(StudyGoal).filter(StudyGoal.user_id.is_(None), StudyGoal.is_completed == False).count()
+    filter_user = (StudySessionLog.user_id == real_user.id) if real_user else StudySessionLog.user_id.is_(None)
+    filter_goal = (StudyGoal.user_id == real_user.id) if real_user else StudyGoal.user_id.is_(None)
 
-    total_hours = round(sum(s.duration_hours for s in all_sessions), 2)
-    today_hours = round(sum(s.duration_hours for s in all_sessions if s.session_date == today), 2)
-    week_hours = round(sum(s.duration_hours for s in all_sessions if s.session_date >= week_start), 2)
-    total_sessions = len(all_sessions)
-    pomodoro_sessions = sum(1 for s in all_sessions if s.source == "pomodoro")
+    # 1. Total hours & Total sessions (Single SQL Aggregation)
+    stats_row = (
+        db.query(
+            func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0),
+            func.count(StudySessionLog.id),
+        )
+        .filter(filter_user)
+        .first()
+    )
+    total_hours = round(float(stats_row[0] or 0.0), 2)
+    total_sessions = int(stats_row[1] or 0)
 
-    # Last 7 days breakdown
+    # 2. Today hours
+    today_hours = (
+        db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0))
+        .filter(filter_user, StudySessionLog.session_date == today)
+        .scalar()
+        or 0.0
+    )
+    today_hours = round(float(today_hours), 2)
+
+    # 3. Week hours
+    week_hours = (
+        db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0))
+        .filter(filter_user, StudySessionLog.session_date >= week_start)
+        .scalar()
+        or 0.0
+    )
+    week_hours = round(float(week_hours), 2)
+
+    # 4. Pomodoro sessions count
+    pomodoro_sessions = (
+        db.query(func.count(StudySessionLog.id))
+        .filter(filter_user, StudySessionLog.source == "pomodoro")
+        .scalar()
+        or 0
+    )
+
+    # 5. Completed & Active goals
+    completed_goals = db.query(StudyGoal).filter(filter_goal, StudyGoal.is_completed == True).count()
+    active_goals = db.query(StudyGoal).filter(filter_goal, StudyGoal.is_completed == False).count()
+
+    # 6. Last 7 days breakdown with 1 grouped query!
+    seven_days_ago = today - datetime.timedelta(days=6)
+    recent_grouped = (
+        db.query(
+            StudySessionLog.session_date,
+            func.coalesce(func.sum(StudySessionLog.duration_minutes), 0),
+            func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0),
+        )
+        .filter(filter_user, StudySessionLog.session_date >= seven_days_ago)
+        .group_by(StudySessionLog.session_date)
+        .all()
+    )
+
+    daily_map = {row[0]: (int(row[1]), round(float(row[2]), 2)) for row in recent_grouped}
+
     last_7_days: List[DailyFocusStat] = []
     for i in range(6, -1, -1):
         d = today - datetime.timedelta(days=i)
-        day_sessions = [s for s in all_sessions if s.session_date == d]
-        day_minutes = sum(s.duration_minutes for s in day_sessions)
-        day_hours = round(day_minutes / 60.0, 2)
+        d_mins, d_hours = daily_map.get(d, (0, 0.0))
         last_7_days.append(
             DailyFocusStat(
                 date=d.strftime("%d/%m"),
-                hours=day_hours,
-                minutes=day_minutes,
+                hours=d_hours,
+                minutes=d_mins,
             )
         )
 
@@ -928,16 +975,24 @@ def get_focus_stats(
 # -------------------------------------------------------------
 
 def _calculate_pearls(db: Session, user_id: Optional[int] = None) -> PearlsBalanceResponse:
-    if user_id:
-        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id == user_id).all()
-        redemptions = db.query(RewardRedemption).filter(RewardRedemption.user_id == user_id).all()
-    else:
-        all_sessions = db.query(StudySessionLog).filter(StudySessionLog.user_id.is_(None)).all()
-        redemptions = db.query(RewardRedemption).filter(RewardRedemption.user_id.is_(None)).all()
-    total_hours = sum(s.duration_hours for s in all_sessions)
-    total_earned = round(total_hours, 2)
+    filter_user = (StudySessionLog.user_id == user_id) if user_id else StudySessionLog.user_id.is_(None)
+    filter_redemptions = (RewardRedemption.user_id == user_id) if user_id else RewardRedemption.user_id.is_(None)
 
-    total_spent = round(sum(r.pearls_spent for r in redemptions), 2)
+    total_hours = (
+        db.query(func.coalesce(func.sum(StudySessionLog.duration_hours), 0.0))
+        .filter(filter_user)
+        .scalar()
+        or 0.0
+    )
+    total_earned = round(float(total_hours), 2)
+
+    total_spent = (
+        db.query(func.coalesce(func.sum(RewardRedemption.pearls_spent), 0.0))
+        .filter(filter_redemptions)
+        .scalar()
+        or 0.0
+    )
+    total_spent = round(float(total_spent), 2)
     available = max(0.0, round(total_earned - total_spent, 2))
 
     return PearlsBalanceResponse(

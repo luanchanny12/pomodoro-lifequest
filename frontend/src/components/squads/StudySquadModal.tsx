@@ -154,15 +154,33 @@ export const StudySquadModal: React.FC<StudySquadModalProps> = ({
     setLoadingRoom(false)
   }
 
-  // Poll messages every 3.5s while in squad room
+  // Poll messages every 5s while in squad room (tự động tạm dừng khi ẩn tab)
   useEffect(() => {
     if (!isOpen || view !== 'room' || !activeSquadId) return
+
+    let detailCounter = 0
     const interval = setInterval(() => {
+      if (document.hidden) return
       loadSquadMessages(activeSquadId)
-      // also refresh racer positions occasionally
-      loadSquadDetail(activeSquadId)
-    }, 3500)
-    return () => clearInterval(interval)
+      // Refresh bảng xếp hạng / vị trí xe mỗi 20 giây (4 chu kỳ) thay vì gọi dồn dập
+      detailCounter++
+      if (detailCounter >= 4) {
+        detailCounter = 0
+        loadSquadDetail(activeSquadId)
+      }
+    }, 5000)
+
+    const handleVisibility = () => {
+      if (!document.hidden && activeSquadId) {
+        loadSquadMessages(activeSquadId)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [isOpen, view, activeSquadId])
 
   // Auto-scroll chat to bottom

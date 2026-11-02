@@ -198,7 +198,7 @@ export const PlanetBuilderModal: React.FC<PlanetBuilderModalProps> = ({
   const [selectedTool, setSelectedTool] = useState<string | 'remover'>('seedling')
   const [plots, setPlots] = useState<PlanetPlot[]>([])
   const [isSaving, setIsSaving] = useState(false)
-  const mountTimeRef = useRef<number>(0)
+  const mountTimeRef = useRef<number>(Date.now())
   const isBackdropDownRef = useRef<boolean>(false)
 
   useEffect(() => {

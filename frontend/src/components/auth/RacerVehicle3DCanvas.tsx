@@ -647,7 +647,8 @@ export const RacerVehicle3DCanvas: React.FC<RacerVehicle3DCanvasProps> = ({ sele
       <div className="w-full h-48 sm:h-52 md:h-56 cursor-grab active:cursor-grabbing touch-none select-none">
         <Canvas
           camera={{ position: [2.8, 1.6, 2.8], fov: 42 }}
-          gl={{ antialias: true, alpha: true }}
+          dpr={[1, 1.5]}
+          gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
         >
           {/* Lighting */}
           <ambientLight intensity={0.8} />

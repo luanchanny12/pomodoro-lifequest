@@ -1,20 +1,69 @@
-const CACHE = "life-quest-v3.1";
+const CACHE_NAME = "life-quest-v3.2-fast";
+const STATIC_ASSETS = ["/", "/index.html", "/manifest.json"];
 
-self.addEventListener("install", () => {
+self.addEventListener("install", (e) => {
+  e.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)).catch(() => {})
+  );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
   );
   self.clients.claim();
 });
 
 self.addEventListener("fetch", (e) => {
+  const url = new URL(e.request.url);
+
   // Always bypass ServiceWorker for API calls and non-GET requests
-  if (e.request.url.includes("/api/") || e.request.method !== 'GET') {
+  if (url.pathname.startsWith("/api/") || e.request.method !== "GET") {
     return;
+  }
+
+  // 1. Vite Hashed Chunks & Static Assets (/assets/*) -> Cache First (Instant 0-1ms)
+  if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/backgrounds/")) {
+    e.respondWith(
+      caches.match(e.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(e.request).then((res) => {
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          }
+          return res;
+        });
+      })
+    );
+    return;
+  }
+
+  // 2. Google Fonts & CDN -> Stale While Revalidate
+  if (url.hostname.includes("fonts.googleapis.com") || url.hostname.includes("fonts.gstatic.com")) {
+    e.respondWith(
+      caches.match(e.request).then((cached) => {
+        const fetchPromise = fetch(e.request).then((res) => {
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          }
+          return res;
+        }).catch(() => cached);
+        return cached || fetchPromise;
+      })
+    );
+    return;
+  }
+
+  // 3. Navigation HTML request -> Network First with Cache Fallback
+  if (e.request.mode === "navigate") {
+    e.respondWith(
+      fetch(e.request).catch(() => caches.match("/index.html"))
+    );
   }
 });
 
@@ -53,4 +102,3 @@ self.addEventListener("notificationclick", (event) => {
     })
   );
 });
-

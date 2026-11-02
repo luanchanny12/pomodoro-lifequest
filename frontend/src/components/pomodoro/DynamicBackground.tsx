@@ -58,9 +58,29 @@ interface DynamicBackgroundProps {
   fallbackColor?: string
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Giới hạn FPS để giảm tải GPU. Canvas effects không cần 60fps. */
+function createThrottledRAF(targetFPS: number, callback: () => void) {
+  const interval = 1000 / targetFPS
+  let lastTime = 0
+  let rafId: number
+
+  const loop = (now: number) => {
+    rafId = requestAnimationFrame(loop)
+    if (now - lastTime < interval) return
+    lastTime = now
+    callback()
+  }
+
+  rafId = requestAnimationFrame(loop)
+  return () => cancelAnimationFrame(rafId)
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 const DynamicBackgroundComponent: React.FC<DynamicBackgroundProps> = ({ config }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const animFrameRef = useRef<number | null>(null)
 
   // ── Canvas Overlay Effects (Rain / Embers / Stars) ──
   useEffect(() => {
@@ -73,31 +93,52 @@ const DynamicBackgroundComponent: React.FC<DynamicBackgroundProps> = ({ config }
 
     let width = (canvas.width = window.innerWidth)
     let height = (canvas.height = window.innerHeight)
-    let activeLoop: (() => void) | null = null
+    const isMobile = window.innerWidth < 768
 
+    // Dùng devicePixelRatio thấp hơn trên mobile để giảm pixel fill rate
+    const dpr = isMobile ? Math.min(window.devicePixelRatio, 1.5) : window.devicePixelRatio || 1
+    canvas.width = width * dpr
+    canvas.height = height * dpr
+    canvas.style.width = width + 'px'
+    canvas.style.height = height + 'px'
+    ctx.scale(dpr, dpr)
+
+    let cancelLoop: (() => void) | null = null
+
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null
     const handleResize = () => {
-      if (!canvas) return
-      width = canvas.width = window.innerWidth
-      height = canvas.height = window.innerHeight
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        if (!canvas) return
+        width = window.innerWidth
+        height = window.innerHeight
+        canvas.width = width * dpr
+        canvas.height = height * dpr
+        canvas.style.width = width + 'px'
+        canvas.style.height = height + 'px'
+        ctx.scale(dpr, dpr)
+      }, 200)
     }
     window.addEventListener('resize', handleResize)
 
-    // Tự động tạm dừng animation khi người dùng ẩn tab / thu nhỏ trình duyệt để tiết kiệm 100% CPU/GPU
+    // Tự động tạm dừng animation khi người dùng ẩn tab — tiết kiệm 100% CPU/GPU
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        if (animFrameRef.current) {
-          cancelAnimationFrame(animFrameRef.current)
-          animFrameRef.current = null
-        }
-      } else if (activeLoop && !animFrameRef.current) {
-        animFrameRef.current = requestAnimationFrame(activeLoop)
+        cancelLoop?.()
+        cancelLoop = null
+      } else if (!cancelLoop) {
+        startCurrentEffect()
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
+    let startCurrentEffect: () => void = () => {}
+
     // ── 1. RAINDROPS ON GLASS ──
     if (config.canvasEffect === 'rain') {
-      const dropCount = 130
+      // Mobile: 35 drops ở 24fps — desktop: 90 drops ở 30fps → đủ mượt, giảm ~50% tải
+      const dropCount = isMobile ? 35 : 90
+      const targetFPS = isMobile ? 24 : 30
       const drops: { x: number; y: number; length: number; speed: number; opacity: number }[] = []
       for (let i = 0; i < dropCount; i++) {
         drops.push({
@@ -110,21 +151,17 @@ const DynamicBackgroundComponent: React.FC<DynamicBackgroundProps> = ({ config }
       }
 
       const renderRain = () => {
-        if (document.hidden) return
-        // Clear with transparent so the beautiful background image shows through clearly!
         ctx.clearRect(0, 0, width, height)
-
         ctx.lineWidth = 1.5
         ctx.lineCap = 'round'
 
+        // Batch tất cả drops vào 1 beginPath duy nhất → giảm draw calls từ N xuống 1
+        ctx.strokeStyle = 'rgba(220, 240, 255, 0.35)'
+        ctx.beginPath()
         for (let i = 0; i < dropCount; i++) {
           const d = drops[i]
-          ctx.strokeStyle = `rgba(220, 240, 255, ${d.opacity})`
-          ctx.beginPath()
           ctx.moveTo(d.x, d.y)
           ctx.lineTo(d.x - 2, d.y + d.length)
-          ctx.stroke()
-
           d.y += d.speed
           d.x -= 0.6
           if (d.y > height) {
@@ -132,16 +169,20 @@ const DynamicBackgroundComponent: React.FC<DynamicBackgroundProps> = ({ config }
             d.x = Math.random() * (width + 50)
           }
         }
-        animFrameRef.current = requestAnimationFrame(renderRain)
+        ctx.stroke()
       }
-      activeLoop = renderRain
-      renderRain()
+
+      startCurrentEffect = () => {
+        cancelLoop?.()
+        cancelLoop = createThrottledRAF(targetFPS, renderRain)
+      }
     }
 
     // ── 2. FLOATING FIRE EMBERS ──
     else if (config.canvasEffect === 'embers') {
-      const emberCount = 65
-      const embers: { x: number; y: number; r: number; speedY: number; speedX: number; opacity: number }[] = []
+      const emberCount = isMobile ? 20 : 50
+      const targetFPS = isMobile ? 20 : 28
+      const embers: { x: number; y: number; r: number; speedY: number; speedX: number; opacity: number; hue: number }[] = []
       for (let i = 0; i < emberCount; i++) {
         embers.push({
           x: Math.random() * width,
@@ -150,38 +191,45 @@ const DynamicBackgroundComponent: React.FC<DynamicBackgroundProps> = ({ config }
           speedY: Math.random() * 1.6 + 0.7,
           speedX: (Math.random() - 0.5) * 1.0,
           opacity: Math.random() * 0.8 + 0.2,
+          // Pre-compute random hue thay vì gọi Math.random() trong render loop
+          hue: Math.floor(150 + Math.random() * 80),
         })
       }
 
       const renderEmbers = () => {
-        if (document.hidden) return
         ctx.clearRect(0, 0, width, height)
 
         for (let i = 0; i < emberCount; i++) {
           const e = embers[i]
-          ctx.fillStyle = `rgba(255, ${Math.floor(150 + Math.random() * 80)}, 50, ${e.opacity})`
+          ctx.fillStyle = `rgba(255, ${e.hue}, 50, ${e.opacity})`
           ctx.beginPath()
           ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2)
           ctx.fill()
 
           e.y -= e.speedY
           e.x += e.speedX
-          e.opacity -= 0.002
+          e.opacity -= 0.0015
           if (e.y < -10 || e.opacity <= 0) {
             e.y = height + 10
             e.x = Math.random() * width
             e.opacity = Math.random() * 0.8 + 0.2
+            // Re-randomize hue chỉ khi reset hạt — không phải mỗi frame
+            e.hue = Math.floor(150 + Math.random() * 80)
           }
         }
-        animFrameRef.current = requestAnimationFrame(renderEmbers)
       }
-      activeLoop = renderEmbers
-      renderEmbers()
+
+      startCurrentEffect = () => {
+        cancelLoop?.()
+        cancelLoop = createThrottledRAF(targetFPS, renderEmbers)
+      }
     }
 
     // ── 3. TWINKLING STARS & SHOOTING STAR ──
     else if (config.canvasEffect === 'stars') {
-      const starCount = 140
+      const starCount = isMobile ? 40 : 110
+      // Stars thay đổi rất chậm → 20fps là đủ mượt mà tiết kiệm pin
+      const targetFPS = isMobile ? 16 : 22
       const stars: { x: number; y: number; r: number; alpha: number; delta: number }[] = []
       for (let i = 0; i < starCount; i++) {
         stars.push({
@@ -189,38 +237,33 @@ const DynamicBackgroundComponent: React.FC<DynamicBackgroundProps> = ({ config }
           y: Math.random() * height * 0.7,
           r: Math.random() * 1.8 + 0.6,
           alpha: Math.random(),
-          delta: (Math.random() * 0.02 + 0.005) * (Math.random() > 0.5 ? 1 : -1),
+          delta: (Math.random() * 0.015 + 0.003) * (Math.random() > 0.5 ? 1 : -1),
         })
       }
 
-      let shootingStar: { x: number; y: number; length: number; speed: number; opacity: number; active: boolean } = {
-        x: 0,
-        y: 0,
-        length: 100,
-        speed: 16,
-        opacity: 0,
-        active: false,
-      }
+      let shootingStar = { x: 0, y: 0, length: 100, speed: 16, opacity: 0, active: false }
       let frame = 0
 
       const renderStars = () => {
-        if (document.hidden) return
         frame++
         ctx.clearRect(0, 0, width, height)
 
+        // Batch tất cả sao tĩnh vào 1 pass theo alpha để giảm fillStyle changes
         for (let i = 0; i < starCount; i++) {
           const s = stars[i]
           s.alpha += s.delta
-          if (s.alpha <= 0.1 || s.alpha >= 0.95) s.delta = -s.delta
+          if (s.alpha <= 0.08 || s.alpha >= 0.95) s.delta = -s.delta
 
-          ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0.08, s.alpha)})`
+          ctx.globalAlpha = Math.max(0.08, s.alpha)
+          ctx.fillStyle = '#ffffff'
           ctx.beginPath()
           ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
           ctx.fill()
         }
+        ctx.globalAlpha = 1
 
-        // Shooting star every ~200 frames
-        if (!shootingStar.active && frame % 200 === 0) {
+        // Shooting star every ~240 frames (ít thường hơn = ít tải hơn)
+        if (!shootingStar.active && frame % 240 === 0) {
           shootingStar.active = true
           shootingStar.x = Math.random() * width * 0.6
           shootingStar.y = Math.random() * height * 0.25
@@ -237,25 +280,32 @@ const DynamicBackgroundComponent: React.FC<DynamicBackgroundProps> = ({ config }
 
           shootingStar.x += shootingStar.speed
           shootingStar.y += shootingStar.speed * 0.4
-          shootingStar.opacity -= 0.02
+          shootingStar.opacity -= 0.025
           if (shootingStar.opacity <= 0) shootingStar.active = false
         }
-
-        animFrameRef.current = requestAnimationFrame(renderStars)
       }
-      activeLoop = renderStars
-      renderStars()
+
+      startCurrentEffect = () => {
+        cancelLoop?.()
+        cancelLoop = createThrottledRAF(targetFPS, renderStars)
+      }
     }
 
+    startCurrentEffect()
+
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer)
       window.removeEventListener('resize', handleResize)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+      cancelLoop?.()
     }
   }, [config.canvasEffect])
 
   return (
-    <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none select-none">
+    <div
+      className="fixed inset-0 z-0 overflow-hidden pointer-events-none select-none"
+      style={{ contain: 'paint layout' }}
+    >
       {/* 1. Fullscreen Beautiful Local Wallpaper */}
       <img
         src={config.imageUrl}
@@ -268,7 +318,11 @@ const DynamicBackgroundComponent: React.FC<DynamicBackgroundProps> = ({ config }
 
       {/* 2. Transparent Animated Canvas Overlay (Rain / Embers / Stars) */}
       {config.canvasEffect && config.canvasEffect !== 'none' && (
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" />
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full z-10 pointer-events-none"
+          style={{ willChange: 'transform', transform: 'translateZ(0)', contain: 'strict' }}
+        />
       )}
 
       {/* 3. Subtle darkening overlay so text is readable while keeping wallpaper bright and vivid */}
