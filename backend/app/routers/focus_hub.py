@@ -707,6 +707,28 @@ def create_session(
     # Tự động cập nhật chuỗi ngày học liên tục (Streak) và cộng điểm EXP
     _update_user_streak(db, user, session_date)
 
+    # Tự động phát thông báo bứt tốc vào các nhóm học (Study Squads) cùng mục tiêu
+    if user:
+        try:
+            from app.models_squad import StudySquadMember, StudySquadMessage
+            squad_memberships = db.query(StudySquadMember).filter(StudySquadMember.user_id == user.id).all()
+            for sm in squad_memberships:
+                if sm.goal_id == effective_goal_id or not sm.goal_id:
+                    goal_obj = db.query(StudyGoal).filter(StudyGoal.id == effective_goal_id).first() if effective_goal_id else None
+                    cur_h = goal_obj.current_hours if goal_obj else duration_hours
+                    squad_msg = StudySquadMessage(
+                        squad_id=sm.squad_id,
+                        user_id=user.id,
+                        sender_name=user.display_name or "Đồng đội",
+                        message_type="system_speedup",
+                        content=f"⚡ {user.display_name} vừa bứt tốc thêm {data.duration_minutes} phút! Tiến lên mốc {cur_h:g} giờ trên đường đua!",
+                        emoji="⚡",
+                        created_at=now,
+                    )
+                    db.add(squad_msg)
+        except Exception:
+            pass
+
     db.commit()
     db.refresh(session_log)
     invalidate_user_cache(user)

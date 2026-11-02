@@ -22,15 +22,18 @@ from app.routers import (
     focus_hub,
     notifications,
     calendar_sync,
+    squads,
 )
 import app.models
 import app.models_auth
+import app.models_squad
 Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import app.models
     import app.models_auth
+    import app.models_squad
     Base.metadata.create_all(bind=engine)
     from app.models import Player, Level
     from sqlalchemy import text, inspect
@@ -262,6 +265,7 @@ app.include_router(analytics_feedback.router)
 app.include_router(focus_hub.router)
 app.include_router(notifications.router)
 app.include_router(calendar_sync.router)
+app.include_router(squads.router)
 
 @app.get("/")
 def root():

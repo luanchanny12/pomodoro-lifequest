@@ -40,6 +40,7 @@ import {
   Radio,
   ChevronDown,
   Flame,
+  Users,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
@@ -84,6 +85,7 @@ const NotificationSettingsModal = lazy(() => import('@/components/pomodoro/Notif
 const AuthModal = lazy(() => import('@/components/auth/AuthModal').then(m => ({ default: m.AuthModal })))
 const ChangePasswordModal = lazy(() => import('@/components/auth/ChangePasswordModal').then(m => ({ default: m.ChangePasswordModal })))
 const CosmicRaceTrackModal = lazy(() => import('@/components/race/CosmicRaceTrackModal').then(m => ({ default: m.CosmicRaceTrackModal })))
+const StudySquadModal = lazy(() => import('@/components/squads/StudySquadModal').then(m => ({ default: m.StudySquadModal })))
 const CheerCelebrationModal = lazy(() => import('@/components/race/CheerCelebrationModal').then(m => ({ default: m.CheerCelebrationModal })))
 const CheerHistoryModal = lazy(() => import('@/components/race/CheerHistoryModal').then(m => ({ default: m.CheerHistoryModal })))
 const DonateModal = lazy(() => import('@/components/common/DonateModal').then(m => ({ default: m.DonateModal })))
@@ -284,6 +286,7 @@ export default function PomodoroApp() {
   const [unreadCheers, setUnreadCheers] = useState<CheerItem[]>([])
   const [isCheerModalOpen, setIsCheerModalOpen] = useState<boolean>(false)
   const [isCheerHistoryModalOpen, setIsCheerHistoryModalOpen] = useState<boolean>(false)
+  const [isSquadsModalOpen, setIsSquadsModalOpen] = useState<boolean>(false)
   const [isTimerToggling, setIsTimerToggling] = useState<boolean>(false)
   const [isSavingEarly, setIsSavingEarly] = useState<boolean>(false)
   const isSavingEarlyRef = useRef<boolean>(false)
@@ -1013,6 +1016,17 @@ export default function PomodoroApp() {
                 )}
               </button>
             )}
+
+            {/* Study Squads Button */}
+            <button
+              type="button"
+              onClick={() => setIsSquadsModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold bg-gradient-to-r from-cyan-600/30 to-blue-600/30 hover:from-cyan-600/50 hover:to-blue-600/50 text-cyan-300 rounded-xl border border-cyan-400/30 transition active:scale-95 shadow-sm"
+              title="Hội Nhóm Học Cùng & Đường Đua F1 Thu Nhỏ"
+            >
+              <Users className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Nhóm Học F1</span>
+            </button>
 
             {/* Cosmic Race Track Button (Main CTA) */}
             <button
@@ -2172,6 +2186,14 @@ export default function PomodoroApp() {
           onClose={() => setIsCheerHistoryModalOpen(false)}
           currentUser={currentUser}
           onOpenRaceTrack={() => setIsRaceModalOpen(true)}
+        />
+
+        {/* ── STUDY SQUADS MODAL ── */}
+        <StudySquadModal
+          isOpen={isSquadsModalOpen}
+          onClose={() => setIsSquadsModalOpen(false)}
+          userGoals={goals}
+          currentUser={currentUser}
         />
       </Suspense>
 
