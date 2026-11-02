@@ -1,4 +1,5 @@
 import api from './api'
+import { queryClient } from '@/lib/queryClient'
 
 export interface UserProfile {
   id: number
@@ -104,5 +105,8 @@ export const authService = {
     localStorage.removeItem('lifequest_cached_goals')
     localStorage.removeItem('lifequest_cached_stats')
     localStorage.removeItem('lifequest_cached_sessions')
+    try {
+      queryClient.clear()
+    } catch {}
   },
 }

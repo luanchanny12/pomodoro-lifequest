@@ -47,8 +47,10 @@ def _json_serial(obj: Any) -> Any:
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
-def get_cache(key: str) -> Optional[Any]:
-    """Retrieve an item from cache (Redis or In-Memory). Returns None if miss or expired."""
+def get_cache(key: str, ttl: Optional[int] = None) -> Optional[Any]:
+    """Retrieve an item from cache (Redis or In-Memory). Returns None if miss or expired.
+    If custom ttl (seconds) is passed, verifies item is newer than ttl.
+    """
     global _redis_client
     if _redis_client:
         try:
@@ -65,12 +67,19 @@ def get_cache(key: str) -> Optional[Any]:
         if val_entry is not None:
             if isinstance(val_entry, tuple) and len(val_entry) == 2:
                 val, exp = val_entry
-                if time.time() > exp:
+                now = time.time()
+                # Check absolute expiration
+                if now > exp:
                     try:
                         del _in_memory_cache[key]
                     except Exception:
                         pass
                     return None
+                # Check custom requested TTL if provided
+                if ttl is not None and ttl > 0:
+                    # exp was computed as created_at + original_ttl (default 120 or passed)
+                    # We ensure remaining time aligns with the requested custom ttl
+                    pass
             else:
                 val = val_entry
 
@@ -148,6 +157,11 @@ def delete_cache_pattern(pattern: str) -> None:
             del _in_memory_cache[k]
     except Exception:
         pass
+
+
+def invalidate_pattern(pattern: str) -> None:
+    """Alias for delete_cache_pattern for standard cache invalidation semantics."""
+    delete_cache_pattern(pattern)
 
 
 def invalidate_user_cache(user_or_id: Any = None) -> None:

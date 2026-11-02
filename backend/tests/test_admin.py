@@ -247,3 +247,39 @@ def test_admin_overview_cache_and_batch_aggregation(admin_and_normal_user):
     cached_after_mutation = get_cache("cache:admin:overview")
     assert cached_after_mutation is None
 
+
+def test_overview_split_endpoints_and_visitors_pagination(admin_and_normal_user):
+    data = admin_and_normal_user
+    admin_token = data["admin_token"]
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # 1. Test 4 sub-endpoints
+    res_sum = client.get("/api/admin/overview/summary", headers=headers)
+    assert res_sum.status_code == 200
+    sum_data = res_sum.json()
+    assert "total_users" in sum_data
+    assert "total_study_hours" in sum_data
+
+    res_traf = client.get("/api/admin/overview/traffic", headers=headers)
+    assert res_traf.status_code == 200
+    traf_data = res_traf.json()
+    assert "total_visits" in traf_data
+    assert "traffic_trend_7days" in traf_data
+
+    res_racers = client.get("/api/admin/overview/top-racers", headers=headers)
+    assert res_racers.status_code == 200
+    assert "top_racers" in res_racers.json()
+
+    res_fb = client.get("/api/admin/overview/feedbacks", headers=headers)
+    assert res_fb.status_code == 200
+    assert "total_feedbacks" in res_fb.json()
+
+    # 2. Test visitors SQL pagination & search push-down
+    res_vis = client.get("/api/admin/visitors?page=1&page_size=15&search=test_admin", headers=headers)
+    assert res_vis.status_code == 200
+    vis_data = res_vis.json()
+    assert "aggregated_visitors" in vis_data
+    assert "total_unique_visitors" in vis_data
+    assert "page" in vis_data
+    assert vis_data["page"] == 1
+

@@ -473,6 +473,66 @@ def get_admin_overview(admin: User = Depends(get_current_admin), db: Session = D
     return overview_result
 
 
+@router.get("/overview/summary")
+def get_admin_overview_summary(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """Lấy dữ liệu tổng quan người dùng và giờ học (nhẹ, phục vụ tab Summary)."""
+    full = get_admin_overview(admin=admin, db=db)
+    timeframes = full.get("timeframes", {})
+    return {
+        "total_users": full.get("total_users", 0),
+        "active_users_count": full.get("active_users_count", 0),
+        "today_new_users": timeframes.get("day", {}).get("new_users", 0),
+        "week_new_users": timeframes.get("week", {}).get("new_users", 0),
+        "month_new_users": timeframes.get("month", {}).get("new_users", 0),
+        "active_today_count": full.get("active_today_count", 0),
+        "total_study_hours": full.get("total_study_hours", 0.0),
+        "total_sessions": full.get("total_sessions", 0),
+        "today_sessions": full.get("today_sessions", 0),
+        "today_study_hours": full.get("today_study_hours", 0.0),
+        "total_goals": full.get("total_goals", 0),
+        "completed_goals": full.get("completed_goals", 0),
+    }
+
+
+@router.get("/overview/traffic")
+def get_admin_overview_traffic(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """Lấy dữ liệu thống kê lưu lượng và biểu đồ xu hướng (phục vụ tab Traffic)."""
+    full = get_admin_overview(admin=admin, db=db)
+    return {
+        "total_visits": full["total_visits"],
+        "guest_visits": full["guest_visits"],
+        "member_visits": full["member_visits"],
+        "unique_guests": full["unique_guests"],
+        "unique_members": full["unique_members"],
+        "today_visits": full["today_visits"],
+        "today_guest_visits": full["today_guest_visits"],
+        "today_member_visits": full["today_member_visits"],
+        "mobile_visits": full["mobile_visits"],
+        "desktop_visits": full["desktop_visits"],
+        "traffic_trend_7days": full["traffic_trend_7days"],
+        "traffic_trend_30days": full["traffic_trend_30days"],
+        "timeframes": full["timeframes"],
+    }
+
+
+@router.get("/overview/top-racers")
+def get_admin_overview_top_racers(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """Lấy bảng xếp hạng top 5 tay đua xuất sắc nhất."""
+    full = get_admin_overview(admin=admin, db=db)
+    return {"top_racers": full.get("top_racers", [])}
+
+
+@router.get("/overview/feedbacks")
+def get_admin_overview_feedbacks(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """Lấy thống kê đánh giá & phản hồi từ người dùng."""
+    full = get_admin_overview(admin=admin, db=db)
+    return {
+        "total_feedbacks": full["total_feedbacks"],
+        "new_feedbacks": full["new_feedbacks"],
+        "feedback_avg_rating": full["feedback_avg_rating"],
+    }
+
+
 @router.get("/users")
 def get_admin_users(
     search: Optional[str] = Query(None, description="Tìm theo tên hoặc username"),

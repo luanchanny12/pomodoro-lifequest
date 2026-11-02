@@ -232,6 +232,26 @@ export const adminService = {
     return res.data
   },
 
+  getOverviewSummary: async () => {
+    const res = await api.get('/admin/overview/summary')
+    return res.data
+  },
+
+  getOverviewTraffic: async () => {
+    const res = await api.get('/admin/overview/traffic')
+    return res.data
+  },
+
+  getOverviewTopRacers: async () => {
+    const res = await api.get<{ top_racers: AdminOverview['top_racers'] }>('/admin/overview/top-racers')
+    return res.data
+  },
+
+  getOverviewFeedbacks: async () => {
+    const res = await api.get('/admin/overview/feedbacks')
+    return res.data
+  },
+
   getUsers: async (search?: string, skip = 0, limit = 100): Promise<{ total: number; items: AdminUserItem[] }> => {
     const params: Record<string, any> = { skip, limit }
     if (search) params.search = search

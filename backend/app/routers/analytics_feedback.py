@@ -5,7 +5,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.database import get_db
 from app.models_auth import User, VisitorLog, UserFeedback
@@ -307,8 +307,8 @@ def get_admin_visitors(
     timeframe: str = Query("all"),    # day, week, month, all
     date_str: Optional[str] = Query(None, description="Lọc theo ngày cụ thể dạng YYYY-MM-DD"),
     page: int = Query(1, ge=1, description="Số trang hiện tại (bắt đầu từ 1)"),
-    page_size: int = Query(15, ge=5, le=200, description="Số lượng bản ghi mỗi trang"),
-    limit: Optional[int] = Query(None, ge=10, le=500, description="Hỗ trợ tương thích ngược"),
+    page_size: int = Query(15, ge=5, le=100, description="Số lượng bản ghi mỗi trang (tối đa 100)"),
+    limit: Optional[int] = Query(None, ge=10, le=100, description="Hỗ trợ tương thích ngược"),
     admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
@@ -351,6 +351,8 @@ def get_admin_visitors(
 
     # 1. TỔNG HỢP THÀNH VIÊN (Members)
     member_items = []
+    kw = search.strip() if search and search.strip() else None
+
     if filter_type in ["all", "members"]:
         m_query = (
             db.query(
@@ -363,6 +365,15 @@ def get_admin_visitors(
         )
         if date_filter is not None:
             m_query = m_query.filter(date_filter)
+
+        # Đẩy tìm kiếm xuống SQL qua JOIN User
+        if kw:
+            m_query = m_query.join(User, User.id == VisitorLog.user_id).filter(
+                or_(
+                    User.username.ilike(f"%{kw}%"),
+                    User.display_name.ilike(f"%{kw}%"),
+                )
+            )
 
         m_groups = m_query.group_by(VisitorLog.user_id).all()
         m_user_ids = [g.user_id for g in m_groups]
@@ -409,6 +420,15 @@ def get_admin_visitors(
         )
         if date_filter is not None:
             g_query = g_query.filter(date_filter)
+
+        # Đẩy tìm kiếm xuống SQL
+        if kw:
+            g_query = g_query.filter(
+                or_(
+                    VisitorLog.ip_address.ilike(f"%{kw}%"),
+                    VisitorLog.visitor_id.ilike(f"%{kw}%"),
+                )
+            )
 
         g_groups = g_query.group_by(guest_key).all()
         for g in g_groups:
