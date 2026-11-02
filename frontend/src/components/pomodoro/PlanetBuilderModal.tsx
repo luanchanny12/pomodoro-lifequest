@@ -199,10 +199,12 @@ export const PlanetBuilderModal: React.FC<PlanetBuilderModalProps> = ({
   const [plots, setPlots] = useState<PlanetPlot[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const mountTimeRef = useRef<number>(0)
+  const isBackdropDownRef = useRef<boolean>(false)
 
   useEffect(() => {
     if (isOpen) {
       mountTimeRef.current = Date.now()
+      isBackdropDownRef.current = false
     }
   }, [isOpen])
 
@@ -210,28 +212,31 @@ export const PlanetBuilderModal: React.FC<PlanetBuilderModalProps> = ({
   useEffect(() => {
     if (!isOpen || !goal) return
 
-    let initialPlots: PlanetPlot[] = []
+    let parsedPlots: any[] = []
     if (goal.planet_data) {
       try {
         const parsed = JSON.parse(goal.planet_data)
         if (Array.isArray(parsed) && parsed.length > 0) {
-          initialPlots = parsed
+          parsedPlots = parsed
         }
       } catch (e) {
         console.error('Failed to parse planet_data:', e)
       }
     }
 
-    // Ensure exactly 16 plots
-    if (initialPlots.length < TOTAL_PLOTS) {
-      const full: PlanetPlot[] = []
-      for (let i = 0; i < TOTAL_PLOTS; i++) {
-        full.push(initialPlots[i] || { id: i, itemId: null })
+    // Chuẩn hóa chính xác 16 ô đất, phòng thủ crash nếu dữ liệu cũ có null hoặc sai định dạng
+    const full: PlanetPlot[] = []
+    for (let i = 0; i < TOTAL_PLOTS; i++) {
+      const p = parsedPlots[i]
+      if (p && typeof p === 'object' && typeof p.itemId === 'string') {
+        full.push({ id: i, itemId: p.itemId })
+      } else if (typeof p === 'string') {
+        full.push({ id: i, itemId: p })
+      } else {
+        full.push({ id: i, itemId: null })
       }
-      setPlots(full)
-    } else {
-      setPlots(initialPlots.slice(0, TOTAL_PLOTS))
     }
+    setPlots(full)
   }, [isOpen, goal])
 
   const currentHours = goal?.current_hours || 0
@@ -316,20 +321,43 @@ export const PlanetBuilderModal: React.FC<PlanetBuilderModalProps> = ({
   }
 
   // Chống hiện tượng ghost-click / tap-through trên điện thoại khi mở modal
+  const handleSafeClose = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    // Khóa an toàn 600ms đầu tiên sau khi mở modal để triệt tiêu mọi synthetic click lọt vào
+    if (Date.now() - mountTimeRef.current < 600) return
+    onClose()
+  }
+
+  const handleBackdropPointerDown = (e: React.PointerEvent) => {
+    if (e.target === e.currentTarget) {
+      isBackdropDownRef.current = true
+    } else {
+      isBackdropDownRef.current = false
+    }
+  }
+
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target !== e.currentTarget) return
-    if (Date.now() - mountTimeRef.current < 350) return
+    // Chỉ đóng nếu click bắt đầu từ chính backdrop (không phải kéo/vuốt từ trong thẻ ra)
+    if (!isBackdropDownRef.current) return
+    if (Date.now() - mountTimeRef.current < 700) return
     onClose()
   }
 
   return (
     <div
+      onPointerDown={handleBackdropPointerDown}
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 select-none"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`relative w-full max-w-2xl bg-gradient-to-b ${theme.bg} border border-white/15 rounded-3xl p-4 sm:p-6 text-white shadow-2xl overflow-hidden flex flex-col max-h-[92vh]`}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
+        className={`relative w-full max-w-2xl bg-gradient-to-b ${theme.bg} border border-white/15 rounded-3xl p-4 sm:p-6 text-white shadow-2xl overflow-hidden flex flex-col max-h-[92vh] overscroll-contain touch-manipulation`}
       >
         
         {/* Glow ambient circle in background */}
@@ -360,8 +388,10 @@ export const PlanetBuilderModal: React.FC<PlanetBuilderModalProps> = ({
           </div>
 
           <button
-            onClick={onClose}
+            type="button"
+            onClick={handleSafeClose}
             className="p-2 text-white/50 hover:text-white rounded-xl hover:bg-white/10 transition"
+            title="Đóng bảng kiến thiết"
           >
             <X className="w-5 h-5" />
           </button>
@@ -595,7 +625,7 @@ export const PlanetBuilderModal: React.FC<PlanetBuilderModalProps> = ({
         <div className="pt-3 border-t border-white/10 flex items-center justify-between relative z-10">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleSafeClose}
             className="px-4 py-2 text-xs font-bold text-white/70 hover:text-white rounded-xl hover:bg-white/10 transition"
           >
             Đóng

@@ -81,6 +81,30 @@ export const TopicGalaxyViewComponent: React.FC<TopicGalaxyViewProps> = ({ onBac
   const containerRef = useRef<HTMLDivElement | null>(null)
   const animFrameRef = useRef<number | null>(null)
   const timeRef = useRef<number>(0)
+  const lastOpenBuilderTimeRef = useRef<number>(0)
+
+  // Chuyển trực tiếp từ modal chi tiết hành tinh sang modal Xây dựng hành tinh (Atomic transition, triệt tiêu ghost-click)
+  const handleOpenPlanetBuilder = (e: React.SyntheticEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!selectedPlanet) return
+
+    const now = Date.now()
+    if (now - lastOpenBuilderTimeRef.current < 400) return
+    lastOpenBuilderTimeRef.current = now
+
+    const goalToBuild = {
+      id: selectedPlanet.goal_id,
+      title: selectedPlanet.real_title,
+      current_hours: selectedPlanet.current_hours,
+      target_hours: selectedPlanet.target_hours,
+      planet_type: selectedPlanet.planet_type || 'earth',
+      planet_data: selectedPlanet.planet_data || '[]',
+      is_completed: selectedPlanet.is_completed,
+    }
+    setBuildingGoal(goalToBuild)
+    setSelectedPlanet(null)
+  }
 
   // Load galaxy data & check constellations
   const loadData = async () => {
@@ -970,7 +994,9 @@ export const TopicGalaxyViewComponent: React.FC<TopicGalaxyViewProps> = ({ onBac
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-sm max-h-[92vh] flex flex-col bg-gradient-to-b from-[#181d2c] via-[#0f1422] to-[#0a0d17] border border-cyan-400/40 rounded-3xl text-white text-center shadow-2xl overflow-hidden"
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            className="relative w-full max-w-sm max-h-[92vh] flex flex-col bg-gradient-to-b from-[#181d2c] via-[#0f1422] to-[#0a0d17] border border-cyan-400/40 rounded-3xl text-white text-center shadow-2xl overflow-hidden overscroll-contain touch-manipulation"
           >
             <button
               onClick={() => setSelectedPlanet(null)}
@@ -1064,24 +1090,9 @@ export const TopicGalaxyViewComponent: React.FC<TopicGalaxyViewProps> = ({ onBac
               <div className="flex flex-col gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    const goalToBuild = {
-                      id: selectedPlanet.goal_id,
-                      title: selectedPlanet.real_title,
-                      current_hours: selectedPlanet.current_hours,
-                      target_hours: selectedPlanet.target_hours,
-                      planet_type: selectedPlanet.planet_type || 'earth',
-                      planet_data: selectedPlanet.planet_data || '[]',
-                      is_completed: selectedPlanet.is_completed,
-                    }
-                    setSelectedPlanet(null)
-                    // Khoảng đệm 50ms để browser xả sạch hàng đợi touch event trên mobile, chống ghost-click
-                    setTimeout(() => {
-                      setBuildingGoal(goalToBuild)
-                    }, 50)
-                  }}
-                  className="w-full py-3 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 hover:opacity-95 text-black font-black text-xs sm:text-sm rounded-xl transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 active:scale-95"
+                  onClick={handleOpenPlanetBuilder}
+                  onTouchEnd={handleOpenPlanetBuilder}
+                  className="w-full py-3 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 hover:opacity-95 text-black font-black text-xs sm:text-sm rounded-xl transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 active:scale-95 touch-manipulation"
                 >
                   <Globe className="w-4 h-4" />
                   <span>🌍 Vào Xây Dựng Hành Tinh</span>
