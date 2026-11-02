@@ -10,13 +10,14 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import NotificationSetting
+from app.models import NotificationSetting, DailyMatrixTask, StudySessionLog
 from app.models_auth import User
 from app.routers.auth import get_current_user_optional, get_current_user
 from app.schemas import (
     NotificationSettingsResponse,
     NotificationSettingsUpdate,
     TelegramTestRequest,
+    TelegramSummaryTestRequest,
     WindowsToastRequest,
 )
 
@@ -63,6 +64,149 @@ def _is_due(now_vn: datetime.datetime, target_hhmm: str, last_sent_date, today_s
     return scheduled <= now_vn < scheduled + datetime.timedelta(minutes=REMINDER_WINDOW_MINUTES)
 
 
+def _is_interval_due(now_vn: datetime.datetime, setting: NotificationSetting, uncompleted_count: int) -> bool:
+    interval_hours = getattr(setting, "telegram_interval_hours", 0) or 0
+    if interval_hours <= 0:
+        return False
+    # Chỉ nhắc nhở khi còn công việc chưa hoàn thành
+    if uncompleted_count <= 0:
+        return False
+    # Giới hạn khung giờ hoạt động (08:00 đến 22:00) tránh làm phiền ban đêm
+    if now_vn.hour < 8 or now_vn.hour >= 22:
+        return False
+
+    last_sent = getattr(setting, "last_interval_sent_at", None)
+    if not last_sent:
+        # Chưa từng gửi nhắc định kỳ: kiểm tra xem đã qua giờ sáng ít nhất interval_hours chưa
+        morning_hour, morning_minute = _parse_hhmm(setting.morning_reminder_time, "08:00")
+        morning_dt = now_vn.replace(hour=morning_hour, minute=morning_minute, second=0, microsecond=0)
+        return now_vn >= morning_dt + datetime.timedelta(hours=interval_hours)
+
+    if last_sent.tzinfo is None:
+        last_sent_vn = last_sent.replace(tzinfo=datetime.timezone.utc).astimezone(
+            datetime.timezone(datetime.timedelta(hours=7))
+        )
+    else:
+        last_sent_vn = last_sent.astimezone(datetime.timezone(datetime.timedelta(hours=7)))
+
+    delta_seconds = (now_vn - last_sent_vn).total_seconds()
+    # Biên độ dung sai 60 giây
+    return delta_seconds >= (interval_hours * 3600 - 60)
+
+
+def format_telegram_task_message(
+    display_name: str,
+    app_url: str,
+    tasks: list,
+    today_hours: float,
+    mode: str,
+    date_str: str,
+    include_task_details: bool = True,
+) -> str:
+    completed = [t for t in tasks if getattr(t, "is_completed", False)]
+    uncompleted = [t for t in tasks if not getattr(t, "is_completed", False)]
+    total_tasks = len(tasks)
+
+    if mode == "morning":
+        lines = [
+            "🌅 <b>[Pomodoro LifeQuest] Khởi Động Ngày Mới!</b>",
+            f"Xin chào <b>{display_name}</b>, chúc bạn một ngày mới tràn đầy năng lượng! ✨",
+            "",
+        ]
+        if include_task_details and total_tasks > 0:
+            lines.append(f"📋 <b>CÔNG VIỆC HÔM NAY ({date_str}):</b>")
+            q1_tasks = [t for t in uncompleted if getattr(t, "quadrant", 2) == 1]
+            q2_tasks = [t for t in uncompleted if getattr(t, "quadrant", 2) == 2]
+            other_tasks = [t for t in uncompleted if getattr(t, "quadrant", 2) in (3, 4)]
+
+            if q1_tasks:
+                lines.append("🔥 <b>Ô 1 (Làm Ngay - Quan trọng & Khẩn):</b>")
+                for t in q1_tasks[:5]:
+                    lines.append(f"  ▫️ {t.title}")
+            if q2_tasks:
+                lines.append("⭐ <b>Ô 2 (Mục Tiêu Lớn - Dài hạn):</b>")
+                for t in q2_tasks[:5]:
+                    lines.append(f"  ▫️ {t.title}")
+            if other_tasks:
+                lines.append("⚡ <b>Ô 3 & 4 (Khác):</b>")
+                for t in other_tasks[:3]:
+                    lines.append(f"  ▫️ {t.title}")
+
+            lines.append("")
+            lines.append(f"💡 <i>Mục tiêu hôm nay: {total_tasks} việc. Hãy bắt đầu ngay với việc Ô 1 nhé!</i>")
+        else:
+            lines.append("✨ <b>Hôm nay bạn chưa lên lịch Ma Trận 4 Ô!</b>")
+            lines.append("Hãy dành 3 phút mở app lên lịch để có ngày làm việc thật năng suất và rõ ràng nhé!")
+
+        lines.append("")
+        lines.append(f"👉 <a href='{app_url}'>Mở Focus Hub & Bắt đầu Pomodoro</a>")
+        return "\n".join(lines)
+
+    elif mode == "evening":
+        percent = int((len(completed) / total_tasks * 100)) if total_tasks > 0 else 0
+        lines = [
+            f"🌙 <b>[Pomodoro LifeQuest] Tổng Kết Ngày ({date_str})</b>",
+            f"Chào <b>{display_name}</b>, cùng nhìn lại thành quả hôm nay nhé:",
+            "",
+            f"📊 <b>Tiến độ: {len(completed)}/{total_tasks} việc ({percent}%)</b> | ⏱️ <b>{today_hours}h Focus</b>",
+            "",
+        ]
+
+        if include_task_details:
+            if completed:
+                lines.append("✅ <b>CÔNG VIỆC ĐÃ HOÀN THÀNH:</b>")
+                for t in completed[:6]:
+                    lines.append(f"  ✔ {t.title}")
+                lines.append("")
+
+            if uncompleted:
+                lines.append("⏳ <b>CÔNG VIỆC CHƯA HOÀN THÀNH:</b>")
+                for t in uncompleted[:6]:
+                    q_label = f" (Ô {t.quadrant})" if getattr(t, "quadrant", None) else ""
+                    lines.append(f"  ▫️ {t.title}{q_label}")
+                lines.append("")
+
+        if total_tasks > 0 and len(uncompleted) == 0:
+            lines.append("🎉 <i>Xuất sắc! Bạn đã hoàn thành trọn vẹn 100% mục tiêu hôm nay! Hãy nghỉ ngơi thật ngon nhé!</i>")
+        elif total_tasks > 0:
+            lines.append("💡 <i>Đừng lo nếu chưa xong hết! Hãy nghỉ ngơi và chuyển giao sang ngày mai để tiếp tục chinh phục nhé!</i>")
+        else:
+            lines.append("📝 <i>Hãy dành 3 phút lên trước Ma Trận 4 Ô cho ngày mai để sáng dậy có lộ trình rõ ràng nhé!</i>")
+
+        lines.append("")
+        lines.append(f"👉 <a href='{app_url}'>Mở ứng dụng tổng kết & lên lịch ngày mai</a>")
+        return "\n".join(lines)
+
+    elif mode == "interval":
+        lines = [
+            "⏰ <b>[Pomodoro LifeQuest] Nhắc Nhở Công Việc Đang Chờ!</b>",
+            f"<b>{display_name}</b> ơi, bạn vẫn còn <b>{len(uncompleted)} công việc</b> chưa hoàn thành hôm nay:",
+            "",
+        ]
+        q1_tasks = [t for t in uncompleted if getattr(t, "quadrant", 2) == 1]
+        q2_tasks = [t for t in uncompleted if getattr(t, "quadrant", 2) == 2]
+
+        if q1_tasks:
+            lines.append("🔥 <b>Việc ưu tiên cần làm ngay:</b>")
+            for t in q1_tasks[:3]:
+                lines.append(f"  ▫️ {t.title}")
+        if q2_tasks:
+            lines.append("⭐ <b>Mục tiêu dài hạn:</b>")
+            for t in q2_tasks[:3]:
+                lines.append(f"  ▫️ {t.title}")
+        if not q1_tasks and not q2_tasks:
+            for t in uncompleted[:4]:
+                lines.append(f"  ▫️ {t.title}")
+
+        lines.append("")
+        lines.append("⏱️ Hãy bật ngay 1 phiên Pomodoro 25 phút để dứt điểm việc này thôi nào! Cố lên nhé! 💪")
+        lines.append("")
+        lines.append(f"👉 <a href='{app_url}'>Bấm vào đây để vào phiên Focus ngay</a>")
+        return "\n".join(lines)
+
+    return ""
+
+
 def check_and_send_scheduled_reminders(db: Session, force: bool = False) -> dict:
     with _send_lock:
         return _check_and_send_scheduled_reminders_locked(db, force)
@@ -79,7 +223,9 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
 
     tz_vn = datetime.timezone(datetime.timedelta(hours=7))
     now_vn = datetime.datetime.now(tz_vn)
+    today_vn = now_vn.date()
     today_str = now_vn.strftime("%Y-%m-%d")
+    date_display_str = now_vn.strftime("%d/%m/%Y")
     current_time_str = now_vn.strftime("%H:%M")
 
     sent_any = False
@@ -94,16 +240,47 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
         app_url = (setting.app_public_url or os.getenv("APP_PUBLIC_URL") or "https://pomodoro-lifequest.vercel.app").rstrip("/")
         morning_time = setting.morning_reminder_time or "08:00"
         evening_time = setting.evening_reminder_time or "21:30"
+        include_details = getattr(setting, "telegram_task_reminder_enabled", True)
+        if include_details is None:
+            include_details = True
 
-        # Check Morning
+        # Lấy danh sách nhiệm vụ hôm nay và giờ học của user
+        tasks = []
+        today_hours = 0.0
+        display_name = "Bạn"
+
+        if setting.user_id:
+            user_record = db.query(User).filter(User.id == setting.user_id).first()
+            if user_record and user_record.display_name:
+                display_name = user_record.display_name
+
+            tasks = (
+                db.query(DailyMatrixTask)
+                .filter(DailyMatrixTask.user_id == setting.user_id, DailyMatrixTask.date == today_vn)
+                .order_by(DailyMatrixTask.quadrant.asc(), DailyMatrixTask.order_index.asc())
+                .all()
+            )
+
+            sessions = (
+                db.query(StudySessionLog)
+                .filter(StudySessionLog.user_id == setting.user_id, StudySessionLog.session_date == today_vn)
+                .all()
+            )
+            today_hours = round(sum(s.duration_hours for s in sessions), 1)
+
+        uncompleted_count = len([t for t in tasks if not getattr(t, "is_completed", False)])
+
+        # 1. Check Morning
         morning_due = _is_due(now_vn, morning_time, setting.last_morning_sent_date, today_str)
         if force or morning_due:
-            msg = (
-                "🌅 <b>[Pomodoro Goal Focus] Chào Buổi Sáng!</b>\n\n"
-                "✨ Ngày mới đã bắt đầu! Đã đến lúc xem lại:\n"
-                "🔥 <b>Ô 1:</b> Các việc quan trọng & khẩn cấp cần giải quyết ngay.\n"
-                "⭐ <b>Ô 2:</b> Mục tiêu lớn dài hạn hôm nay.\n\n"
-                f"👉 <a href='{app_url}'>Bấm vào đây để mở ứng dụng</a>"
+            msg = format_telegram_task_message(
+                display_name=display_name,
+                app_url=app_url,
+                tasks=tasks,
+                today_hours=today_hours,
+                mode="morning",
+                date_str=date_display_str,
+                include_task_details=include_details,
             )
             try:
                 send_telegram_msg(bot_token, chat_id, msg)
@@ -116,14 +293,17 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
                 db.rollback()
                 details.append(f"Lỗi gửi sáng (Chat ID {chat_id[:4]}***): {str(e)}")
 
-        # Check Evening
+        # 2. Check Evening
         evening_due = _is_due(now_vn, evening_time, setting.last_evening_sent_date, today_str)
         if force or evening_due:
-            msg = (
-                "🌙 <b>[Pomodoro Goal Focus] Chào Buổi Tối!</b>\n\n"
-                "🎯 Bạn đã hoàn thành các mục tiêu hôm nay chưa?\n"
-                "📋 Hãy dành 5 phút tổng kết thành quả và lên sẵn <b>Ma Trận 4 Ô</b> cho ngày mai nhé!\n\n"
-                f"👉 <a href='{app_url}'>Bấm vào đây để mở ứng dụng</a>"
+            msg = format_telegram_task_message(
+                display_name=display_name,
+                app_url=app_url,
+                tasks=tasks,
+                today_hours=today_hours,
+                mode="evening",
+                date_str=date_display_str,
+                include_task_details=include_details,
             )
             try:
                 send_telegram_msg(bot_token, chat_id, msg)
@@ -135,6 +315,28 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
             except Exception as e:
                 db.rollback()
                 details.append(f"Lỗi gửi tối (Chat ID {chat_id[:4]}***): {str(e)}")
+
+        # 3. Check In-Day Periodic Interval Reminder (nhắc nhở việc chưa xong sau mỗi N giờ)
+        interval_due = _is_interval_due(now_vn, setting, uncompleted_count)
+        if interval_due and not morning_due and not evening_due:
+            msg = format_telegram_task_message(
+                display_name=display_name,
+                app_url=app_url,
+                tasks=tasks,
+                today_hours=today_hours,
+                mode="interval",
+                date_str=date_display_str,
+                include_task_details=include_details,
+            )
+            try:
+                send_telegram_msg(bot_token, chat_id, msg)
+                setting.last_interval_sent_at = datetime.datetime.utcnow()
+                db.commit()
+                sent_any = True
+                details.append(f"Đã gửi nhắc nhở việc chưa xong (định kỳ) tới Chat ID {chat_id[:4]}***")
+            except Exception as e:
+                db.rollback()
+                details.append(f"Lỗi gửi nhắc định kỳ (Chat ID {chat_id[:4]}***): {str(e)}")
 
     return {
         "status": "success",
@@ -157,6 +359,8 @@ def _get_or_create_settings(db: Session, user_id: Optional[int] = None) -> Notif
                 morning_reminder_time="08:00",
                 evening_reminder_time="21:30",
                 telegram_enabled=False,
+                telegram_interval_hours=0,
+                telegram_task_reminder_enabled=True,
                 updated_at=datetime.datetime.utcnow(),
             )
             db.add(setting)
@@ -177,6 +381,8 @@ def _get_or_create_settings(db: Session, user_id: Optional[int] = None) -> Notif
         telegram_enabled=False,
         telegram_bot_token=None,
         telegram_chat_id=None,
+        telegram_interval_hours=0,
+        telegram_task_reminder_enabled=True,
         updated_at=datetime.datetime.utcnow(),
     )
 
@@ -373,3 +579,87 @@ def test_telegram_notification(
             raise HTTPException(status_code=400, detail=f"Telegram API Error ({e.code}): {err_raw}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Không thể kết nối Telegram: {str(e)}")
+
+
+@router.post("/test-telegram-summary")
+def test_telegram_summary_notification(
+    data: TelegramSummaryTestRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Sends a test summary message (morning, evening, or interval) to user's Telegram
+    using their actual daily tasks and study time today.
+    """
+    setting = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
+    if not setting or not setting.telegram_bot_token or not setting.telegram_chat_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Bạn chưa lưu cấu hình Telegram Bot Token hoặc Chat ID. Vui lòng điền và bấm 'Lưu Cài Đặt' trước khi thử!",
+        )
+
+    bot_token = setting.telegram_bot_token.strip()
+    chat_id = setting.telegram_chat_id.strip()
+
+    # Giờ VN hôm nay
+    vn_tz = datetime.timezone(datetime.timedelta(hours=7))
+    now_vn = datetime.datetime.now(vn_tz)
+    today_vn = now_vn.date()
+    date_display_str = today_vn.strftime("%d/%m/%Y")
+
+    display_name = user.display_name or "Bạn"
+    app_url = setting.app_public_url or "https://pomodoro-lifequest.vercel.app"
+    include_details = getattr(setting, "telegram_task_reminder_enabled", True)
+    if include_details is None:
+        include_details = True
+
+    # Lấy danh sách nhiệm vụ hôm nay và giờ học
+    tasks = (
+        db.query(DailyMatrixTask)
+        .filter(DailyMatrixTask.user_id == user.id, DailyMatrixTask.date == today_vn)
+        .order_by(DailyMatrixTask.quadrant.asc(), DailyMatrixTask.order_index.asc())
+        .all()
+    )
+
+    sessions = (
+        db.query(StudySessionLog)
+        .filter(StudySessionLog.user_id == user.id, StudySessionLog.session_date == today_vn)
+        .all()
+    )
+    today_hours = round(sum(s.duration_hours for s in sessions), 1)
+
+    msg = format_telegram_task_message(
+        display_name=display_name,
+        app_url=app_url,
+        tasks=tasks,
+        today_hours=today_hours,
+        mode=data.mode,
+        date_str=date_display_str,
+        include_task_details=include_details,
+    )
+
+    try:
+        res = send_telegram_msg(bot_token, chat_id, msg)
+        if not res.get("ok"):
+            raise HTTPException(status_code=400, detail="Lỗi Telegram: " + str(res))
+        return {
+            "message": f"Đã bắn thử tin nhắn tổng kết ({data.mode}) thành công đến Telegram!",
+            "ok": True,
+            "preview": msg[:150] + "...",
+        }
+    except urllib.error.HTTPError as e:
+        err_raw = e.read().decode("utf-8", errors="ignore")
+        if "chat not found" in err_raw.lower():
+            raise HTTPException(
+                status_code=400,
+                detail="⚠️ Bot chưa gửi được tin nhắn vì bạn chưa bấm START trong Telegram! Hãy mở bot, gõ /start và thử lại.",
+            )
+        elif "unauthorized" in err_raw.lower():
+            raise HTTPException(
+                status_code=400,
+                detail="⚠️ Bot Token không hợp lệ. Vui lòng kiểm tra lại token được cấp bởi @BotFather.",
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Telegram API Error ({e.code}): {err_raw}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Không thể gửi tin Telegram: {str(e)}")

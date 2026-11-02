@@ -11,6 +11,8 @@ export interface BackendNotificationSettings {
   telegram_bot_token?: string | null
   telegram_chat_id?: string | null
   telegram_enabled: boolean
+  telegram_interval_hours?: number
+  telegram_task_reminder_enabled?: boolean
   app_public_url?: string | null
   updated_at: string
 }
@@ -52,6 +54,13 @@ export const notificationService = {
       chat_id: chatId,
       message,
     })
+    return res.data
+  },
+
+  testTelegramSummary: async (
+    mode: 'morning' | 'evening' | 'interval' = 'evening'
+  ): Promise<{ message: string; ok: boolean; preview?: string }> => {
+    const res = await api.post('/notifications/test-telegram-summary', { mode })
     return res.data
   },
 

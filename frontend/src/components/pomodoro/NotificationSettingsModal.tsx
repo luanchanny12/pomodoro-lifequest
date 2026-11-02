@@ -20,6 +20,9 @@ import {
   Globe,
   Radio,
   Zap,
+  Save,
+  ListTodo,
+  CheckSquare,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -52,7 +55,13 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
   const [telegramToken, setTelegramToken] = useState<string>('')
   const [telegramChatId, setTelegramChatId] = useState<string>('')
   const [appPublicUrl, setAppPublicUrl] = useState<string>('')
+  const [morningTime, setMorningTime] = useState<string>('08:00')
+  const [eveningTime, setEveningTime] = useState<string>('21:30')
+  const [telegramIntervalHours, setTelegramIntervalHours] = useState<number>(0)
+  const [telegramTaskReminderEnabled, setTelegramTaskReminderEnabled] = useState<boolean>(true)
+  const [isSavingTelegram, setIsSavingTelegram] = useState<boolean>(false)
   const [isTestingTelegram, setIsTestingTelegram] = useState<boolean>(false)
+  const [isTestingSummary, setIsTestingSummary] = useState<boolean>(false)
   const [isTestingWindows, setIsTestingWindows] = useState<boolean>(false)
   const [isTriggeringCloud, setIsTriggeringCloud] = useState<boolean>(false)
   const [copiedText, setCopiedText] = useState<string | null>(null)
@@ -67,11 +76,17 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
           if (s.telegram_bot_token) setTelegramToken(s.telegram_bot_token)
           if (s.telegram_chat_id) setTelegramChatId(s.telegram_chat_id)
           if (s.app_public_url) setAppPublicUrl(s.app_public_url)
+          if (s.morning_reminder_time) setMorningTime(s.morning_reminder_time)
+          if (s.evening_reminder_time) setEveningTime(s.evening_reminder_time)
+          if (typeof s.telegram_interval_hours === 'number') setTelegramIntervalHours(s.telegram_interval_hours)
+          if (typeof s.telegram_task_reminder_enabled === 'boolean') setTelegramTaskReminderEnabled(s.telegram_task_reminder_enabled)
         })
         .catch(() => {})
     } else {
       setCopiedText(null)
+      setIsSavingTelegram(false)
       setIsTestingTelegram(false)
+      setIsTestingSummary(false)
       setIsTestingWindows(false)
       setIsTriggeringCloud(false)
     }
@@ -126,6 +141,58 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
     }
   }
 
+  const handleSaveTelegramSettings = async () => {
+    if (!telegramToken.trim() || !telegramChatId.trim()) {
+      toast.error('Vui lòng nhập Bot Token và Chat ID!')
+      return
+    }
+    setIsSavingTelegram(true)
+    try {
+      await notificationService.updateSettings({
+        telegram_bot_token: telegramToken.trim(),
+        telegram_chat_id: telegramChatId.trim(),
+        telegram_enabled: true,
+        morning_reminder_time: morningTime,
+        evening_reminder_time: eveningTime,
+        telegram_interval_hours: telegramIntervalHours,
+        telegram_task_reminder_enabled: telegramTaskReminderEnabled,
+        app_public_url: appPublicUrl.trim() || undefined,
+      })
+      toast.success('Đã lưu cấu hình trợ lý Telegram thành công! 🎉')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || err.message || 'Lỗi lưu cấu hình')
+    } finally {
+      setIsSavingTelegram(false)
+    }
+  }
+
+  const handleTestSummary = async (mode: 'morning' | 'evening' | 'interval' = 'evening') => {
+    if (!telegramToken.trim() || !telegramChatId.trim()) {
+      toast.error('Vui lòng nhập Bot Token và Chat ID và lưu cài đặt trước khi thử!')
+      return
+    }
+    setIsTestingSummary(true)
+    try {
+      // Tự động lưu thiết lập trước khi bắn thử để đồng bộ ngay lập tức
+      await notificationService.updateSettings({
+        telegram_bot_token: telegramToken.trim(),
+        telegram_chat_id: telegramChatId.trim(),
+        telegram_enabled: true,
+        morning_reminder_time: morningTime,
+        evening_reminder_time: eveningTime,
+        telegram_interval_hours: telegramIntervalHours,
+        telegram_task_reminder_enabled: telegramTaskReminderEnabled,
+        app_public_url: appPublicUrl.trim() || undefined,
+      })
+      const res = await notificationService.testTelegramSummary(mode)
+      toast.success(res.message || 'Đã gửi tin nhắn mẫu đến Telegram! 📱')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || err.message || 'Lỗi gửi tin nhắn tổng kết')
+    } finally {
+      setIsTestingSummary(false)
+    }
+  }
+
   const handleTestTelegram = async () => {
     if (!telegramToken.trim() || !telegramChatId.trim()) {
       toast.error('Vui lòng nhập Bot Token và Chat ID!')
@@ -136,18 +203,22 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
       await notificationService.testTelegramNotification(
         telegramToken.trim(),
         telegramChatId.trim(),
-        `🔔 Pomodoro Focus Hub: Kết nối thành công!\n\nLink app: ${appPublicUrl.trim() || 'https://pomodoro-lifequest.vercel.app'}\n\nBạn sẽ nhận được thông báo 08:00 sáng và 21:30 tối hàng ngày dù tắt máy tính!`
+        `🔔 Pomodoro Focus Hub: Kết nối thành công!\n\nLink app: ${appPublicUrl.trim() || 'https://pomodoro-lifequest.vercel.app'}\n\nBạn sẽ nhận được thông báo ${morningTime} sáng và ${eveningTime} tối hàng ngày dù tắt máy tính!`
       )
       // Save to backend
       await notificationService.updateSettings({
         telegram_bot_token: telegramToken.trim(),
         telegram_chat_id: telegramChatId.trim(),
         telegram_enabled: true,
+        morning_reminder_time: morningTime,
+        evening_reminder_time: eveningTime,
+        telegram_interval_hours: telegramIntervalHours,
+        telegram_task_reminder_enabled: telegramTaskReminderEnabled,
         app_public_url: appPublicUrl.trim() || undefined,
       })
       toast.success('Đã gửi tin nhắn đến Telegram trên điện thoại của bạn! 📱')
     } catch (err: any) {
-      toast.error(err.message || 'Lỗi kết nối Telegram')
+      toast.error(err.response?.data?.detail || err.message || 'Lỗi kết nối Telegram')
     } finally {
       setIsTestingTelegram(false)
     }
@@ -427,16 +498,16 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                 <Smartphone className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <div className="font-bold text-cyan-200 text-sm">
-                    Nhận Thông Báo Trên Điện Thoại (Kể Cả Khi Ra Ngoài / Tắt Máy Tính)
+                    Trợ Lý Telegram 24/7: Nhắc Nhở Công Việc Thông Minh
                   </div>
                   <p className="text-white/70 text-[11px] leading-relaxed">
-                    Khi triển khai lên đám mây, server Cloud 24/7 sẽ tự động nhắn tin trực tiếp vào điện thoại bạn lúc 08:00 sáng và 21:30 tối. Bấm vào link trong tin nhắn là mở ngay app học tập!
+                    Server Cloud 24/7 sẽ tự động nhắn tin trực tiếp vào điện thoại bạn: Khởi động ngày mới, báo cáo tổng kết tiến độ (việc đã xong, việc chưa xong), và nhắc nhở công việc tồn đọng theo chu kỳ bạn cài đặt!
                   </p>
                 </div>
               </div>
 
-              {/* Bot Credentials Form */}
-              <div className="space-y-3 p-4 rounded-2xl bg-black/40 border border-white/10">
+              {/* Bot Credentials & Scheduling Form */}
+              <div className="space-y-4 p-4 rounded-2xl bg-black/40 border border-white/10">
                 <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs space-y-2">
                   <div className="flex items-center gap-2 font-bold text-amber-300">
                     <Sparkles className="w-4 h-4 flex-shrink-0" />
@@ -459,62 +530,175 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-white/80">
-                    Telegram Bot Token:
-                  </label>
+                {/* Scheduling Section: Morning & Evening */}
+                <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-3">
+                  <div className="font-bold text-white text-xs flex items-center gap-2 text-cyan-300">
+                    <Clock className="w-4 h-4" />
+                    <span>Khung Giờ Mặc Định Sáng & Tối (Tự Động Hàng Ngày)</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-white/80 flex items-center gap-1.5">
+                        <span>🌅 Giờ Khởi Động Sáng:</span>
+                      </label>
+                      <input
+                        type="time"
+                        value={morningTime}
+                        onChange={(e) => setMorningTime(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-black/60 border border-white/20 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                      />
+                      <p className="text-[10px] text-white/50">
+                        Điểm danh công việc cần làm hôm nay (ưu tiên Ô 1 & Ô 2 Ma Trận).
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-white/80 flex items-center gap-1.5">
+                        <span>🌙 Giờ Tổng Kết Tối:</span>
+                      </label>
+                      <input
+                        type="time"
+                        value={eveningTime}
+                        onChange={(e) => setEveningTime(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-black/60 border border-white/20 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                      />
+                      <p className="text-[10px] text-white/50">
+                        Báo cáo % hoàn thành, việc đã xong, việc chưa xong & số giờ học.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* In-Day Periodic Reminders */}
+                <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-white text-xs flex items-center gap-2 text-amber-300">
+                        <Zap className="w-4 h-4" />
+                        <span>Tần Suất Nhắc Nhở Việc Chưa Xong Trong Ngày</span>
+                      </div>
+                      <p className="text-[10px] text-white/60">
+                        Sau một khoảng thời gian, bot sẽ tự động nhắc lại các việc chưa làm.
+                      </p>
+                    </div>
+                    <select
+                      value={telegramIntervalHours}
+                      onChange={(e) => setTelegramIntervalHours(Number(e.target.value))}
+                      className="bg-black/60 border border-white/20 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 self-start sm:self-auto"
+                    >
+                      <option value={0}>Tắt (Chỉ gửi Sáng & Tối)</option>
+                      <option value={1}>Sau mỗi 1 tiếng</option>
+                      <option value={2}>Sau mỗi 2 tiếng (Khuyên dùng)</option>
+                      <option value={3}>Sau mỗi 3 tiếng</option>
+                      <option value={4}>Sau mỗi 4 tiếng</option>
+                    </select>
+                  </div>
+                  <div className="text-[10px] text-white/60 bg-black/40 p-2.5 rounded-lg border border-white/5 leading-relaxed">
+                    💡 <b>Cơ chế thông minh:</b> Bot chỉ gửi nhắc nhở khi <b>vẫn còn việc chưa hoàn thành</b> trong khung giờ thức (08:00 - 22:00). Khi bạn đã hoàn thành hết mục tiêu hoặc vào ban đêm, bot sẽ tự động im lặng để không làm phiền bạn!
+                  </div>
+                </div>
+
+                {/* Option: Detail task breakdown */}
+                <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-white text-xs flex items-center gap-1.5">
+                      <ListTodo className="w-4 h-4 text-emerald-400" />
+                      <span>Liệt Kê Chi Tiết Tên Công Việc</span>
+                    </div>
+                    <p className="text-[10px] text-white/60">
+                      Hiển thị rõ ràng danh sách tên việc Ô 1 (Làm ngay), Ô 2 và các việc đã hoàn thành.
+                    </p>
+                  </div>
                   <input
-                    type="password"
-                    value={telegramToken}
-                    onChange={(e) => setTelegramToken(e.target.value)}
-                    placeholder="Ví dụ: 123456789:ABCdefGhIJKlmNoPQRstuVWXyz"
-                    className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-xl text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 font-mono"
+                    type="checkbox"
+                    checked={telegramTaskReminderEnabled}
+                    onChange={(e) => setTelegramTaskReminderEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-white/80">
-                    Your Telegram Chat ID:
-                  </label>
-                  <input
-                    type="text"
-                    value={telegramChatId}
-                    onChange={(e) => setTelegramChatId(e.target.value)}
-                    placeholder="Ví dụ: 987654321"
-                    className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-xl text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 font-mono"
-                  />
+                {/* Bot Credentials Inputs */}
+                <div className="space-y-2 pt-1">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-white/80">
+                      Telegram Bot Token:
+                    </label>
+                    <input
+                      type="password"
+                      value={telegramToken}
+                      onChange={(e) => setTelegramToken(e.target.value)}
+                      placeholder="Ví dụ: 123456789:ABCdefGhIJKlmNoPQRstuVWXyz"
+                      className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-xl text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-white/80">
+                      Your Telegram Chat ID:
+                    </label>
+                    <input
+                      type="text"
+                      value={telegramChatId}
+                      onChange={(e) => setTelegramChatId(e.target.value)}
+                      placeholder="Ví dụ: 987654321"
+                      className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-xl text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-white/80">
+                      Đường Link Web Công Khai (Vercel / Cloud URL):
+                    </label>
+                    <input
+                      type="text"
+                      value={appPublicUrl}
+                      onChange={(e) => setAppPublicUrl(e.target.value)}
+                      placeholder="Ví dụ: https://pomodoro-lifequest.vercel.app"
+                      className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-xl text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 font-mono"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-white/80">
-                    Đường Link Web Công Khai (Vercel / Cloud URL để gắn vào tin nhắn):
-                  </label>
-                  <input
-                    type="text"
-                    value={appPublicUrl}
-                    onChange={(e) => setAppPublicUrl(e.target.value)}
-                    placeholder="Ví dụ: https://pomodoro-lifequest.vercel.app"
-                    className="w-full px-3 py-2 bg-black/50 border border-white/20 rounded-xl text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 font-mono"
-                  />
-                </div>
+                {/* Action Buttons */}
+                <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 mt-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => handleTestSummary('evening')}
+                      disabled={isTestingSummary}
+                      className="px-3 py-2 bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 font-bold rounded-xl transition flex items-center gap-1.5 active:scale-95 text-xs disabled:opacity-50"
+                      title="Bắn thử tin báo cáo tổng kết việc thật buổi tối"
+                    >
+                      <ListTodo className="w-3.5 h-3.5 text-purple-300" />
+                      <span>{isTestingSummary ? 'Đang gửi...' : 'Bắn Thử Tổng Kết Tối (Việc Thật) 🌙'}</span>
+                    </button>
 
-                <div className="pt-2 flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      onClick={() => handleTestSummary('morning')}
+                      disabled={isTestingSummary}
+                      className="px-3 py-2 bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/40 text-amber-200 font-bold rounded-xl transition flex items-center gap-1.5 active:scale-95 text-xs disabled:opacity-50"
+                      title="Bắn thử tin điểm danh công việc sáng"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Bắn Thử Việc Sáng 🌅</span>
+                    </button>
+
+                    <button
+                      onClick={handleTriggerCloudScheduler}
+                      disabled={isTriggeringCloud}
+                      className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl transition flex items-center gap-1.5 active:scale-95 text-xs disabled:opacity-50"
+                    >
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>{isTriggeringCloud ? 'Đang kích hoạt...' : 'Kích Hoạt Scheduler'}</span>
+                    </button>
+                  </div>
+
                   <button
-                    onClick={handleTriggerCloudScheduler}
-                    disabled={isTriggeringCloud}
-                    className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl transition flex items-center gap-1.5 active:scale-95 text-xs disabled:opacity-50"
+                    onClick={handleSaveTelegramSettings}
+                    disabled={isSavingTelegram}
+                    className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl transition shadow flex items-center gap-1.5 active:scale-95 disabled:opacity-50 text-xs"
                   >
-                    <Zap className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{isTriggeringCloud ? 'Đang kích hoạt...' : 'Kích Hoạt Gửi Ngay'}</span>
-                  </button>
-
-                  <button
-                    onClick={handleTestTelegram}
-                    disabled={isTestingTelegram}
-                    className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-xl transition shadow flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{isTestingTelegram ? 'Đang gửi...' : 'Lưu & Bắn Thử Tin Nhắn 📱'}</span>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{isSavingTelegram ? 'Đang lưu...' : 'Lưu Cài Đặt Trợ Lý ✨'}</span>
                   </button>
                 </div>
               </div>
@@ -528,7 +712,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                 <ol className="list-decimal list-inside space-y-1 text-[11px] text-white/70">
                   <li>Mở Telegram, tìm kiếm <code className="text-cyan-300 font-bold">@BotFather</code> $\rightarrow$ gõ <code className="text-cyan-300">/newbot</code> $\rightarrow$ đặt tên bot $\rightarrow$ nhận <b>Bot Token</b>.</li>
                   <li>Tìm kiếm <code className="text-cyan-300 font-bold">@userinfobot</code> $\rightarrow$ bấm Start để lấy số <b>Id (Chat ID)</b> của bạn.</li>
-                  <li>Chat <code className="text-cyan-300">/start</code> với con bot bạn vừa tạo, rồi dán 2 thông tin vào ô trên và bấm <i>Lưu & Bắn Thử Tin Nhắn</i>!</li>
+                  <li>Chat <code className="text-cyan-300">/start</code> với con bot bạn vừa tạo, rồi dán 2 thông tin vào ô trên và bấm <i>Lưu Cài Đặt Trợ Lý</i>!</li>
                 </ol>
               </div>
             </div>

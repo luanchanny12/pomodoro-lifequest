@@ -460,6 +460,9 @@ class NotificationSetting(Base):
     telegram_bot_token = Column(String, nullable=True)
     telegram_chat_id = Column(String, nullable=True)
     telegram_enabled = Column(Boolean, default=False)
+    telegram_interval_hours = Column(Integer, default=0)  # 0: chỉ sáng & tối; 1, 2, 3, 4: nhắc định kỳ mỗi N giờ
+    telegram_task_reminder_enabled = Column(Boolean, default=True)  # Liệt kê chi tiết việc hoàn thành / chưa xong
+    last_interval_sent_at = Column(DateTime, nullable=True)  # Thời điểm gửi tin nhắc định kỳ gần nhất
     app_public_url = Column(String, nullable=True)
     # Lưu ngày đã gửi gần nhất để không gửi trùng khi Render restart / cold start
     last_morning_sent_date = Column(String, nullable=True)

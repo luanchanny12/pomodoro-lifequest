@@ -119,3 +119,99 @@ def test_send_windows_notification_event(auth_headers):
     )
     assert res.status_code == 200
     assert "success" in res.json()
+
+
+def test_telegram_smart_task_reminder_settings(auth_headers):
+    # Update settings with telegram interval and task reminder flag
+    res = client.put(
+        "/api/notifications/settings",
+        json={
+            "telegram_interval_hours": 2,
+            "telegram_task_reminder_enabled": True,
+            "morning_reminder_time": "08:30",
+            "evening_reminder_time": "21:45",
+        },
+        headers=auth_headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["telegram_interval_hours"] == 2
+    assert data["telegram_task_reminder_enabled"] is True
+    assert data["morning_reminder_time"] == "08:30"
+    assert data["evening_reminder_time"] == "21:45"
+
+    # GET verifies persisted values
+    get_res = client.get("/api/notifications/settings", headers=auth_headers)
+    assert get_res.status_code == 200
+    assert get_res.json()["telegram_interval_hours"] == 2
+    assert get_res.json()["telegram_task_reminder_enabled"] is True
+
+
+def test_format_telegram_task_message():
+    from app.routers.notifications import format_telegram_task_message
+    from unittest.mock import MagicMock
+
+    task1 = MagicMock()
+    task1.title = "Nộp báo cáo đồ án"
+    task1.quadrant = 1
+    task1.is_completed = False
+
+    task2 = MagicMock()
+    task2.title = "Học 2 tiếng Tiếng Anh"
+    task2.quadrant = 2
+    task2.is_completed = True
+
+    tasks = [task1, task2]
+
+    # Morning
+    msg_morning = format_telegram_task_message(
+        display_name="Luân",
+        app_url="https://pomodoro-lifequest.vercel.app",
+        tasks=tasks,
+        today_hours=2.0,
+        mode="morning",
+        date_str="02/11/2026",
+    )
+    assert "Khởi Động Ngày Mới" in msg_morning
+    assert "Nộp báo cáo đồ án" in msg_morning
+    assert "Luân" in msg_morning
+
+    # Evening
+    msg_evening = format_telegram_task_message(
+        display_name="Luân",
+        app_url="https://pomodoro-lifequest.vercel.app",
+        tasks=tasks,
+        today_hours=2.0,
+        mode="evening",
+        date_str="02/11/2026",
+    )
+    assert "Tổng Kết Ngày" in msg_evening
+    assert "Học 2 tiếng Tiếng Anh" in msg_evening
+    assert "Nộp báo cáo đồ án" in msg_evening
+    assert "50%" in msg_evening
+
+    # Interval
+    msg_interval = format_telegram_task_message(
+        display_name="Luân",
+        app_url="https://pomodoro-lifequest.vercel.app",
+        tasks=tasks,
+        today_hours=2.0,
+        mode="interval",
+        date_str="02/11/2026",
+    )
+    assert "Nhắc Nhở Công Việc Đang Chờ" in msg_interval
+    assert "Nộp báo cáo đồ án" in msg_interval
+
+
+def test_test_telegram_summary_endpoint(auth_headers):
+    # Without auth -> 401
+    assert client.post("/api/notifications/test-telegram-summary", json={"mode": "evening"}).status_code == 401
+
+    # With auth but no telegram configured -> 400
+    res = client.post(
+        "/api/notifications/test-telegram-summary",
+        json={"mode": "evening"},
+        headers=auth_headers,
+    )
+    assert res.status_code == 400
+    assert "chưa lưu cấu hình" in res.json()["detail"].lower()

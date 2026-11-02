@@ -1051,6 +1051,8 @@ class NotificationSettingsResponse(BaseModel):
     telegram_bot_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
     telegram_enabled: bool = False
+    telegram_interval_hours: int = 0
+    telegram_task_reminder_enabled: bool = True
     app_public_url: Optional[str] = None
     updated_at: datetime.datetime
 
@@ -1068,6 +1070,8 @@ class NotificationSettingsUpdate(BaseModel):
     telegram_bot_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
     telegram_enabled: Optional[bool] = None
+    telegram_interval_hours: Optional[int] = None
+    telegram_task_reminder_enabled: Optional[bool] = None
     app_public_url: Optional[str] = None
 
 
@@ -1075,6 +1079,10 @@ class TelegramTestRequest(BaseModel):
     bot_token: str
     chat_id: str
     message: Optional[str] = None
+
+
+class TelegramSummaryTestRequest(BaseModel):
+    mode: str = "evening"  # 'morning', 'evening', 'interval'
 
 
 class WindowsToastRequest(BaseModel):
