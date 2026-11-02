@@ -115,6 +115,7 @@ class Player(Base):
     coins = Column(Integer, default=0)
     streak = Column(Integer, default=0)
     last_streak_date = Column(Date, nullable=True)
+    mood_keys = Column(Integer, default=3)  # Hạc Giấy Hy Vọng / Chìa Khóa Cảm Xúc để mở thư khi tụt mood
     created_at = Column(DateTime, default=datetime.utcnow)
     achievements = relationship("Achievement", back_populates="player", cascade="all, delete-orphan")
 
@@ -389,11 +390,16 @@ class TimeCapsule(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
     goal_id = Column(Integer, ForeignKey("study_goals.id"), nullable=True)
-    milestone_hours = Column(Float, nullable=False)
+    milestone_hours = Column(Float, nullable=False, default=0.0)
     title = Column(String, default="Thư gửi tương lai")
     message_content = Column(Text, nullable=False)
+    unlock_date = Column(DateTime, nullable=True)
+    unlock_days = Column(Integer, nullable=True)
+    unlock_type = Column(String, default="hours")  # 'hours', 'days', 'both'
+    mood_tag = Column(String, nullable=True)  # 'khi_met_moi', 'tiep_lua', 'ly_do_bat_dau', 'chuc_mung', 'tam_su'
     is_unlocked = Column(Boolean, default=False)
     unlocked_at = Column(DateTime, nullable=True)
+    unlocked_by_key = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

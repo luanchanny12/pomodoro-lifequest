@@ -174,10 +174,15 @@ export interface TimeCapsule {
   id: number
   goal_id?: number | null
   milestone_hours: number
+  unlock_date?: string | null
+  unlock_days?: number | null
+  unlock_type?: string
+  mood_tag?: string | null
   title: string
   message_content: string
   is_unlocked: boolean
   unlocked_at?: string | null
+  unlocked_by_key?: boolean
   created_at: string
 }
 
@@ -537,11 +542,42 @@ export const focusService = {
 
   createTimeCapsule: async (data: {
     goal_id?: number | null
-    milestone_hours: number
+    milestone_hours?: number
+    unlock_days?: number | null
+    unlock_type?: string
+    mood_tag?: string | null
     title?: string
     message_content: string
   }): Promise<TimeCapsule> => {
     const res = await api.post('/focus/time-capsules', data)
+    return res.data
+  },
+
+  getMoodKeysBalance: async (): Promise<{
+    mood_keys: number
+    total_capsules: number
+    unlocked_capsules: number
+  }> => {
+    const res = await api.get('/focus/time-capsules/mood-balance')
+    return res.data
+  },
+
+  unlockEmergencyTimeCapsule: async (capsuleId: number): Promise<TimeCapsule> => {
+    const res = await api.post(`/focus/time-capsules/${capsuleId}/unlock-emergency`)
+    return res.data
+  },
+
+  randomRescueCapsule: async (): Promise<TimeCapsule> => {
+    const res = await api.post('/focus/time-capsules/random-rescue')
+    return res.data
+  },
+
+  claimBreathGrant: async (): Promise<{
+    success: boolean
+    mood_keys: number
+    message: string
+  }> => {
+    const res = await api.post('/focus/time-capsules/claim-breath-grant')
     return res.data
   },
 

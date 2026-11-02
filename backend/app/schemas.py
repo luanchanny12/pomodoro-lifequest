@@ -936,22 +936,37 @@ class TimeWarpOracleResponse(BaseModel):
 
 class TimeCapsuleCreate(BaseModel):
     goal_id: Optional[int] = None
-    milestone_hours: float
+    milestone_hours: Optional[float] = 0.0
+    unlock_days: Optional[int] = None
+    unlock_type: Optional[str] = "hours"  # 'hours', 'days', 'both'
+    mood_tag: Optional[str] = None
     title: str = "Thư gửi tương lai"
     message_content: str
+
 
 class TimeCapsuleResponse(BaseModel):
     id: int
     goal_id: Optional[int] = None
-    milestone_hours: float
+    milestone_hours: float = 0.0
+    unlock_date: Optional[datetime.datetime] = None
+    unlock_days: Optional[int] = None
+    unlock_type: str = "hours"
+    mood_tag: Optional[str] = None
     title: str
     message_content: str
     is_unlocked: bool
     unlocked_at: Optional[datetime.datetime] = None
+    unlocked_by_key: bool = False
     created_at: datetime.datetime
 
     class Config:
         from_attributes = True
+
+
+class MoodBalanceResponse(BaseModel):
+    mood_keys: int
+    total_capsules: int
+    unlocked_capsules: int
 
 class DailyMatrixTaskCreate(BaseModel):
     title: str

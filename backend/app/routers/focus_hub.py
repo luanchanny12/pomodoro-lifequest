@@ -42,6 +42,7 @@ from app.schemas import (
     TimeWarpOracleResponse,
     TimeCapsuleCreate,
     TimeCapsuleResponse,
+    MoodBalanceResponse,
     ConstellationAchievementResponse,
     ConstellationCheckResponse,
     DailyMatrixTaskCreate,
@@ -1369,7 +1370,7 @@ def get_time_warp_oracle(
 
 
 # -------------------------------------------------------------
-# TIME CAPSULE ENDPOINTS
+# TIME CAPSULE ENDPOINTS (MOOD RESCUE & DAYS UNLOCK)
 # -------------------------------------------------------------
 
 @router.get("/time-capsules", response_model=List[TimeCapsuleResponse])
@@ -1385,14 +1386,17 @@ def get_time_capsules(
         query = db.query(TimeCapsule).filter(TimeCapsule.user_id.is_(None))
 
     total_hours = sum(s.duration_hours for s in all_sessions)
-    capsules = query.order_by(TimeCapsule.milestone_hours.asc()).all()
+    capsules = query.order_by(TimeCapsule.created_at.desc()).all()
     now = datetime.datetime.utcnow()
 
-    # Check auto-unlock
+    # Check auto-unlock by hours OR by unlock_date
     for cap in capsules:
-        if total_hours >= cap.milestone_hours and not cap.is_unlocked:
-            cap.is_unlocked = True
-            cap.unlocked_at = now
+        if not cap.is_unlocked:
+            hours_met = bool(cap.milestone_hours and cap.milestone_hours > 0 and total_hours >= cap.milestone_hours)
+            date_met = bool(cap.unlock_date and now >= cap.unlock_date)
+            if hours_met or date_met:
+                cap.is_unlocked = True
+                cap.unlocked_at = now
 
     db.commit()
     return [TimeCapsuleResponse.model_validate(c) for c in capsules]
@@ -1404,8 +1408,17 @@ def create_time_capsule(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    if data.milestone_hours <= 0:
-        raise HTTPException(status_code=400, detail="Mốc giờ mở khóa phải lớn hơn 0")
+    milestone_hours = round(data.milestone_hours or 0.0, 1)
+    unlock_days = data.unlock_days
+
+    if milestone_hours <= 0 and (not unlock_days or unlock_days <= 0):
+        raise HTTPException(
+            status_code=400,
+            detail="Vui lòng thiết lập mốc giờ học hoặc số ngày mở khóa cho hòm thư!",
+        )
+
+    if not data.message_content or not data.message_content.strip():
+        raise HTTPException(status_code=400, detail="Vui lòng nhập nội dung bức thư nhắn gửi tương lai!")
 
     if data.goal_id:
         goal = db.query(StudyGoal).filter(StudyGoal.id == data.goal_id).first()
@@ -1420,22 +1433,210 @@ def create_time_capsule(
 
     total_hours = sum(s.duration_hours for s in all_sessions)
     now = datetime.datetime.utcnow()
-    is_unlocked = total_hours >= data.milestone_hours
+
+    unlock_date = None
+    if unlock_days and unlock_days > 0:
+        unlock_date = now + datetime.timedelta(days=unlock_days)
+
+    hours_met = bool(milestone_hours > 0 and total_hours >= milestone_hours)
+    date_met = bool(unlock_date is not None and now >= unlock_date)
+    is_unlocked = bool(hours_met or date_met)
+
+    unlock_type = data.unlock_type or (
+        "both" if (milestone_hours > 0 and unlock_days) else ("days" if unlock_days else "hours")
+    )
 
     capsule = TimeCapsule(
         user_id=user.id if user else None,
         goal_id=data.goal_id,
-        milestone_hours=round(data.milestone_hours, 1),
+        milestone_hours=milestone_hours,
+        unlock_days=unlock_days,
+        unlock_date=unlock_date,
+        unlock_type=unlock_type,
+        mood_tag=data.mood_tag,
         title=data.title.strip() if data.title else "Thư gửi tương lai",
         message_content=data.message_content.strip(),
         is_unlocked=is_unlocked,
         unlocked_at=now if is_unlocked else None,
+        unlocked_by_key=False,
         created_at=now,
     )
     db.add(capsule)
+
+    # Thưởng +1 Hạc Giấy Hy Vọng cho người dùng vì đã gieo niềm tin vào tương lai!
+    if user:
+        player = db.query(Player).filter(Player.user_id == user.id).first()
+        if not player:
+            player = Player(user_id=user.id, level=1, exp=0, coins=0, streak=0, mood_keys=4)
+            db.add(player)
+        else:
+            current_keys = player.mood_keys if player.mood_keys is not None else 3
+            player.mood_keys = current_keys + 1
+
     db.commit()
     db.refresh(capsule)
     return TimeCapsuleResponse.model_validate(capsule)
+
+
+@router.get("/time-capsules/mood-balance", response_model=MoodBalanceResponse)
+def get_capsule_mood_balance(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    mood_keys = 3
+    if user:
+        player = db.query(Player).filter(Player.user_id == user.id).first()
+        if player and player.mood_keys is not None:
+            mood_keys = player.mood_keys
+        query = db.query(TimeCapsule).filter(TimeCapsule.user_id == user.id)
+    else:
+        query = db.query(TimeCapsule).filter(TimeCapsule.user_id.is_(None))
+
+    total = query.count()
+    unlocked = query.filter(TimeCapsule.is_unlocked.is_(True)).count()
+    return MoodBalanceResponse(
+        mood_keys=mood_keys,
+        total_capsules=total,
+        unlocked_capsules=unlocked,
+    )
+
+
+@router.post("/time-capsules/{capsule_id}/unlock-emergency", response_model=TimeCapsuleResponse)
+def unlock_capsule_emergency(
+    capsule_id: int,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    query = db.query(TimeCapsule).filter(TimeCapsule.id == capsule_id)
+    if user:
+        capsule = query.filter(TimeCapsule.user_id == user.id).first()
+    else:
+        capsule = query.filter(TimeCapsule.user_id.is_(None)).first()
+
+    if not capsule:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hòm thư này!")
+
+    if capsule.is_unlocked:
+        return TimeCapsuleResponse.model_validate(capsule)
+
+    # Tiêu hao 1 Hạc Giấy Hy Vọng
+    if user:
+        player = db.query(Player).filter(Player.user_id == user.id).first()
+        current_keys = player.mood_keys if (player and player.mood_keys is not None) else 3
+        if current_keys < 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Bạn đã hết Hạc Giấy Hy Vọng! Hãy làm bài tập thở 30s hoặc viết một lá thư mới để nhận thêm nhé.",
+            )
+        player.mood_keys = current_keys - 1
+
+    capsule.is_unlocked = True
+    capsule.unlocked_by_key = True
+    capsule.unlocked_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(capsule)
+    return TimeCapsuleResponse.model_validate(capsule)
+
+
+@router.post("/time-capsules/random-rescue", response_model=TimeCapsuleResponse)
+def random_rescue_capsule(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    import random
+    if user:
+        query = db.query(TimeCapsule).filter(TimeCapsule.user_id == user.id)
+    else:
+        query = db.query(TimeCapsule).filter(TimeCapsule.user_id.is_(None))
+
+    capsules = query.all()
+    if not capsules:
+        raise HTTPException(
+            status_code=404,
+            detail="Bạn chưa có lá thư nào trong hòm thư thời gian! Hãy bấm 'Soạn thư mới' để gửi gắm niềm tin vào tương lai nhé.",
+        )
+
+    # Ưu tiên rút:
+    # 1. Thư niêm phong có tag cứu mood
+    # 2. Thư niêm phong khác
+    # 3. Thư đã mở có tag cứu mood
+    # 4. Thư đã mở bất kỳ
+    rescue_tags = ("khi_met_moi", "tiep_lua", "ly_do_bat_dau")
+    locked_mood = [c for c in capsules if not c.is_unlocked and c.mood_tag in rescue_tags]
+    locked_other = [c for c in capsules if not c.is_unlocked]
+    unlocked_mood = [c for c in capsules if c.is_unlocked and c.mood_tag in rescue_tags]
+
+    chosen = None
+    needs_key = False
+
+    if locked_mood:
+        chosen = random.choice(locked_mood)
+        needs_key = True
+    elif locked_other:
+        chosen = random.choice(locked_other)
+        needs_key = True
+    elif unlocked_mood:
+        chosen = random.choice(unlocked_mood)
+        needs_key = False
+    else:
+        chosen = random.choice(capsules)
+        needs_key = False
+
+    # Nếu cần bẻ khóa thì kiểm tra & trừ 1 Hạc Giấy
+    if needs_key and not chosen.is_unlocked:
+        if user:
+            player = db.query(Player).filter(Player.user_id == user.id).first()
+            current_keys = player.mood_keys if (player and player.mood_keys is not None) else 3
+            if current_keys < 1:
+                # Nếu hết hạc mà có thư đã mở thì fallback sang thư đã mở để không chặn người dùng
+                unlocked_fallback = [c for c in capsules if c.is_unlocked]
+                if unlocked_fallback:
+                    chosen = random.choice(unlocked_fallback)
+                    needs_key = False
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Bạn đã hết Hạc Giấy Hy Vọng để bẻ khóa thư niêm phong! Hãy làm bài tập thở 30s để nhận hạc khẩn cấp.",
+                    )
+            else:
+                player.mood_keys = current_keys - 1
+
+        if needs_key:
+            chosen.is_unlocked = True
+            chosen.unlocked_by_key = True
+            chosen.unlocked_at = datetime.datetime.utcnow()
+
+    db.commit()
+    db.refresh(chosen)
+    return TimeCapsuleResponse.model_validate(chosen)
+
+
+@router.post("/time-capsules/claim-breath-grant")
+def claim_breath_grant(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Cấp 1 Hạc Giấy Hy Vọng khẩn cấp sau bài tập thở 30s khi tâm trạng người dùng chạm đáy.
+    """
+    mood_keys = 3
+    if user:
+        player = db.query(Player).filter(Player.user_id == user.id).first()
+        if not player:
+            player = Player(user_id=user.id, level=1, exp=0, coins=0, streak=0, mood_keys=4)
+            db.add(player)
+            mood_keys = 4
+        else:
+            current_keys = player.mood_keys if player.mood_keys is not None else 3
+            player.mood_keys = current_keys + 1
+            mood_keys = player.mood_keys
+        db.commit()
+
+    return {
+        "success": True,
+        "mood_keys": mood_keys,
+        "message": "Bạn đã hoàn thành 30s tĩnh tâm và nhận được 1 Hạc Giấy Hy Vọng! 🕊️",
+    }
 
 
 # -------------------------------------------------------------
