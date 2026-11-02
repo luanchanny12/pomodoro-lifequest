@@ -104,6 +104,14 @@ function App() {
               }
             />
             <Route
+              path="/squads"
+              element={
+                <Suspense fallback={<PageFallback />}>
+                  <PomodoroApp />
+                </Suspense>
+              }
+            />
+            <Route
               path="/admin"
               element={
                 <Suspense fallback={<AdminSkeletonFallback />}>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Wifi, WifiOff, CheckCircle2, Loader2 } from 'lucide-react'
 import api from '@/services/api'
 
-export const CloudStatusBanner: React.FC = () => {
+const CloudStatusBannerComponent: React.FC = () => {
   const [status, setStatus] = useState<'idle' | 'waking' | 'ready' | 'error'>('idle')
 
   useEffect(() => {
@@ -62,3 +62,5 @@ export const CloudStatusBanner: React.FC = () => {
     </div>
   )
 }
+
+export const CloudStatusBanner = React.memo(CloudStatusBannerComponent)

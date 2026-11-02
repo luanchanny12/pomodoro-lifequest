@@ -390,3 +390,4 @@ const PomodoroCockpitComponent: React.FC<PomodoroCockpitProps> = ({
 }
 
 export const PomodoroCockpit = React.memo(PomodoroCockpitComponent)
+export const TimerPanel = PomodoroCockpit

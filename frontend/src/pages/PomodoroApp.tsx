@@ -61,7 +61,7 @@ import {
 } from '@/components/pomodoro/DynamicBackground'
 import { DailyQuoteCard } from '@/components/pomodoro/DailyQuoteCard'
 import { AIFloatingBuddy } from '@/components/pomodoro/AIFloatingBuddy'
-import { PomodoroCockpit } from '@/components/pomodoro/PomodoroCockpit'
+import { PomodoroCockpit, TimerPanel } from '@/components/pomodoro/PomodoroCockpit'
 import { PomodoroQuestCard } from '@/components/pomodoro/PomodoroQuestCard'
 import { raceService, CheerItem } from '@/services/raceService'
 import { Footer } from '@/components/common/Footer'
@@ -526,7 +526,13 @@ export default function PomodoroApp() {
 
   // ── State ──
   const [mode, setMode] = useState<TimerMode>('pomodoro')
+  const modeRef = useRef<TimerMode>(mode)
+  modeRef.current = mode
+
   const [timeLeft, setTimeLeft] = useState<number>(settings.focusMinutes * 60)
+  const timeLeftRef = useRef<number>(timeLeft)
+  timeLeftRef.current = timeLeft
+
   const [isRunning, setIsRunning] = useState<boolean>(false)
   const isRunningRef = useRef<boolean>(isRunning)
   useEffect(() => {
@@ -562,6 +568,9 @@ export default function PomodoroApp() {
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState<boolean>(false)
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState<boolean>(false)
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authService.getCurrentUser())
+  const currentUserRef = useRef<UserProfile | null>(currentUser)
+  currentUserRef.current = currentUser
+
   const [goalToEdit, setGoalToEdit] = useState<StudyGoal | null>(null)
 
   // Cheer Delivery & Anti-Double-Click state
@@ -572,14 +581,24 @@ export default function PomodoroApp() {
   const [isTimerToggling, setIsTimerToggling] = useState<boolean>(false)
   const [isSavingEarly, setIsSavingEarly] = useState<boolean>(false)
   const isSavingEarlyRef = useRef<boolean>(false)
+  isSavingEarlyRef.current = isSavingEarly
 
   // Data with SWR instant cache snapshot (<10ms load)
   const [goals, setGoals] = useState<StudyGoal[]>(() => focusService.getCachedGoals())
+  const goalsRef = useRef<StudyGoal[]>(goals)
+  goalsRef.current = goals
+
   const [selectedGoalId, setSelectedGoalId] = useState<number | null>(() => {
     const cached = focusService.getCachedGoals()
     return cached.length > 0 ? cached[0].id : null
   })
+  const selectedGoalIdRef = useRef<number | null>(selectedGoalId)
+  selectedGoalIdRef.current = selectedGoalId
+
   const [sessionNote, setSessionNote] = useState<string>('')
+  const sessionNoteRef = useRef<string>(sessionNote)
+  sessionNoteRef.current = sessionNote
+
   const [sessions, setSessions] = useState<StudySessionLog[]>(() => focusService.getCachedSessions())
   const [stats, setStats] = useState<FocusStats | null>(() => focusService.getCachedStats())
   const [availablePearls, setAvailablePearls] = useState<number>(0)
@@ -591,6 +610,13 @@ export default function PomodoroApp() {
   // Timer Ref
   const timerRef = useRef<number | null>(null)
   const endTimeRef = useRef<number | null>(null)
+
+  // Automatically open StudySquadModal when visiting /squads route
+  useEffect(() => {
+    if (window.location.pathname === '/squads') {
+      setIsSquadsModalOpen(true)
+    }
+  }, [])
 
   // ── Load Data ──
   const loadData = async () => {
@@ -780,8 +806,8 @@ export default function PomodoroApp() {
   }
 
   // ── Quick Study Time Setting ──
-  const handleSetStudyTime = (minutes: number) => {
-    if (isRunning) {
+  const handleSetStudyTime = useCallback((minutes: number) => {
+    if (isRunningRef.current) {
       if (!confirm(`Đồng hồ đang chạy. Bạn có muốn đổi thời gian sang ${minutes} phút và bắt đầu lại?`)) {
         return
       }
@@ -790,29 +816,36 @@ export default function PomodoroApp() {
       if (timerRef.current) clearInterval(timerRef.current)
     }
 
-    if (mode === 'pomodoro') {
-      const updated = { ...settings, focusMinutes: minutes }
-      setSettings(updated)
-      localStorage.setItem('pomodoro_settings', JSON.stringify(updated))
-      setTimeLeft(minutes * 60)
-      toast.success(`Đã đặt thời gian học: ${minutes} phút`)
-    } else if (mode === 'shortBreak') {
-      const updated = { ...settings, shortBreakMinutes: minutes }
-      setSettings(updated)
-      localStorage.setItem('pomodoro_settings', JSON.stringify(updated))
-      setTimeLeft(minutes * 60)
-      toast.success(`Đã đặt nghỉ ngắn: ${minutes} phút`)
-    } else {
-      const updated = { ...settings, longBreakMinutes: minutes }
-      setSettings(updated)
-      localStorage.setItem('pomodoro_settings', JSON.stringify(updated))
-      setTimeLeft(minutes * 60)
-      toast.success(`Đã đặt nghỉ dài: ${minutes} phút`)
-    }
-  }
+    setMode((currentMode) => {
+      const currentSettings = settingsRef.current
+      if (currentMode === 'pomodoro') {
+        const updated = { ...currentSettings, focusMinutes: minutes }
+        setSettings(updated)
+        settingsRef.current = updated
+        localStorage.setItem('pomodoro_settings', JSON.stringify(updated))
+        setTimeLeft(minutes * 60)
+        toast.success(`Đã đặt thời gian học: ${minutes} phút`)
+      } else if (currentMode === 'shortBreak') {
+        const updated = { ...currentSettings, shortBreakMinutes: minutes }
+        setSettings(updated)
+        settingsRef.current = updated
+        localStorage.setItem('pomodoro_settings', JSON.stringify(updated))
+        setTimeLeft(minutes * 60)
+        toast.success(`Đã đặt nghỉ ngắn: ${minutes} phút`)
+      } else {
+        const updated = { ...currentSettings, longBreakMinutes: minutes }
+        setSettings(updated)
+        settingsRef.current = updated
+        localStorage.setItem('pomodoro_settings', JSON.stringify(updated))
+        setTimeLeft(minutes * 60)
+        toast.success(`Đã đặt nghỉ dài: ${minutes} phút`)
+      }
+      return currentMode
+    })
+  }, [])
 
   // ── Timer Logic ──
-  const switchMode = (newMode: TimerMode, autoStart = false) => {
+  const switchMode = useCallback((newMode: TimerMode, autoStart = false) => {
     const currentSettings = settingsRef.current
     setMode(newMode)
     let minutes = currentSettings.focusMinutes
@@ -829,16 +862,16 @@ export default function PomodoroApp() {
       endTimeRef.current = null
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }
+  }, [])
 
   const lastTimerToggleRef = useRef<number>(0)
-  const handleStartPause = () => {
+  const handleStartPause = useCallback(() => {
     const now = Date.now()
     if (now - lastTimerToggleRef.current < 350) return // Chống nhấp đúp
     lastTimerToggleRef.current = now
 
     soundManager.playClick()
-    if (isRunning) {
+    if (isRunningRef.current) {
       // Pause
       setIsRunning(false)
       endTimeRef.current = null
@@ -846,19 +879,21 @@ export default function PomodoroApp() {
     } else {
       // Start
       setIsRunning(true)
-      endTimeRef.current = Date.now() + timeLeft * 1000
+      endTimeRef.current = Date.now() + timeLeftRef.current * 1000
     }
-  }
+  }, [])
 
-  const handleSkip = () => {
+  const handleSkip = useCallback(() => {
     soundManager.playClick()
     if (!confirm('Bạn có muốn chuyển sang phiên tiếp theo?')) return
-    onTimerComplete(false)
-  }
+    if (onTimerCompleteRef.current) {
+      onTimerCompleteRef.current(false)
+    }
+  }, [])
 
-  const handleFinishEarly = async () => {
+  const handleFinishEarly = useCallback(async () => {
     if (isSavingEarlyRef.current) return
-    const elapsedMinutes = Math.floor((settings.focusMinutes * 60 - timeLeft) / 60)
+    const elapsedMinutes = Math.floor((settingsRef.current.focusMinutes * 60 - timeLeftRef.current) / 60)
     if (elapsedMinutes < 1) {
       toast.info('Bạn cần tập trung ít nhất 1 phút để ghi nhận phiên học.')
       return
@@ -871,24 +906,53 @@ export default function PomodoroApp() {
     if (timerRef.current) clearInterval(timerRef.current)
 
     try {
-      await onTimerComplete(true, elapsedMinutes)
+      if (onTimerCompleteRef.current) {
+        await onTimerCompleteRef.current(true, elapsedMinutes)
+      }
     } finally {
       isSavingEarlyRef.current = false
       setIsSavingEarly(false)
     }
-  }
+  }, [])
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     soundManager.playClick()
     setIsRunning(false)
     endTimeRef.current = null
     if (timerRef.current) clearInterval(timerRef.current)
 
-    let minutes = settings.focusMinutes
-    if (mode === 'shortBreak') minutes = settings.shortBreakMinutes
-    if (mode === 'longBreak') minutes = settings.longBreakMinutes
-    setTimeLeft(minutes * 60)
-  }
+    setMode((currentMode) => {
+      let minutes = settingsRef.current.focusMinutes
+      if (currentMode === 'shortBreak') minutes = settingsRef.current.shortBreakMinutes
+      if (currentMode === 'longBreak') minutes = settingsRef.current.longBreakMinutes
+      setTimeLeft(minutes * 60)
+      return currentMode
+    })
+  }, [])
+
+  const handleOpenZenClock = useCallback(() => setIsZenClockOpen(true), [])
+  const handleStopAmbient = useCallback(() => {
+    soundManager.stopAmbient()
+    setAmbientSound('none')
+  }, [])
+
+  // Stable memoized callbacks for modals and panels
+  const handleSelectGoal = useCallback((id: number | null) => setSelectedGoalId(id), [])
+  const handleOpenManualModal = useCallback(() => setIsManualModalOpen(true), [])
+  const handleOpenGoalModal = useCallback(() => {
+    setGoalToEdit(null)
+    setIsGoalModalOpen(true)
+  }, [])
+  const handleOpenAuthModal = useCallback(() => setIsAuthModalOpen(true), [])
+  const handleOpenRewardShop = useCallback(() => {
+    if (!currentUserRef.current) {
+      toast.info('Vui lòng đăng nhập để mở Cửa Hàng Đổi Thưởng!')
+      setIsAuthModalOpen(true)
+      return
+    }
+    setIsRewardShopOpen(true)
+  }, [])
+  const handleChangeSessionNote = useCallback((note: string) => setSessionNote(note), [])
 
   // Stable memoized callbacks to prevent re-rendering memoized children
   const handleOpenDonate = useCallback(() => setIsDonateModalOpen(true), [])
@@ -1000,7 +1064,7 @@ export default function PomodoroApp() {
   }, [])
 
   // Toggle PiP Floating Window
-  const handleTogglePip = async () => {
+  const handleTogglePip = useCallback(async () => {
     // Tự động phát hiện điện thoại / mobile: PiP từ canvas stream không được hỗ trợ trên mobile và ném AbortError
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
     if (isMobile) {
@@ -1010,21 +1074,24 @@ export default function PomodoroApp() {
     }
 
     try {
-      const mins = Math.floor(timeLeft / 60)
-      const secs = timeLeft % 60
+      const currentSeconds = timeLeftRef.current
+      const mins = Math.floor(currentSeconds / 60)
+      const secs = currentSeconds % 60
       const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-      const activeGoal = goals.find((g) => g.id === selectedGoalId)
+      const activeGoal = goalsRef.current.find((g) => g.id === selectedGoalIdRef.current)
       const goalTitle = activeGoal ? activeGoal.title : 'Học tập'
-      const totalSecs = (mode === 'pomodoro' ? settings.focusMinutes : mode === 'shortBreak' ? settings.shortBreakMinutes : settings.longBreakMinutes) * 60
-      const progressPercent = totalSecs > 0 ? ((totalSecs - timeLeft) / totalSecs) * 100 : 0
+      const curSettings = settingsRef.current
+      const curMode = modeRef.current
+      const totalSecs = (curMode === 'pomodoro' ? curSettings.focusMinutes : curMode === 'shortBreak' ? curSettings.shortBreakMinutes : curSettings.longBreakMinutes) * 60
+      const progressPercent = totalSecs > 0 ? ((totalSecs - currentSeconds) / totalSecs) * 100 : 0
 
       const active = await pipTimerManager.togglePip(
         {
           timeStr,
           progressPercent,
-          modeLabel: mode === 'pomodoro' ? 'Pomodoro' : mode === 'shortBreak' ? 'Nghỉ ngắn' : 'Nghỉ dài',
-          topicNote: sessionNote || goalTitle || 'Tập trung học tập',
-          isRunning,
+          modeLabel: curMode === 'pomodoro' ? 'Pomodoro' : curMode === 'shortBreak' ? 'Nghỉ ngắn' : 'Nghỉ dài',
+          topicNote: sessionNoteRef.current || goalTitle || 'Tập trung học tập',
+          isRunning: isRunningRef.current,
         },
         () => {
           handleStartPause()
@@ -1047,7 +1114,7 @@ export default function PomodoroApp() {
       }
       toast.error(err.message || 'Không thể mở cửa sổ nổi')
     }
-  }
+  }, [handleStartPause])
 
   // Timer complete handler
   const onTimerComplete = async (recordSession = true, customMinutes?: number) => {
@@ -1123,46 +1190,47 @@ export default function PomodoroApp() {
   onTimerCompleteRef.current = onTimerComplete
 
   // ── Ambient sounds handler with automatic background synchronization ──
-  const toggleAmbientSound = async (type: 'rain' | 'waves' | 'ticking' | 'fire' | 'binaural' | 'lofi') => {
-    if (ambientSound === type) {
-      soundManager.stopAmbient()
-      setAmbientSound('none')
-      toast.info('Đã tắt âm nền')
-    } else {
-      await soundManager.startAmbient(type, settings.ambientVolume || 0.6)
-      setAmbientSound(type)
+  const toggleAmbientSound = useCallback(async (type: 'rain' | 'waves' | 'ticking' | 'fire' | 'binaural' | 'lofi') => {
+    setAmbientSound((currentSound) => {
+      if (currentSound === type) {
+        soundManager.stopAmbient()
+        toast.info('Đã tắt âm nền')
+        return 'none'
+      } else {
+        soundManager.startAmbient(type, settingsRef.current.ambientVolume || 0.6)
+        let matching = PRESET_THEMES.find((t) => t.id === type)
+        if (!matching && type === 'binaural') {
+          matching = PRESET_THEMES.find((t) => t.id === 'cyberpunk')
+        } else if (!matching && type === 'lofi') {
+          matching = PRESET_THEMES.find((t) => t.id === 'lofi')
+        }
 
-      // Automatically change to the corresponding beautiful wallpaper!
-      let matching = PRESET_THEMES.find((t) => t.id === type)
-      if (!matching && type === 'binaural') {
-        matching = PRESET_THEMES.find((t) => t.id === 'cyberpunk')
-      } else if (!matching && type === 'lofi') {
-        matching = PRESET_THEMES.find((t) => t.id === 'lofi')
+        if (matching) {
+          setBgConfig(matching)
+          localStorage.setItem('pomodoro_bg_theme', JSON.stringify(matching))
+        }
+
+        const labels: Record<string, string> = {
+          rain: 'Tiếng mưa rơi 🌧️ (Đã chuyển không gian Mưa)',
+          waves: 'Tiếng sóng biển 🌊 (Đã chuyển không gian Biển)',
+          ticking: 'Tiếng tích tắc ⏰ (Đã chuyển không gian Bàn học)',
+          fire: 'Tiếng lò sưởi 🔥 (Đã chuyển không gian Lò sưởi)',
+          binaural: 'Sóng não Gamma 40Hz 🧠 (Kích hoạt tập trung sâu & trí nhớ)',
+          lofi: 'Lo-Fi Chill Cozy 🎵 (Hợp âm thư giãn êm ái & tiếng đĩa than)',
+        }
+        toast.success(labels[type] || `Đang phát: ${type}`)
+        return type
       }
+    })
+  }, [])
 
-      if (matching) {
-        setBgConfig(matching)
-        localStorage.setItem('pomodoro_bg_theme', JSON.stringify(matching))
-      }
-
-      const labels: Record<string, string> = {
-        rain: 'Tiếng mưa rơi 🌧️ (Đã chuyển không gian Mưa)',
-        waves: 'Tiếng sóng biển 🌊 (Đã chuyển không gian Biển)',
-        ticking: 'Tiếng tích tắc ⏰ (Đã chuyển không gian Bàn học)',
-        fire: 'Tiếng lò sưởi 🔥 (Đã chuyển không gian Lò sưởi)',
-        binaural: 'Sóng não Gamma 40Hz 🧠 (Kích hoạt tập trung sâu & trí nhớ)',
-        lofi: 'Lo-Fi Chill Cozy 🎵 (Hợp âm thư giãn êm ái & tiếng đĩa than)',
-      }
-      toast.success(labels[type] || `Đang phát: ${type}`)
-    }
-  }
-
-  const handleAmbientVolumeChange = (vol: number) => {
-    const updated = { ...settings, ambientVolume: vol }
+  const handleAmbientVolumeChange = useCallback((vol: number) => {
+    const updated = { ...settingsRef.current, ambientVolume: vol }
     setSettings(updated)
+    settingsRef.current = updated
     localStorage.setItem('pomodoro_settings', JSON.stringify(updated))
     soundManager.setAmbientVolume(vol)
-  }
+  }, [])
 
   // Cleanup ambient on unmount
   useEffect(() => {
@@ -1320,6 +1388,7 @@ export default function PomodoroApp() {
             <button
               type="button"
               onClick={() => setIsSquadsModalOpen(true)}
+              onMouseEnter={() => import('@/components/squads/StudySquadModal')}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold bg-gradient-to-r from-cyan-600/30 to-blue-600/30 hover:from-cyan-600/50 hover:to-blue-600/50 text-cyan-300 rounded-xl border border-cyan-400/30 transition active:scale-95 shadow-sm"
               title="Hội Nhóm Học Cùng & Đường Đua F1 Thu Nhỏ"
             >
@@ -1330,6 +1399,7 @@ export default function PomodoroApp() {
             {/* Cosmic Race Track Button (Main CTA) */}
             <button
               onClick={() => setIsRaceModalOpen(true)}
+              onMouseEnter={() => import('@/components/race/CosmicRaceTrackModal')}
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-extrabold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl shadow-lg shadow-cyan-500/25 border border-cyan-400/40 transition active:scale-95"
               title="Đường Đua Bạn Bè & Bảng Vàng Pomodoro"
             >
@@ -1496,8 +1566,8 @@ export default function PomodoroApp() {
 
       {/* ── MAIN CONTENT CONTAINER ── */}
       <main className="max-w-6xl mx-auto px-4 pt-6 pb-16 relative z-10">
-        {/* ── POMODORO TIMER CARD (CYBER FOCUS COCKPIT) ── */}
-        <PomodoroCockpit
+        {/* ── POMODORO TIMER CARD (CYBER FOCUS COCKPIT / TIMER PANEL) ── */}
+        <TimerPanel
           mode={mode}
           timeLeft={timeLeft}
           isRunning={isRunning}
@@ -1518,7 +1588,7 @@ export default function PomodoroApp() {
           ambientSound={ambientSound}
           ambientVolume={settings.ambientVolume ?? 0.6}
           onTogglePip={handleTogglePip}
-          onOpenZenClock={() => setIsZenClockOpen(true)}
+          onOpenZenClock={handleOpenZenClock}
           onSwitchMode={switchMode}
           onSetStudyTime={handleSetStudyTime}
           onStartPause={handleStartPause}
@@ -1527,10 +1597,7 @@ export default function PomodoroApp() {
           onFinishEarly={handleFinishEarly}
           onToggleAmbientSound={toggleAmbientSound}
           onAmbientVolumeChange={handleAmbientVolumeChange}
-          onStopAmbient={() => {
-            soundManager.stopAmbient()
-            setAmbientSound('none')
-          }}
+          onStopAmbient={handleStopAmbient}
         />
 
         {/* ── DAILY MOTIVATIONAL QUOTE CARD ("BUFF ĐỘNG LỰC") ── */}
@@ -1546,19 +1613,12 @@ export default function PomodoroApp() {
           currentUser={currentUser}
           sessionNote={sessionNote}
           availablePearls={availablePearls}
-          onSelectGoal={(id) => setSelectedGoalId(id)}
-          onOpenManualModal={() => setIsManualModalOpen(true)}
-          onOpenGoalModal={() => setIsGoalModalOpen(true)}
-          onOpenAuthModal={() => setIsAuthModalOpen(true)}
-          onOpenRewardShop={() => {
-            if (!currentUser) {
-              toast.info('Vui lòng đăng nhập để mở Cửa Hàng Đổi Thưởng!')
-              setIsAuthModalOpen(true)
-              return
-            }
-            setIsRewardShopOpen(true)
-          }}
-          onChangeSessionNote={(note) => setSessionNote(note)}
+          onSelectGoal={handleSelectGoal}
+          onOpenManualModal={handleOpenManualModal}
+          onOpenGoalModal={handleOpenGoalModal}
+          onOpenAuthModal={handleOpenAuthModal}
+          onOpenRewardShop={handleOpenRewardShop}
+          onChangeSessionNote={handleChangeSessionNote}
         />
 
         {/* ── SECONDARY NAVIGATION TABS (MACOS DOCK STYLE) ── */}
@@ -1703,10 +1763,7 @@ export default function PomodoroApp() {
             filteredGoals={filteredGoals}
             goalFilter={goalFilter}
             setGoalFilter={setGoalFilter}
-            onOpenAddGoal={() => {
-              setGoalToEdit(null)
-              setIsGoalModalOpen(true)
-            }}
+            onOpenAddGoal={handleOpenGoalModal}
             onRecordHours={handleRecordHours}
             onEditGoal={handleEditGoal}
           />
@@ -1716,7 +1773,7 @@ export default function PomodoroApp() {
         {activeTab === 'logs' && (
           <LogsPanel
             sessions={sessions}
-            onOpenManualModal={() => setIsManualModalOpen(true)}
+            onOpenManualModal={handleOpenManualModal}
             onDeleteSession={handleDeleteSession}
           />
         )}
