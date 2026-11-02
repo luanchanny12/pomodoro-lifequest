@@ -537,7 +537,7 @@ def get_admin_overview_feedbacks(admin: User = Depends(get_current_admin), db: S
 def get_admin_users(
     search: Optional[str] = Query(None, description="Tìm theo tên hoặc username"),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=200),
     admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):

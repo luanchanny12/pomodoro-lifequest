@@ -359,6 +359,61 @@ def leave_squad(
     return {"success": True, "message": "Đã rời nhóm thành công"}
 
 
+@router.delete("/{squad_id}/members/{target_user_id}")
+def kick_squad_member(
+    squad_id: int,
+    target_user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Trưởng nhóm (Leader) kick thành viên ra khỏi nhóm học."""
+    my_membership = db.query(StudySquadMember).filter(
+        StudySquadMember.squad_id == squad_id,
+        StudySquadMember.user_id == current_user.id,
+    ).first()
+
+    if not my_membership or my_membership.role != "leader":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chỉ trưởng nhóm mới có quyền mời thành viên ra khỏi nhóm!",
+        )
+
+    if target_user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Trưởng nhóm không thể tự kick chính mình! Hãy sử dụng tính năng rời nhóm.",
+        )
+
+    target_membership = db.query(StudySquadMember).filter(
+        StudySquadMember.squad_id == squad_id,
+        StudySquadMember.user_id == target_user_id,
+    ).first()
+
+    if not target_membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thành viên này không còn ở trong nhóm!",
+        )
+
+    target_user = db.query(User).filter(User.id == target_user_id).first()
+    target_name = target_user.display_name if target_user else "Thành viên"
+
+    db.delete(target_membership)
+
+    kick_msg = StudySquadMessage(
+        squad_id=squad_id,
+        user_id=None,
+        sender_name="Hệ thống",
+        message_type="system_join",
+        content=f"⚠️ {target_name} đã được trưởng nhóm mời ra khỏi nhóm học.",
+        emoji="⚠️",
+    )
+    db.add(kick_msg)
+    db.commit()
+
+    return {"success": True, "message": f"Đã mời {target_name} ra khỏi nhóm thành công"}
+
+
 @router.get("/{squad_id}/messages", response_model=List[SquadMessageItem])
 def get_squad_messages(
     squad_id: int,
@@ -513,7 +568,8 @@ def get_squad_detail_internal(squad_id: int, current_user: User, db: Session) ->
         )
 
     # Sort racers: highest progress_percent first for F1 leaderboard
-    member_progress_list.sort(key=lambda r: (r.progress_percent, r.current_hours), reverse=True)
+    # Deterministic tie-breaker: progress_percent desc, current_hours desc, streak desc, user_id asc
+    member_progress_list.sort(key=lambda r: (r.progress_percent, r.current_hours, r.streak, -r.user_id), reverse=True)
 
     return SquadDetailResponse(
         id=squad.id,

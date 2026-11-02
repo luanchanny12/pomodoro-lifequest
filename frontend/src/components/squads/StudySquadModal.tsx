@@ -140,7 +140,12 @@ export const StudySquadModal: React.FC<StudySquadModalProps> = ({
   const loadSquadMessages = async (id: number) => {
     try {
       const msgs = await squadService.getSquadMessages(id)
-      setMessages(msgs)
+      setMessages((prev) => {
+        if (prev.length === msgs.length && prev[prev.length - 1]?.id === msgs[msgs.length - 1]?.id) {
+          return prev
+        }
+        return msgs
+      })
     } catch (err) {
       // Ignored if not member
     }
@@ -198,12 +203,30 @@ export const StudySquadModal: React.FC<StudySquadModalProps> = ({
     try {
       setIsSending(true)
       const newMsg = await squadService.sendSquadMessage(activeSquadId, content)
-      setMessages((prev) => [...prev, newMsg])
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === newMsg.id)) return prev
+        return [...prev, newMsg]
+      })
       if (!textToSend) setChatText('')
     } catch (err: any) {
       toast.error(err.message || 'Không thể gửi tin nhắn')
     } finally {
       setIsSending(false)
+    }
+  }
+
+  // Kick member (leader only)
+  const handleKickMember = async (memberUserId: number, memberName: string) => {
+    if (!activeSquadId) return
+    const confirmKick = window.confirm(`Bạn có chắc chắn muốn mời "${memberName}" rời khỏi nhóm học không?`)
+    if (!confirmKick) return
+
+    try {
+      await squadService.kickMember(activeSquadId, memberUserId)
+      toast.success(`Đã mời "${memberName}" ra khỏi nhóm.`)
+      await Promise.all([loadSquadDetail(activeSquadId), loadSquadMessages(activeSquadId)])
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || err.message || 'Không thể kick thành viên')
     }
   }
 
@@ -772,12 +795,24 @@ export const StudySquadModal: React.FC<StudySquadModalProps> = ({
                           )}
                         </div>
 
-                        <div className="font-mono text-white/70">
-                          <b className={isCurrent ? 'text-amber-300 font-bold' : 'text-cyan-300 font-medium'}>
-                            {member.current_hours.toFixed(1)}
-                          </b>
-                          /{member.target_hours}h{' '}
-                          <span className="text-white/40">({member.progress_percent}%)</span>
+                        <div className="font-mono text-white/70 flex items-center gap-2">
+                          <div>
+                            <b className={isCurrent ? 'text-amber-300 font-bold' : 'text-cyan-300 font-medium'}>
+                              {member.current_hours.toFixed(1)}
+                            </b>
+                            /{member.target_hours}h{' '}
+                            <span className="text-white/40">({member.progress_percent}%)</span>
+                          </div>
+                          {squadDetail.user_role === 'leader' && !isCurrent && (
+                            <button
+                              type="button"
+                              onClick={() => handleKickMember(member.user_id, member.display_name)}
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30 hover:bg-rose-500/20 transition ml-1"
+                              title="Mời thành viên rời nhóm"
+                            >
+                              Mời ra
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

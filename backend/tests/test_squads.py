@@ -120,3 +120,44 @@ def test_squad_lifecycle_and_chat():
     assert my_squads_res.status_code == 200
     assert len(my_squads_res.json()) >= 1
     assert any(s["id"] == squad_id for s in my_squads_res.json())
+
+    # 8. Non-member permissions: User C (stranger)
+    res_c = client.post("/api/auth/register", json={
+        "username": "squad_stranger_ha",
+        "display_name": "Thu Hà",
+        "password": "password123",
+        "racer_avatar": "cyber_car"
+    })
+    token_c = res_c.json()["access_token"] if res_c.status_code == 200 else client.post("/api/auth/login", json={"username": "squad_stranger_ha", "password": "password123"}).json()["access_token"]
+    headers_c = {"Authorization": f"Bearer {token_c}"}
+
+    forbidden_msgs = client.get(f"/api/squads/{squad_id}/messages", headers=headers_c)
+    assert forbidden_msgs.status_code == 403
+
+    forbidden_post = client.post(f"/api/squads/{squad_id}/messages", json={"content": "Lẻn vào chat"}, headers=headers_c)
+    assert forbidden_post.status_code == 403
+
+    # 9. Kick permissions
+    user_b_id = client.get("/api/auth/me", headers=headers_b).json()["id"]
+    user_a_id = client.get("/api/auth/me", headers=headers_a).json()["id"]
+
+    # Member B tries to kick Leader A -> 403 Forbidden
+    kick_fail_non_leader = client.delete(f"/api/squads/{squad_id}/members/{user_a_id}", headers=headers_b)
+    assert kick_fail_non_leader.status_code == 403
+
+    # Leader A tries to kick themselves -> 400 Bad Request
+    kick_self_fail = client.delete(f"/api/squads/{squad_id}/members/{user_a_id}", headers=headers_a)
+    assert kick_self_fail.status_code == 400
+
+    # Leader A kicks Member B -> 200 OK
+    kick_success = client.delete(f"/api/squads/{squad_id}/members/{user_b_id}", headers=headers_a)
+    assert kick_success.status_code == 200
+
+    # Verify detail: only Leader A remains
+    detail_after_kick = client.get(f"/api/squads/{squad_id}", headers=headers_a).json()
+    assert detail_after_kick["members_count"] == 1
+    assert detail_after_kick["members"][0]["user_id"] == user_a_id
+
+    # Member B can no longer read messages -> 403 Forbidden
+    b_msgs_after_kick = client.get(f"/api/squads/{squad_id}/messages", headers=headers_b)
+    assert b_msgs_after_kick.status_code == 403

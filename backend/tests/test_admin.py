@@ -129,7 +129,7 @@ def test_admin_users_list_and_detail(admin_and_normal_user):
     norm_id = data["normal_user"].id
 
     # 1. Get Users list
-    res_users = client.get("/api/admin/users", headers={"Authorization": f"Bearer {admin_token}"})
+    res_users = client.get("/api/admin/users?limit=100", headers={"Authorization": f"Bearer {admin_token}"})
     assert res_users.status_code == 200
     users_list = res_users.json()["items"]
     assert any(u["id"] == norm_id for u in users_list)
@@ -224,7 +224,7 @@ def test_admin_overview_cache_and_batch_aggregation(admin_and_normal_user):
 
     # 2. Fetch users (verifies batch aggregation)
     res_users = client.get(
-        "/api/admin/users",
+        "/api/admin/users?limit=100",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert res_users.status_code == 200

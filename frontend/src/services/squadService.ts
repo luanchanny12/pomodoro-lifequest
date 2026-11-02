@@ -110,6 +110,11 @@ export const squadService = {
     return res.data
   },
 
+  kickMember: async (squadId: number, targetUserId: number): Promise<{ success: boolean; message: string }> => {
+    const res = await api.delete<{ success: boolean; message: string }>(`/squads/${squadId}/members/${targetUserId}`)
+    return res.data
+  },
+
   getSquadMessages: async (squadId: number, limit = 50): Promise<SquadMessageItem[]> => {
     const res = await api.get<SquadMessageItem[]>(`/squads/${squadId}/messages?limit=${limit}`)
     return res.data
