@@ -100,6 +100,7 @@ const FooterComponent: React.FC<FooterProps> = ({
               {isAdmin && (
                 <button
                   onClick={() => navigate('/admin')}
+                  onMouseEnter={() => import('@/pages/AdminDashboard')}
                   className="hover:text-amber-300 text-left transition flex items-center gap-1.5 text-amber-400 font-semibold"
                 >
                   <Shield className="w-3 h-3" />

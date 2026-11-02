@@ -98,12 +98,23 @@ def decode_access_token(token: str) -> Optional[dict]:
     except Exception:
         return None
 
-# --- In-Memory Rate Limiter (Sliding Window with TTLCache) ---
+# --- Distributed / In-Memory Rate Limiter (Sliding Window with Redis + TTLCache Fallback) ---
+
+from app.cache import check_rate_limit_redis, record_rate_limit_attempt_redis
 
 _RATE_LIMIT_STORE = TTLCache(maxsize=10000, ttl=600)
 
 
 def _check_rate_limit(key: str, max_attempts: int, window_seconds: int, message: str = "Quá nhiều yêu cầu. Vui lòng thử lại sau!"):
+    # 1. Distributed rate limit check via Redis (for multi-worker sync)
+    redis_retry = check_rate_limit_redis(key, max_attempts, window_seconds)
+    if redis_retry is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"{message} (Vui lòng thử lại sau {redis_retry} giây)",
+        )
+
+    # 2. Local in-memory sliding window fallback
     now = time.time()
     raw_attempts = _RATE_LIMIT_STORE.get(key, [])
     attempts = [t for t in raw_attempts if now - t < window_seconds]
@@ -119,7 +130,10 @@ def _check_rate_limit(key: str, max_attempts: int, window_seconds: int, message:
         )
 
 
-def _record_failed_attempt(key: str):
+def _record_failed_attempt(key: str, window_seconds: int = 600):
+    # Record in Redis if connected
+    record_rate_limit_attempt_redis(key, window_seconds)
+    # Record in local in-memory store
     now = time.time()
     attempts = list(_RATE_LIMIT_STORE.get(key, []))
     attempts.append(now)

@@ -470,12 +470,16 @@ def send_squad_message(
     if not is_mem:
         raise HTTPException(status_code=403, detail="Bạn cần tham gia nhóm để nhắn tin!")
 
+    content_clean = data.content.strip() if data.content else ""
+    if not content_clean:
+        raise HTTPException(status_code=400, detail="Nội dung tin nhắn không được để trống!")
+
     msg = StudySquadMessage(
         squad_id=squad_id,
         user_id=current_user.id,
         sender_name=current_user.display_name or "Bạn học",
         message_type="text",
-        content=data.content.strip(),
+        content=content_clean,
         emoji=data.emoji,
     )
     db.add(msg)

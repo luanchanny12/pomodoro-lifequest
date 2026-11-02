@@ -27,5 +27,7 @@ services:
         generateValue: true
       - key: GEMINI_API_KEY
         sync: false
+      - key: REDIS_URL
+        sync: false
       - key: APP_PUBLIC_URL
         value: "https://pomodoro-lifequest.vercel.app"

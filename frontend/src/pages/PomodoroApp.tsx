@@ -336,6 +336,163 @@ const SessionLogRowItem = React.memo(function SessionLogRowItem({
   )
 })
 
+const GoalsPanel = React.memo(function GoalsPanel({
+  goals,
+  filteredGoals,
+  goalFilter,
+  setGoalFilter,
+  onOpenAddGoal,
+  onRecordHours,
+  onEditGoal,
+}: {
+  goals: StudyGoal[]
+  filteredGoals: StudyGoal[]
+  goalFilter: 'all' | 'active' | 'completed'
+  setGoalFilter: (f: 'all' | 'active' | 'completed') => void
+  onOpenAddGoal: () => void
+  onRecordHours: (id: number) => void
+  onEditGoal: (g: StudyGoal) => void
+}) {
+  return (
+    <div className="mt-6 space-y-4">
+      <div className="flex items-center justify-between">
+        {/* Filter pills */}
+        <div className="flex items-center gap-1.5 text-xs">
+          <button
+            onClick={() => setGoalFilter('all')}
+            className={`px-2.5 py-1 rounded-lg ${
+              goalFilter === 'all' ? 'bg-white/25 text-white font-medium' : 'text-white/70'
+            }`}
+          >
+            Tất cả
+          </button>
+          <button
+            onClick={() => setGoalFilter('active')}
+            className={`px-2.5 py-1 rounded-lg ${
+              goalFilter === 'active' ? 'bg-white/25 text-white font-medium' : 'text-white/70'
+            }`}
+          >
+            Đang học
+          </button>
+          <button
+            onClick={() => setGoalFilter('completed')}
+            className={`px-2.5 py-1 rounded-lg ${
+              goalFilter === 'completed'
+                ? 'bg-white/25 text-white font-medium'
+                : 'text-white/70'
+            }`}
+          >
+            Đã xong ({goals.filter((g) => g.is_completed).length})
+          </button>
+        </div>
+
+        <button
+          onClick={onOpenAddGoal}
+          className="text-xs sm:text-sm bg-white/20 hover:bg-white/30 text-white px-3.5 py-2.5 sm:py-1.5 min-h-[42px] sm:min-h-0 rounded-xl font-bold flex items-center justify-center gap-1.5 active:scale-95 transition shadow-sm"
+        >
+          <Plus className="w-4 h-4 text-emerald-400" /> Thêm mục tiêu
+        </button>
+      </div>
+
+      {filteredGoals.length === 0 ? (
+        <div className="text-center py-8 bg-black/30 rounded-2xl border border-white/10 text-white/70 text-sm">
+          Không có mục tiêu nào trong bộ lọc này.
+        </div>
+      ) : (
+        filteredGoals.map((g) => (
+          <GoalCardItem
+            key={g.id}
+            goal={g}
+            onRecordHours={onRecordHours}
+            onEditGoal={onEditGoal}
+          />
+        ))
+      )}
+    </div>
+  )
+})
+
+const LogsPanel = React.memo(function LogsPanel({
+  sessions,
+  onOpenManualModal,
+  onDeleteSession,
+}: {
+  sessions: StudySessionLog[]
+  onOpenManualModal: () => void
+  onDeleteSession: (id: number) => void
+}) {
+  return (
+    <div className="mt-6 space-y-3">
+      <div className="flex items-center justify-between text-xs text-white/80">
+        <span>Lịch sử các buổi học (gần nhất)</span>
+        <button
+          onClick={onOpenManualModal}
+          className="text-white hover:underline flex items-center gap-1"
+        >
+          <Plus className="w-3.5 h-3.5" /> Thêm buổi học offline
+        </button>
+      </div>
+
+      {sessions.length === 0 ? (
+        <div className="text-center py-8 bg-black/30 rounded-2xl border border-white/10 text-white/70 text-sm">
+          Chưa có buổi học nào được ghi lại.
+        </div>
+      ) : (
+        sessions.map((s) => (
+          <SessionLogRowItem
+            key={s.id}
+            session={s}
+            onDeleteSession={onDeleteSession}
+          />
+        ))
+      )}
+    </div>
+  )
+})
+
+const StatsPanel = React.memo(function StatsPanel({
+  stats,
+}: {
+  stats: FocusStats | null
+}) {
+  return (
+    <div className="mt-6 space-y-5">
+      {/* 4 Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-3 text-center">
+          <span className="text-[11px] text-white/70">Hôm nay</span>
+          <p className="text-xl font-bold text-white mt-1">
+            {stats?.today_hours || 0} <span className="text-xs font-normal">giờ</span>
+          </p>
+        </div>
+        <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-3 text-center">
+          <span className="text-[11px] text-white/70">Tuần này</span>
+          <p className="text-xl font-bold text-white mt-1">
+            {stats?.week_hours || 0} <span className="text-xs font-normal">giờ</span>
+          </p>
+        </div>
+        <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-3 text-center">
+          <span className="text-[11px] text-white/70">Tổng giờ</span>
+          <p className="text-xl font-bold text-white mt-1">
+            {stats?.total_hours || 0} <span className="text-xs font-normal">giờ</span>
+          </p>
+        </div>
+        <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-3 text-center">
+          <span className="text-[11px] text-white/70">Phiên Pomodoro</span>
+          <p className="text-xl font-bold text-white mt-1">
+            {stats?.pomodoro_sessions || 0}
+          </p>
+        </div>
+      </div>
+
+      {/* Recharts 7-Day Chart (Lazy-Loaded) */}
+      <Suspense fallback={<div className="h-44 w-full bg-white/5 rounded-2xl animate-pulse" />}>
+        <PomodoroStatsChart stats={stats} />
+      </Suspense>
+    </div>
+  )
+})
+
 export default function PomodoroApp() {
   const navigate = useNavigate()
   // ── Settings ──
@@ -1541,131 +1698,32 @@ export default function PomodoroApp() {
 
         {/* ── TAB 1: GOALS ── */}
         {activeTab === 'goals' && (
-          <div className="mt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              {/* Filter pills */}
-              <div className="flex items-center gap-1.5 text-xs">
-                <button
-                  onClick={() => setGoalFilter('all')}
-                  className={`px-2.5 py-1 rounded-lg ${
-                    goalFilter === 'all' ? 'bg-white/25 text-white font-medium' : 'text-white/70'
-                  }`}
-                >
-                  Tất cả
-                </button>
-                <button
-                  onClick={() => setGoalFilter('active')}
-                  className={`px-2.5 py-1 rounded-lg ${
-                    goalFilter === 'active' ? 'bg-white/25 text-white font-medium' : 'text-white/70'
-                  }`}
-                >
-                  Đang học
-                </button>
-                <button
-                  onClick={() => setGoalFilter('completed')}
-                  className={`px-2.5 py-1 rounded-lg ${
-                    goalFilter === 'completed'
-                      ? 'bg-white/25 text-white font-medium'
-                      : 'text-white/70'
-                  }`}
-                >
-                  Đã xong ({goals.filter((g) => g.is_completed).length})
-                </button>
-              </div>
-
-              <button
-                onClick={() => {
-                  setGoalToEdit(null)
-                  setIsGoalModalOpen(true)
-                }}
-                className="text-xs sm:text-sm bg-white/20 hover:bg-white/30 text-white px-3.5 py-2.5 sm:py-1.5 min-h-[42px] sm:min-h-0 rounded-xl font-bold flex items-center justify-center gap-1.5 active:scale-95 transition shadow-sm"
-              >
-                <Plus className="w-4 h-4 text-emerald-400" /> Thêm mục tiêu
-              </button>
-            </div>
-
-            {filteredGoals.length === 0 ? (
-              <div className="text-center py-8 bg-black/30 rounded-2xl border border-white/10 text-white/70 text-sm">
-                Không có mục tiêu nào trong bộ lọc này.
-              </div>
-            ) : (
-              filteredGoals.map((g) => (
-                <GoalCardItem
-                  key={g.id}
-                  goal={g}
-                  onRecordHours={handleRecordHours}
-                  onEditGoal={handleEditGoal}
-                />
-              ))
-            )}
-          </div>
+          <GoalsPanel
+            goals={goals}
+            filteredGoals={filteredGoals}
+            goalFilter={goalFilter}
+            setGoalFilter={setGoalFilter}
+            onOpenAddGoal={() => {
+              setGoalToEdit(null)
+              setIsGoalModalOpen(true)
+            }}
+            onRecordHours={handleRecordHours}
+            onEditGoal={handleEditGoal}
+          />
         )}
 
         {/* ── TAB 2: STUDY SESSIONS LOG ── */}
         {activeTab === 'logs' && (
-          <div className="mt-6 space-y-3">
-            <div className="flex items-center justify-between text-xs text-white/80">
-              <span>Lịch sử các buổi học (gần nhất)</span>
-              <button
-                onClick={() => setIsManualModalOpen(true)}
-                className="text-white hover:underline flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> Thêm buổi học offline
-              </button>
-            </div>
-
-            {sessions.length === 0 ? (
-              <div className="text-center py-8 bg-black/30 rounded-2xl border border-white/10 text-white/70 text-sm">
-                Chưa có buổi học nào được ghi lại.
-              </div>
-            ) : (
-              sessions.map((s) => (
-                <SessionLogRowItem
-                  key={s.id}
-                  session={s}
-                  onDeleteSession={handleDeleteSession}
-                />
-              ))
-            )}
-          </div>
+          <LogsPanel
+            sessions={sessions}
+            onOpenManualModal={() => setIsManualModalOpen(true)}
+            onDeleteSession={handleDeleteSession}
+          />
         )}
 
         {/* ── TAB 3: STATS ── */}
         {activeTab === 'stats' && (
-          <div className="mt-6 space-y-5">
-            {/* 4 Summary Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-3 text-center">
-                <span className="text-[11px] text-white/70">Hôm nay</span>
-                <p className="text-xl font-bold text-white mt-1">
-                  {stats?.today_hours || 0} <span className="text-xs font-normal">giờ</span>
-                </p>
-              </div>
-              <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-3 text-center">
-                <span className="text-[11px] text-white/70">Tuần này</span>
-                <p className="text-xl font-bold text-white mt-1">
-                  {stats?.week_hours || 0} <span className="text-xs font-normal">giờ</span>
-                </p>
-              </div>
-              <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-3 text-center">
-                <span className="text-[11px] text-white/70">Tổng giờ</span>
-                <p className="text-xl font-bold text-white mt-1">
-                  {stats?.total_hours || 0} <span className="text-xs font-normal">giờ</span>
-                </p>
-              </div>
-              <div className="bg-black/35 backdrop-blur-xl border border-white/20 rounded-2xl p-3 text-center">
-                <span className="text-[11px] text-white/70">Phiên Pomodoro</span>
-                <p className="text-xl font-bold text-white mt-1">
-                  {stats?.pomodoro_sessions || 0}
-                </p>
-              </div>
-            </div>
-
-            {/* Recharts 7-Day Chart (Lazy-Loaded) */}
-            <Suspense fallback={<div className="h-44 w-full bg-white/5 rounded-2xl animate-pulse" />}>
-              <PomodoroStatsChart stats={stats} />
-            </Suspense>
-          </div>
+          <StatsPanel stats={stats} />
         )}
           </>
         )}

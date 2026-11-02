@@ -191,3 +191,46 @@ def invalidate_admin_cache() -> None:
     """Invalidate cached data for admin portal overview and stats."""
     delete_cache_pattern("cache:admin:*")
 
+
+def check_rate_limit_redis(key: str, max_attempts: int, window_seconds: int) -> Optional[int]:
+    """Check sliding window rate limit using Redis sorted set.
+    Returns retry_after seconds if rate limit exceeded, or None if allowed.
+    """
+    global _redis_client
+    if not _redis_client:
+        return None
+    try:
+        r_key = f"rl:{key}"
+        now = time.time()
+        pipe = _redis_client.pipeline()
+        pipe.zremrangebyscore(r_key, 0, now - window_seconds)
+        pipe.zcard(r_key)
+        pipe.zrange(r_key, 0, 0, withscores=True)
+        results = pipe.execute()
+        count = results[1]
+        oldest = results[2]
+        if count >= max_attempts:
+            oldest_ts = oldest[0][1] if oldest else now
+            retry_after = int(window_seconds - (now - oldest_ts))
+            return max(1, retry_after)
+        return None
+    except Exception as e:
+        logger.warning(f"Redis rate limit check error for {key}: {e}. Falling back to memory.")
+        return None
+
+
+def record_rate_limit_attempt_redis(key: str, window_seconds: int = 600) -> None:
+    """Record an attempt in Redis sliding window log with auto-expiration."""
+    global _redis_client
+    if not _redis_client:
+        return
+    try:
+        r_key = f"rl:{key}"
+        now = time.time()
+        pipe = _redis_client.pipeline()
+        pipe.zadd(r_key, {str(now): now})
+        pipe.expire(r_key, window_seconds + 10)
+        pipe.execute()
+    except Exception as e:
+        logger.warning(f"Redis rate limit record error for {key}: {e}")
+

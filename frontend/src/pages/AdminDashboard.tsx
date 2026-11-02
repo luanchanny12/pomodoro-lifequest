@@ -526,6 +526,7 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/')}
+            onMouseEnter={() => import('@/pages/PomodoroApp')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition active:scale-95"
           >
             <ArrowLeft className="w-4 h-4" />
