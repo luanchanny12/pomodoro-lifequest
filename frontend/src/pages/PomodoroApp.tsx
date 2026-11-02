@@ -456,6 +456,9 @@ export default function PomodoroApp() {
       setStats(statsData)
       setAvailablePearls(rewardsData.balance.available_pearls)
 
+      // Kích hoạt ngầm kiểm tra rollover tự động và nạp sẵn cache ma trận cho hôm nay
+      focusService.getMatrixTasks().catch(() => {})
+
       if (goalsData.length > 0) {
         setSelectedGoalId((prev) => {
           if (prev !== null && goalsData.some((g) => g.id === prev)) {

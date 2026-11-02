@@ -41,14 +41,37 @@ interface EisenhowerMatrixViewProps {
 const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
   onStartPomodoroWithGoal,
 }) => {
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
-  const tomorrowStr = format(addDays(new Date(), 1), 'yyyy-MM-dd')
+  const [currentToday, setCurrentToday] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'))
+  const todayStr = currentToday
+  const tomorrowStr = useMemo(() => format(addDays(parseISO(todayStr), 1), 'yyyy-MM-dd'), [todayStr])
 
-  const [selectedDate, setSelectedDate] = useState<string>(todayStr)
+  const [selectedDate, setSelectedDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'))
   const [tasks, setTasks] = useState<DailyMatrixTask[]>([])
   const [goals, setGoals] = useState<StudyGoal[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [isReportOpen, setIsReportOpen] = useState<boolean>(false)
+
+  // Tự động đồng bộ ngày khi qua nửa đêm (00:00) hoặc người dùng mở lại tab/điện thoại/máy tính
+  useEffect(() => {
+    const handleSyncMidnight = () => {
+      const realToday = format(new Date(), 'yyyy-MM-dd')
+      if (realToday !== currentToday) {
+        setCurrentToday(realToday)
+        // Nếu người dùng đang đứng ở ngày cũ (trước khi qua đêm), tự động chuyển sang ngày mới (hôm nay)
+        setSelectedDate((prev) => (prev === currentToday ? realToday : prev))
+      }
+    }
+
+    window.addEventListener('focus', handleSyncMidnight)
+    document.addEventListener('visibilitychange', handleSyncMidnight)
+    const interval = setInterval(handleSyncMidnight, 15000)
+
+    return () => {
+      window.removeEventListener('focus', handleSyncMidnight)
+      document.removeEventListener('visibilitychange', handleSyncMidnight)
+      clearInterval(interval)
+    }
+  }, [currentToday])
 
   // Quick Add State per quadrant
   const [addingQuadrant, setAddingQuadrant] = useState<number | null>(null)
@@ -356,15 +379,15 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
                 Lịch sử ngày {format(parseISO(selectedDate), 'dd/MM/yyyy')}:
               </span>{' '}
               <span className="text-white/80">
-                Các việc chưa hoàn thành ở ngày này đã được khóa lại và tự động chuyển sang ngày tiếp theo để bảo toàn tính kỷ luật.
+                Các việc chưa hoàn thành ở ngày này đã được khóa lại và tự động chuyển sang ngày hôm nay ({format(parseISO(todayStr), 'dd/MM')}) để bảo toàn tính kỷ luật.
               </span>
             </div>
           </div>
           <button
             onClick={() => setSelectedDate(todayStr)}
-            className="text-xs text-amber-400 underline font-semibold flex-shrink-0 hover:text-amber-300"
+            className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold flex-shrink-0 transition shadow-sm active:scale-95"
           >
-            Về hôm nay
+            Xem việc hôm nay ➔
           </button>
         </div>
       )}

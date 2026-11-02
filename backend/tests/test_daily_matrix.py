@@ -202,3 +202,61 @@ def test_auto_rollover_to_today_and_tomorrow():
     assert tomorrow_res_after.status_code == 200
     tomorrow_tasks_after = tomorrow_res_after.json()
     assert not any(t["title"] == "Học 50 từ vựng Kanji" for t in tomorrow_tasks_after)
+
+
+def test_auto_rollover_with_previously_completed_same_title_tasks():
+    from app.routers.focus_hub import vn_today
+    today = vn_today()
+    five_days_ago = today - datetime.timedelta(days=5)
+    yesterday = today - datetime.timedelta(days=1)
+
+    db = SessionLocal()
+    # 1. Công việc lặp lại "Học từ vựng tiếng Anh" từng hoàn thành cách đây 5 ngày
+    past_done = DailyMatrixTask(
+        title="Học từ vựng tiếng Anh",
+        date=five_days_ago,
+        quadrant=2,
+        is_completed=True,
+    )
+    # 2. Hôm qua tạo lại công việc này nhưng chưa hoàn thành
+    yesterday_unfinished = DailyMatrixTask(
+        title="Học từ vựng tiếng Anh",
+        date=yesterday,
+        quadrant=2,
+        is_completed=False,
+    )
+    db.add_all([past_done, yesterday_unfinished])
+    db.commit()
+    db.close()
+
+    # 3. Mở xem hôm qua (hoặc hôm nay) -> Công việc chưa xong hôm qua PHẢI tự động chuyển sang hôm nay!
+    # (Bug cũ: do từng hoàn thành trong 14 ngày nên bị skip oan uổng)
+    res = client.get(f"/api/focus/matrix?date={today.isoformat()}")
+    assert res.status_code == 200
+    items = res.json()
+    rolled = [t for t in items if t["title"] == "Học từ vựng tiếng Anh" and t["date"] == today.isoformat()]
+    assert len(rolled) == 1, "Công việc chưa xong hôm qua phải được chuyển sang hôm nay dù từng hoàn thành ở quá khứ!"
+    assert rolled[0]["is_completed"] is False
+    assert "Tự động chuyển từ" in (rolled[0]["reflection_note"] or "")
+
+    # 4. Khi người dùng xem ngày hôm qua, rollover cho ngày hôm nay vẫn được đảm bảo kích hoạt
+    task_yesterday_2 = DailyMatrixTask(
+        title="Làm đề thi thử Toán",
+        date=yesterday,
+        quadrant=1,
+        is_completed=False,
+    )
+    db = SessionLocal()
+    db.add(task_yesterday_2)
+    db.commit()
+    db.close()
+
+    res_past = client.get(f"/api/focus/matrix?date={yesterday.isoformat()}")
+    assert res_past.status_code == 200
+
+    # Kiểm tra ngày hôm nay: việc "Làm đề thi thử Toán" đã được tự động gom sang hôm nay!
+    res_today_again = client.get(f"/api/focus/matrix?date={today.isoformat()}")
+    assert res_today_again.status_code == 200
+    rolled_math = [t for t in res_today_again.json() if t["title"] == "Làm đề thi thử Toán" and t["date"] == today.isoformat()]
+    assert len(rolled_math) == 1
+

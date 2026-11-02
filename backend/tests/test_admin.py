@@ -53,7 +53,9 @@ def admin_and_normal_user():
             norm_u.is_active = True
             db.commit()
 
-            # Add Goal for friend
+        # Add Goal for friend if not existing
+        g = db.query(StudyGoal).filter(StudyGoal.user_id == norm_u.id).first()
+        if not g:
             g = StudyGoal(
                 user_id=norm_u.id,
                 title="Luyện IELTS 8.0",
@@ -67,7 +69,9 @@ def admin_and_normal_user():
             db.commit()
             db.refresh(g)
 
-            # Add Session for friend
+        # Add Session for friend if not existing
+        s = db.query(StudySessionLog).filter(StudySessionLog.user_id == norm_u.id).first()
+        if not s:
             s = StudySessionLog(
                 user_id=norm_u.id,
                 goal_id=g.id,
@@ -78,7 +82,9 @@ def admin_and_normal_user():
             )
             db.add(s)
 
-            # Add Matrix Task for friend
+        # Add Matrix Task for friend if not existing
+        t = db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id == norm_u.id).first()
+        if not t:
             t = DailyMatrixTask(
                 user_id=norm_u.id,
                 title="Làm đề thi thử Reading Cam 18",
@@ -87,7 +93,7 @@ def admin_and_normal_user():
                 reflection_note="Hoàn thành đúng giờ",
             )
             db.add(t)
-            db.commit()
+        db.commit()
 
         admin_token = create_access_token(admin_u.id, admin_u.username)
         norm_token = create_access_token(norm_u.id, norm_u.username)
@@ -129,7 +135,7 @@ def test_admin_users_list_and_detail(admin_and_normal_user):
     norm_id = data["normal_user"].id
 
     # 1. Get Users list
-    res_users = client.get("/api/admin/users?limit=100", headers={"Authorization": f"Bearer {admin_token}"})
+    res_users = client.get("/api/admin/users?search=test_normal_friend", headers={"Authorization": f"Bearer {admin_token}"})
     assert res_users.status_code == 200
     users_list = res_users.json()["items"]
     assert any(u["id"] == norm_id for u in users_list)
@@ -224,7 +230,7 @@ def test_admin_overview_cache_and_batch_aggregation(admin_and_normal_user):
 
     # 2. Fetch users (verifies batch aggregation)
     res_users = client.get(
-        "/api/admin/users?limit=100",
+        "/api/admin/users?search=test_normal_friend",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert res_users.status_code == 200

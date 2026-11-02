@@ -1950,7 +1950,7 @@ def _auto_rollover_tasks(db: Session, user: Optional[User], target_date: datetim
     Tự động chuyển giao các công việc chưa hoàn thành sang ngày tiếp theo:
     1. Nếu target_date == vn_today():
        Tự động gom các việc chưa hoàn thành từ các ngày quá khứ gần nhất (tối đa 14 ngày)
-       chưa từng được hoàn thành hoặc chưa có mặt ở ngày hôm nay -> tự động chuyển sang ngày hôm nay.
+       chưa từng được hoàn thành vào/sau ngày đó và chưa có mặt ở ngày hôm nay -> tự động chuyển sang ngày hôm nay.
     2. Nếu target_date == vn_today() + 1 ngày (ngày mai):
        Tự động gom các việc chưa hoàn thành của ngày hôm nay sang ngày mai để lập kế hoạch tối hôm trước.
     """
@@ -1969,7 +1969,7 @@ def _auto_rollover_tasks(db: Session, user: Optional[User], target_date: datetim
     else:
         dest_query = dest_query.filter(DailyMatrixTask.user_id.is_(None))
     dest_tasks = dest_query.all()
-    existing_dest_titles = {t.title.strip().lower() for t in dest_tasks}
+    existing_dest_titles = {t.title.strip().lower() for t in dest_tasks if t.title}
 
     rolled_count = 0
 
@@ -1989,24 +1989,39 @@ def _auto_rollover_tasks(db: Session, user: Optional[User], target_date: datetim
         if not past_uncompleted:
             return 0
 
-        # Kiểm tra xem các tiêu đề này đã từng được hoàn thành ở ngày nào sau đó chưa
-        completed_query = db.query(DailyMatrixTask.title).filter(
-            DailyMatrixTask.date >= min_date,
-            DailyMatrixTask.date <= current_today,
-            DailyMatrixTask.is_completed == True,
+        # Lấy ngày hoàn thành muộn nhất của mỗi tiêu đề (để chỉ bỏ qua nếu việc đó đã được hoàn thành vào/sau ngày của task)
+        completed_rows = (
+            db.query(DailyMatrixTask.title, func.max(DailyMatrixTask.date))
+            .filter(
+                DailyMatrixTask.date >= min_date,
+                DailyMatrixTask.date <= current_today,
+                DailyMatrixTask.is_completed == True,
+            )
         )
         if user:
-            completed_query = completed_query.filter(DailyMatrixTask.user_id == user.id)
+            completed_rows = completed_rows.filter(DailyMatrixTask.user_id == user.id)
         else:
-            completed_query = completed_query.filter(DailyMatrixTask.user_id.is_(None))
-        completed_titles = {row[0].strip().lower() for row in completed_query.all() if row[0]}
+            completed_rows = completed_rows.filter(DailyMatrixTask.user_id.is_(None))
+
+        latest_completed_map = {
+            row[0].strip().lower(): row[1]
+            for row in completed_rows.group_by(DailyMatrixTask.title).all()
+            if row[0]
+        }
 
         for t in past_uncompleted:
+            if not t.title:
+                continue
             clean_title = t.title.strip().lower()
             if clean_title in existing_dest_titles:
                 continue
-            if clean_title in completed_titles:
+            # Chỉ bỏ qua nếu công việc này đã từng được hoàn thành vào ngày t.date hoặc một ngày sau t.date
+            if clean_title in latest_completed_map and latest_completed_map[clean_title] >= t.date:
                 continue
+
+            note = t.reflection_note or ""
+            note_clean = re.sub(r"^Tự động chuyển từ [^:]+:\s*", "", note).strip()
+            reflection_note = f"Tự động chuyển từ {t.date.strftime('%d/%m')}" + (f": {note_clean}" if note_clean and note_clean != "chưa hoàn thành" else "")
 
             new_task = DailyMatrixTask(
                 user_id=target_user_id,
@@ -2015,7 +2030,7 @@ def _auto_rollover_tasks(db: Session, user: Optional[User], target_date: datetim
                 date=current_today,
                 quadrant=t.quadrant,
                 goal_id=t.goal_id,
-                reflection_note=f"Tự động chuyển từ {t.date.strftime('%d/%m')}: {t.reflection_note or 'chưa hoàn thành'}",
+                reflection_note=reflection_note,
                 order_index=t.order_index or 0,
             )
             db.add(new_task)
@@ -2037,9 +2052,15 @@ def _auto_rollover_tasks(db: Session, user: Optional[User], target_date: datetim
             return 0
 
         for t in today_uncompleted:
+            if not t.title:
+                continue
             clean_title = t.title.strip().lower()
             if clean_title in existing_dest_titles:
                 continue
+
+            note = t.reflection_note or ""
+            note_clean = re.sub(r"^Tự động chuyển từ [^:]+:\s*", "", note).strip()
+            reflection_note = f"Tự động chuyển từ hôm nay ({current_today.strftime('%d/%m')})" + (f": {note_clean}" if note_clean and note_clean != "chưa hoàn thành" else "")
 
             new_task = DailyMatrixTask(
                 user_id=target_user_id,
@@ -2048,7 +2069,7 @@ def _auto_rollover_tasks(db: Session, user: Optional[User], target_date: datetim
                 date=tomorrow,
                 quadrant=t.quadrant,
                 goal_id=t.goal_id,
-                reflection_note=f"Tự động chuyển từ hôm nay ({current_today.strftime('%d/%m')}): {t.reflection_note or 'chưa hoàn thành'}",
+                reflection_note=reflection_note,
                 order_index=t.order_index or 0,
             )
             db.add(new_task)
@@ -2068,11 +2089,16 @@ def get_matrix_tasks(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    target_date = task_date or vn_today()
     real_user = _get_real_user(user)
+    current_today = vn_today()
+    target_date = task_date or current_today
 
-    # Tự động chuyển giao các công việc chưa hoàn thành sang ngày hôm nay hoặc ngày mai
-    _auto_rollover_tasks(db, real_user, target_date)
+    # 1. Luôn tự động chuyển giao việc tồn đọng từ các ngày trước sang ngày hôm nay
+    _auto_rollover_tasks(db, real_user, current_today)
+
+    # 2. Nếu đang xem ngày mai, tự động chuyển việc tồn đọng của hôm nay sang ngày mai
+    if target_date == current_today + datetime.timedelta(days=1):
+        _auto_rollover_tasks(db, real_user, target_date)
 
     uid_str = f"u_{real_user.id}" if real_user else "u_guest"
     cache_key = f"cache:matrix:{uid_str}:{target_date.isoformat()}"
