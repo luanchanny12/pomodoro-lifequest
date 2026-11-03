@@ -71,6 +71,9 @@ import { usePWAInstall } from '@/utils/usePWAInstall'
 import { authService, UserProfile } from '@/services/authService'
 import { notificationManager } from '@/utils/notificationManager'
 import { trackVisit } from '@/utils/analytics'
+import { useQuery } from '@tanstack/react-query'
+import { queryClient } from '@/lib/queryClient'
+import { setTimeLeft, getTimeLeft, useTimeLeft } from '@/lib/timerStore'
 
 // ── LAZY-LOADED SECONDARY VIEWS & MODALS (Eliminates ~1.4MB bundle from initial load) ──
 const PomodoroStatsChart = lazy(() => import('@/components/pomodoro/PomodoroStatsChart'))
@@ -493,6 +496,65 @@ const StatsPanel = React.memo(function StatsPanel({
   )
 })
 
+// ── TIMER SIDE-EFFECTS (document title + Picture-in-Picture) ──
+// Small leaf component that subscribes to the countdown store: the giant
+// PomodoroApp page no longer re-renders every tick — only this does.
+interface TimerHeadSyncProps {
+  mode: TimerMode
+  goals: StudyGoal[]
+  selectedGoalId: number | null
+  settings: PomodoroSettings
+  sessionNote: string
+  isRunning: boolean
+}
+
+const TimerHeadSync: React.FC<TimerHeadSyncProps> = ({
+  mode,
+  goals,
+  selectedGoalId,
+  settings,
+  sessionNote,
+  isRunning,
+}) => {
+  const timeLeft = useTimeLeft()
+
+  // Update browser document title
+  useEffect(() => {
+    const mins = Math.floor(timeLeft / 60)
+    const secs = timeLeft % 60
+    const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+
+    const activeGoal = goals.find((g) => g.id === selectedGoalId)
+    const goalTitle = activeGoal ? activeGoal.title : 'Học tập'
+    const modeLabel = mode === 'pomodoro' ? 'Pomodoro' : 'Nghỉ ngơi'
+
+    document.title = `${timeStr} - ${goalTitle} (${modeLabel})`
+  }, [timeLeft, mode, goals, selectedGoalId])
+
+  // Sync Picture-in-Picture Floating Window
+  useEffect(() => {
+    if (pipTimerManager.isActive()) {
+      const mins = Math.floor(timeLeft / 60)
+      const secs = timeLeft % 60
+      const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+      const activeGoal = goals.find((g) => g.id === selectedGoalId)
+      const goalTitle = activeGoal ? activeGoal.title : 'Học tập'
+      const totalSecs = (mode === 'pomodoro' ? settings.focusMinutes : mode === 'shortBreak' ? settings.shortBreakMinutes : settings.longBreakMinutes) * 60
+      const progressPercent = totalSecs > 0 ? ((totalSecs - timeLeft) / totalSecs) * 100 : 0
+
+      pipTimerManager.update({
+        timeStr,
+        progressPercent,
+        modeLabel: mode === 'pomodoro' ? 'Pomodoro' : mode === 'shortBreak' ? 'Nghỉ ngắn' : 'Nghỉ dài',
+        topicNote: sessionNote || goalTitle || 'Tập trung học tập',
+        isRunning,
+      })
+    }
+  }, [timeLeft, mode, isRunning, goals, selectedGoalId, sessionNote, settings])
+
+  return null
+}
+
 export default function PomodoroApp() {
   const navigate = useNavigate()
   // ── Settings ──
@@ -529,9 +591,13 @@ export default function PomodoroApp() {
   const modeRef = useRef<TimerMode>(mode)
   modeRef.current = mode
 
-  const [timeLeft, setTimeLeft] = useState<number>(settings.focusMinutes * 60)
-  const timeLeftRef = useRef<number>(timeLeft)
-  timeLeftRef.current = timeLeft
+  // Countdown lives in an external store (timerStore) so each tick only
+  // re-renders components that display the time — not this whole page.
+  const timeLeftInitRef = useRef(false)
+  if (!timeLeftInitRef.current) {
+    timeLeftInitRef.current = true
+    setTimeLeft(settings.focusMinutes * 60)
+  }
 
   const [isRunning, setIsRunning] = useState<boolean>(false)
   const isRunningRef = useRef<boolean>(isRunning)
@@ -583,8 +649,38 @@ export default function PomodoroApp() {
   const isSavingEarlyRef = useRef<boolean>(false)
   isSavingEarlyRef.current = isSavingEarly
 
-  // Data with SWR instant cache snapshot (<10ms load)
-  const [goals, setGoals] = useState<StudyGoal[]>(() => focusService.getCachedGoals())
+  // ── Data via React Query ──
+  // Instant paint from localStorage snapshot + background revalidation.
+  // Cache survives navigation (gcTime) and is deduped/invalidated centrally.
+  const focusKey = currentUser?.id ?? null
+  const goalsQuery = useQuery({
+    queryKey: ['focus', focusKey, 'goals'],
+    queryFn: () => focusService.getGoals(),
+    enabled: !!currentUser,
+    initialData: () => focusService.getCachedGoals(),
+    refetchOnMount: 'always',
+  })
+  const sessionsQuery = useQuery({
+    queryKey: ['focus', focusKey, 'sessions'],
+    queryFn: () => focusService.getSessions({ limit: 50 }),
+    enabled: !!currentUser,
+    initialData: () => focusService.getCachedSessions(),
+    refetchOnMount: 'always',
+  })
+  const statsQuery = useQuery<FocusStats | null>({
+    queryKey: ['focus', focusKey, 'stats'],
+    queryFn: () => focusService.getStats(),
+    enabled: !!currentUser,
+    initialData: () => focusService.getCachedStats(),
+    refetchOnMount: 'always',
+  })
+  const rewardsQuery = useQuery({
+    queryKey: ['focus', focusKey, 'rewards'],
+    queryFn: () => focusService.getRewards(),
+    enabled: !!currentUser,
+  })
+
+  const goals = useMemo<StudyGoal[]>(() => goalsQuery.data ?? [], [goalsQuery.data])
   const goalsRef = useRef<StudyGoal[]>(goals)
   goalsRef.current = goals
 
@@ -599,9 +695,9 @@ export default function PomodoroApp() {
   const sessionNoteRef = useRef<string>(sessionNote)
   sessionNoteRef.current = sessionNote
 
-  const [sessions, setSessions] = useState<StudySessionLog[]>(() => focusService.getCachedSessions())
-  const [stats, setStats] = useState<FocusStats | null>(() => focusService.getCachedStats())
-  const [availablePearls, setAvailablePearls] = useState<number>(0)
+  const sessions = useMemo<StudySessionLog[]>(() => sessionsQuery.data ?? [], [sessionsQuery.data])
+  const stats = useMemo<FocusStats | null>(() => statsQuery.data ?? null, [statsQuery.data])
+  const availablePearls = rewardsQuery.data?.balance.available_pearls ?? 0
   const [goalFilter, setGoalFilter] = useState<'all' | 'active' | 'completed'>('all')
 
   // Celebration state
@@ -619,58 +715,53 @@ export default function PomodoroApp() {
   }, [])
 
   // ── Load Data ──
-  const loadData = async () => {
-    if (!currentUser) {
-      setGoals([])
-      setSessions([])
-      setStats(null)
-      setAvailablePearls(0)
-      return
-    }
-    try {
-      const [goalsData, sessionsData, statsData, rewardsData] = await Promise.all([
-        focusService.getGoals(),
-        focusService.getSessions({ limit: 50 }),
-        focusService.getStats(),
-        focusService.getRewards(),
-      ])
-      setGoals(goalsData)
-      setSessions(sessionsData)
-      setStats(statsData)
-      setAvailablePearls(rewardsData.balance.available_pearls)
+  // After any mutation: invalidate the React Query caches so all views refetch.
+  const refreshProfile = useCallback(() => {
+    // Tự động làm mới profile người dùng nếu các trường (streak, level, exp, coins) thật sự thay đổi
+    authService.getMe().then((u) => {
+      setCurrentUser((prev) => {
+        if (!prev || prev.id !== u.id || prev.streak !== u.streak || prev.level !== u.level || prev.exp !== u.exp || prev.coins !== u.coins) {
+          return u
+        }
+        return prev
+      })
+    }).catch(() => {})
+  }, [])
 
-      // Kích hoạt ngầm kiểm tra rollover tự động và nạp sẵn cache ma trận cho hôm nay
-      focusService.getMatrixTasks().catch(() => {})
+  const focusUserId = currentUser?.id
+  const loadData = useCallback(async () => {
+    if (focusUserId === undefined) return
+    await queryClient.invalidateQueries({ queryKey: ['focus', focusUserId] })
 
-      if (goalsData.length > 0) {
-        setSelectedGoalId((prev) => {
-          if (prev !== null && goalsData.some((g) => g.id === prev)) {
-            return prev
-          }
-          return goalsData[0].id
-        })
-      } else {
-        setSelectedGoalId(null)
-      }
+    // Kích hoạt ngầm kiểm tra rollover tự động và nạp sẵn cache ma trận cho hôm nay
+    focusService.getMatrixTasks().catch(() => {})
 
-      // Tự động làm mới profile người dùng nếu các trường (streak, level, exp, coins) thật sự thay đổi
-      authService.getMe().then((u) => {
-        setCurrentUser((prev) => {
-          if (!prev || prev.id !== u.id || prev.streak !== u.streak || prev.level !== u.level || prev.exp !== u.exp || prev.coins !== u.coins) {
-            return u
-          }
+    refreshProfile()
+  }, [focusUserId, refreshProfile])
+
+  // Tự động chọn mục tiêu theo dữ liệu mới nhất (giữ lựa chọn hiện tại nếu còn hợp lệ)
+  const goalsData = goalsQuery.data
+  useEffect(() => {
+    if (goalsData === undefined) return
+    if (goalsData.length > 0) {
+      setSelectedGoalId((prev) => {
+        if (prev !== null && goalsData.some((g) => g.id === prev)) {
           return prev
-        })
-      }).catch(() => {})
-    } catch (err) {
-      console.error('Error loading focus data:', err)
+        }
+        return goalsData[0].id
+      })
+    } else {
+      setSelectedGoalId(null)
     }
-  }
+  }, [goalsData])
 
   useEffect(() => {
-    loadData()
+    if (!currentUser) return
     focusService.syncPendingSessions().catch(() => {})
-  }, [currentUser?.id])
+    // Nạp sẵn cache ma trận (rollover) + làm mới profile sau khi đăng nhập
+    focusService.getMatrixTasks().catch(() => {})
+    refreshProfile()
+  }, [currentUser?.id, refreshProfile])
 
   // Track visit for analytics
   useEffect(() => {
@@ -879,7 +970,7 @@ export default function PomodoroApp() {
     } else {
       // Start
       setIsRunning(true)
-      endTimeRef.current = Date.now() + timeLeftRef.current * 1000
+      endTimeRef.current = Date.now() + getTimeLeft() * 1000
     }
   }, [])
 
@@ -893,7 +984,7 @@ export default function PomodoroApp() {
 
   const handleFinishEarly = useCallback(async () => {
     if (isSavingEarlyRef.current) return
-    const elapsedMinutes = Math.floor((settingsRef.current.focusMinutes * 60 - timeLeftRef.current) / 60)
+    const elapsedMinutes = Math.floor((settingsRef.current.focusMinutes * 60 - getTimeLeft()) / 60)
     if (elapsedMinutes < 1) {
       toast.info('Bạn cần tập trung ít nhất 1 phút để ghi nhận phiên học.')
       return
@@ -1002,7 +1093,7 @@ export default function PomodoroApp() {
       timerRef.current = window.setInterval(() => {
         if (!endTimeRef.current) return
         const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000))
-        setTimeLeft((prev) => (prev !== remaining ? remaining : prev))
+        setTimeLeft(remaining)
 
         if (remaining <= 0) {
           if (timerRef.current) clearInterval(timerRef.current)
@@ -1022,40 +1113,6 @@ export default function PomodoroApp() {
     }
   }, [isRunning, mode])
 
-  // Update browser document title
-  useEffect(() => {
-    const mins = Math.floor(timeLeft / 60)
-    const secs = timeLeft % 60
-    const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-
-    const activeGoal = goals.find((g) => g.id === selectedGoalId)
-    const goalTitle = activeGoal ? activeGoal.title : 'Học tập'
-    const modeLabel = mode === 'pomodoro' ? 'Pomodoro' : 'Nghỉ ngơi'
-
-    document.title = `${timeStr} - ${goalTitle} (${modeLabel})`
-  }, [timeLeft, mode, goals, selectedGoalId])
-
-  // Sync Picture-in-Picture Floating Window
-  useEffect(() => {
-    if (pipTimerManager.isActive()) {
-      const mins = Math.floor(timeLeft / 60)
-      const secs = timeLeft % 60
-      const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-      const activeGoal = goals.find((g) => g.id === selectedGoalId)
-      const goalTitle = activeGoal ? activeGoal.title : 'Học tập'
-      const totalSecs = (mode === 'pomodoro' ? settings.focusMinutes : mode === 'shortBreak' ? settings.shortBreakMinutes : settings.longBreakMinutes) * 60
-      const progressPercent = totalSecs > 0 ? ((totalSecs - timeLeft) / totalSecs) * 100 : 0
-
-      pipTimerManager.update({
-        timeStr,
-        progressPercent,
-        modeLabel: mode === 'pomodoro' ? 'Pomodoro' : mode === 'shortBreak' ? 'Nghỉ ngắn' : 'Nghỉ dài',
-        topicNote: sessionNote || goalTitle || 'Tập trung học tập',
-        isRunning,
-      })
-    }
-  }, [timeLeft, mode, isRunning, goals, selectedGoalId, sessionNote, settings])
-
   // Cleanup PiP on unmount
   useEffect(() => {
     return () => {
@@ -1074,7 +1131,7 @@ export default function PomodoroApp() {
     }
 
     try {
-      const currentSeconds = timeLeftRef.current
+      const currentSeconds = getTimeLeft()
       const mins = Math.floor(currentSeconds / 60)
       const secs = currentSeconds % 60
       const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
@@ -1298,6 +1355,16 @@ export default function PomodoroApp() {
     <div className="min-h-screen text-white relative selection:bg-white/30">
       {/* ── DYNAMIC BACKGROUND (ANIMATED / WALLPAPER / CANVAS) ── */}
       <DynamicBackground config={bgConfig} fallbackColor={currentTheme.bg} />
+
+      {/* Countdown side-effects (document title + PiP) — isolated from page renders */}
+      <TimerHeadSync
+        mode={mode}
+        goals={goals}
+        selectedGoalId={selectedGoalId}
+        settings={settings}
+        sessionNote={sessionNote}
+        isRunning={isRunning}
+      />
 
       {/* ── FLOATING GLASS ISLAND TOP NAVIGATION ── */}
       <header className="max-w-6xl mx-auto px-4 pt-3 pb-1 relative z-30">
@@ -1569,7 +1636,6 @@ export default function PomodoroApp() {
         {/* ── POMODORO TIMER CARD (CYBER FOCUS COCKPIT / TIMER PANEL) ── */}
         <TimerPanel
           mode={mode}
-          timeLeft={timeLeft}
           isRunning={isRunning}
           sessionCount={sessionCount}
           isPipActive={isPipActive}
@@ -1945,7 +2011,6 @@ export default function PomodoroApp() {
           <ZenDeskClockModal
             isOpen={isZenClockOpen}
             onClose={() => setIsZenClockOpen(false)}
-            timeLeft={timeLeft}
             isRunning={isRunning}
             mode={mode}
             onStartPause={handleStartPause}

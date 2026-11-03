@@ -26,6 +26,8 @@ export default defineConfig({
     },
   },
   build: {
+    // Dọn sạch bundle hash cũ trong dist mỗi lần build (tránh tích lũy ~12MB)
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks(id) {

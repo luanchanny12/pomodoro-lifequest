@@ -145,6 +145,14 @@ Sau khi có domain Vercel, quay lại Render → thêm biến `APP_PUBLIC_URL = 
 
 ## BƯỚC 5 — Giữ server thức 24/7
 
+### 5.0 Windows Task Scheduler (ĐÃ CẤU HÌNH trên máy dev)
+
+Đã đăng ký task `PomodoroLifeQuest-KeepAlive` (mỗi 10 phút) chạy `scripts/keep-alive.ps1` để ping `GET https://pomodoro-lifequest.onrender.com/api/health` — tránh Render free tier sleep (cold start có thể tới 30–40 giây).
+
+- Trạng thái lần chạy gần nhất: `%TEMP%\pomodoro-keepalive.last.log`
+- Kiểm tra task: `schtasks /Query /TN "PomodoroLifeQuest-KeepAlive"`
+- Hạn chế: chỉ chạy khi máy dev bật. Nên bổ sung cron-job.org (5.2) để ping 24/7 kể cả khi máy tắt.
+
 ### 5.1 GitHub Actions
 
 1. Repo GitHub → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.

@@ -54,6 +54,7 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
   // Tự động đồng bộ ngày khi qua nửa đêm (00:00) hoặc người dùng mở lại tab/điện thoại/máy tính
   useEffect(() => {
     const handleSyncMidnight = () => {
+      if (document.hidden) return // Tab ẩn: bỏ qua — visibilitychange sẽ bắt khi người dùng quay lại
       const realToday = format(new Date(), 'yyyy-MM-dd')
       if (realToday !== currentToday) {
         setCurrentToday(realToday)

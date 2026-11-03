@@ -17,10 +17,10 @@ import {
   Brain,
   Radio,
 } from 'lucide-react'
+import { useTimeLeft } from '@/lib/timerStore'
 
 export interface PomodoroCockpitProps {
   mode: 'pomodoro' | 'shortBreak' | 'longBreak'
-  timeLeft: number
   isRunning: boolean
   sessionCount: number
   isPipActive: boolean
@@ -53,7 +53,6 @@ function formatTime(seconds: number): string {
 
 const PomodoroCockpitComponent: React.FC<PomodoroCockpitProps> = ({
   mode,
-  timeLeft,
   isRunning,
   sessionCount,
   isPipActive,
@@ -79,6 +78,7 @@ const PomodoroCockpitComponent: React.FC<PomodoroCockpitProps> = ({
 }) => {
   const [showCustomTimeInput, setShowCustomTimeInput] = useState<boolean>(false)
   const [customTimeMinutes, setCustomTimeMinutes] = useState<number>(currentMinutesSetting)
+  const timeLeft = useTimeLeft() // external countdown store — only this panel re-renders per tick
 
   const elapsedMinutes = Math.floor((focusMinutesSetting * 60 - timeLeft) / 60)
 

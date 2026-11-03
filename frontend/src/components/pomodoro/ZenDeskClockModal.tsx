@@ -20,11 +20,11 @@ import {
 } from 'lucide-react'
 import { soundManager } from '@/utils/soundEffects'
 import { toast } from 'sonner'
+import { useTimeLeft } from '@/lib/timerStore'
 
 interface ZenDeskClockModalProps {
   isOpen: boolean
   onClose: () => void
-  timeLeft: number
   isRunning: boolean
   mode: 'pomodoro' | 'shortBreak' | 'longBreak'
   onStartPause: () => void
@@ -39,7 +39,6 @@ interface ZenDeskClockModalProps {
 export const ZenDeskClockModal: React.FC<ZenDeskClockModalProps> = ({
   isOpen,
   onClose,
-  timeLeft,
   isRunning,
   mode,
   onStartPause,
@@ -51,6 +50,7 @@ export const ZenDeskClockModal: React.FC<ZenDeskClockModalProps> = ({
   goalTitle,
 }) => {
   const [ambientSound, setAmbientSound] = useState<'none' | 'rain' | 'waves' | 'ticking' | 'fire' | 'binaural' | 'lofi'>('none')
+  const timeLeft = useTimeLeft() // external countdown store — page doesn't re-render per tick
   const [volume, setVolume] = useState<number>(0.6)
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false)
   const wakeLockRef = useRef<any>(null)

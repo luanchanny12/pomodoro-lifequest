@@ -23,6 +23,16 @@ export interface AuthResponse {
 const TOKEN_KEY = 'pomodoro_access_token'
 const USER_KEY = 'pomodoro_user_profile'
 
+// Phải khớp tên cache API trong public/sw.js (CACHE_VERSION = "v3.3-api-swr").
+// Cache GET /api/* dùng chung theo URL — xóa khi đổi phiên để thiết bị dùng chung
+// không bao giờ hiển thị dữ liệu của người dùng trước khi mạng gặp sự cố.
+const SW_API_CACHE = 'life-quest-api-v3.3-api-swr'
+const purgeSwApiCache = () => {
+  try {
+    if (typeof caches !== 'undefined') void caches.delete(SW_API_CACHE)
+  } catch {}
+}
+
 export const authService = {
   getToken: (): string | null => {
     return localStorage.getItem(TOKEN_KEY)
@@ -54,6 +64,7 @@ export const authService = {
     })
     localStorage.setItem(TOKEN_KEY, res.data.access_token)
     localStorage.setItem(USER_KEY, JSON.stringify(res.data.user))
+    purgeSwApiCache()
     return res.data
   },
 
@@ -64,6 +75,7 @@ export const authService = {
     })
     localStorage.setItem(TOKEN_KEY, res.data.access_token)
     localStorage.setItem(USER_KEY, JSON.stringify(res.data.user))
+    purgeSwApiCache()
     return res.data
   },
 
@@ -108,5 +120,6 @@ export const authService = {
     try {
       queryClient.clear()
     } catch {}
+    purgeSwApiCache()
   },
 }
