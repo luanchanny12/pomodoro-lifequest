@@ -216,6 +216,43 @@ Lịch mặc định: **08:00** và **21:30** (GMT+7). Có thể đổi trong ta
 
 ---
 
+## BƯỚC 8 — Quản Lý Schema Database Với Alembic Migrations
+
+Hệ thống đã được thiết lập migration an toàn với Alembic (`backend/alembic`):
+1. **Kiểm tra trạng thái hiện tại**:
+   ```bash
+   cd backend
+   alembic current
+   ```
+2. **Tạo migration mới khi thay đổi models**:
+   ```bash
+   cd backend
+   alembic revision --autogenerate -m "mo_ta_thay_doi"
+   ```
+3. **Áp dụng migration lên database**:
+   ```bash
+   cd backend
+   alembic upgrade head
+   ```
+> **Lưu ý an toàn**: Luôn chạy test trước trên database test cục bộ hoặc SQLite test trước khi upgrade lên Neon Production.
+
+---
+
+## BƯỚC 9 — Tự Động Sao Lưu Database Hằng Ngày (Daily Backup)
+
+Hệ thống sử dụng GitHub Actions workflow `.github/workflows/db-backup.yml` để tự động sao lưu toàn bộ Neon PostgreSQL:
+1. **Thiết lập GitHub Secret**:
+   - Vào GitHub Repo → **Settings** → **Secrets and variables** → **Actions**.
+   - Bấm **New repository secret**:
+     - Name: `DATABASE_URL`
+     - Value: Chuỗi kết nối Neon PostgreSQL của bạn (dạng `postgresql://...`).
+2. **Cơ chế hoạt động**:
+   - Tự động chạy mỗi ngày lúc **02:00 sáng** (giờ Việt Nam).
+   - Dùng `pg_dump` nén thành file `.sql.gz` và lưu trữ trong tab **Actions → Artifacts** của GitHub trong **7 ngày**.
+   - Bạn cũng có thể bấm nút **Run workflow** thủ công bất kỳ lúc nào để tải bản sao lưu tức thì!
+
+---
+
 ## 🔧 Những lỗi đã được sửa để deploy được
 
 | Vấn đề | Cách sửa |

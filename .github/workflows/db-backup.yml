@@ -1,0 +1,49 @@
+name: Database Backup (Daily Automated pg_dump)
+
+on:
+  schedule:
+    # Chạy hằng ngày lúc 19:00 UTC (02:00 sáng giờ Việt Nam)
+    - cron: '0 19 * * *'
+  # Cho phép bấm "Run workflow" thủ công bất kỳ lúc nào từ GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: Backup Neon PostgreSQL Database
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL Client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client gzip
+
+      - name: Perform Database Dump
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Secret DATABASE_URL chưa được cấu hình trong GitHub Repository Secrets!"
+            exit 1
+          fi
+          
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          BACKUP_FILE="lifequest_backup_${TIMESTAMP}.sql.gz"
+          
+          echo "Bắt đầu sao lưu database Neon PostgreSQL..."
+          pg_dump "$DATABASE_URL" --no-owner --no-acl | gzip > "$BACKUP_FILE"
+          
+          BACKUP_SIZE=$(ls -lh "$BACKUP_FILE" | awk '{print $5}')
+          echo "Sao lưu thành công! Tên file: $BACKUP_FILE, Dung lượng: $BACKUP_SIZE"
+          echo "BACKUP_FILE=$BACKUP_FILE" >> $GITHUB_ENV
+
+      - name: Upload Backup Artifact (7 Days Retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BACKUP_FILE }}
+          path: ${{ env.BACKUP_FILE }}
+          retention-days: 7
+          if-no-files-found: error
