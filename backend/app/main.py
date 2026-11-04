@@ -182,6 +182,21 @@ async def lifespan(app: FastAPI):
 is_prod_env = os.getenv("RENDER") is not None or os.getenv("ENVIRONMENT") == "production"
 enable_docs = not is_prod_env or os.getenv("ENABLE_DOCS", "false").lower() == "true"
 
+# Khởi tạo Sentry Error Tracking cho Backend (chỉ kích hoạt khi có SENTRY_DSN và không phải test)
+sentry_dsn = os.getenv("SENTRY_DSN")
+is_testing = os.getenv("TESTING", "").lower() in ("true", "1")
+if sentry_dsn and not is_testing:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=sentry_dsn,
+            traces_sample_rate=0.1,
+            profiles_sample_rate=0.1,
+            send_default_pii=False,
+        )
+    except Exception as e:
+        print(f"[Sentry Warning] Failed to initialize Sentry: {e}")
+
 app = FastAPI(
     title="Pomodoro Goal Focus Hub",
     version="3.0.0",

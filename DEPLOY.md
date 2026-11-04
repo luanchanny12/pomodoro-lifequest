@@ -201,6 +201,21 @@ Lịch mặc định: **08:00** và **21:30** (GMT+7). Có thể đổi trong ta
 
 ---
 
+## BƯỚC 7 — Thiết lập Sentry (Error Tracking) Miễn Phí (Tùy chọn)
+
+1. Đăng ký tài khoản miễn phí tại https://sentry.io.
+2. Tạo 2 Project:
+   - **Frontend**: Tạo project nền tảng `React` → Copy **DSN**.
+   - **Backend**: Tạo project nền tảng `FastAPI` / `Python` → Copy **DSN**.
+3. Cấu hình biến môi trường:
+   - **Render** (Service `pomodoro-lifequest` → Tab Environment): Thêm biến `SENTRY_DSN` = `<Backend DSN>`.
+   - **Vercel** (Project Settings → Environment Variables): Thêm biến `VITE_SENTRY_DSN` = `<Frontend DSN>`.
+4. Kiểm tra:
+   - Khi có crash hay runtime exception unhandled, Sentry tự động gửi báo cáo chi tiết stacktrace về dashboard.
+   - Sentry được lập trình tự động tắt trong môi trường test (`TESTING=true` hoặc `MODE=test`), đảm bảo không gửi dữ liệu giả mạo.
+
+---
+
 ## 🔧 Những lỗi đã được sửa để deploy được
 
 | Vấn đề | Cách sửa |
