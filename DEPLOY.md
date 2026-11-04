@@ -151,26 +151,32 @@ Sau khi có domain Vercel, quay lại Render → thêm biến `APP_PUBLIC_URL = 
 
 - Trạng thái lần chạy gần nhất: `%TEMP%\pomodoro-keepalive.last.log`
 - Kiểm tra task: `schtasks /Query /TN "PomodoroLifeQuest-KeepAlive"`
-- Hạn chế: chỉ chạy khi máy dev bật. Nên bổ sung cron-job.org (5.2) để ping 24/7 kể cả khi máy tắt.
+- Hạn chế: chỉ chạy khi máy dev bật. Bộ ping 24/7 (kể cả khi máy tắt) đã cấu hình ở 5.2.
 
 ### 5.1 GitHub Actions
 
 1. Repo GitHub → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
-2. Name: `RENDER_BACKEND_URL` — Value: `https://pomodoro-backend-api.onrender.com`
+2. Name: `RENDER_BACKEND_URL` — Value: `https://pomodoro-lifequest.onrender.com`
 3. Vào tab **Actions** → workflow **Keep Render Backend Alive 24/7** → **Run workflow** để test.
 
 Workflow gọi `POST /api/notifications/telegram-trigger-check` mỗi 10 phút, có timeout 120 giây cho cold start.
 
 > ⚠️ GitHub Actions có thể trễ 5–20 phút và **tự tắt workflow schedule sau 60 ngày repo không có commit**.
 
-### 5.2 cron-job.org (khuyến nghị, ổn định hơn)
+### 5.2 cron-job.org (ĐÃ CẤU HÌNH — ping 24/7, không phụ thuộc máy dev)
 
-1. https://cron-job.org → tạo cron mới.
-2. URL: `https://pomodoro-backend-api.onrender.com/api/notifications/telegram-trigger-check`
-3. Method: `GET` hoặc `POST` (backend hỗ trợ cả hai).
-4. Schedule: **every 5 minutes**. Timezone: `Asia/Ho_Chi_Minh`.
+Job đang chạy trên cron-job.org:
 
-Có thể dùng UptimeRobot (GET) thay thế. Endpoint trả về JSON nhanh nên không tốn tài nguyên.
+- **Title:** `Render keep-alive (LifeQuest)`
+- **Job ID:** `8789448` — quản lý tại https://console.cron-job.org/jobs
+- **URL:** `GET https://pomodoro-lifequest.onrender.com/api/health`
+- **Schedule:** every 5 minutes (timezone UTC)
+- Test run đầu tiên: `200 OK` (250 ms); lần chạy thật đầu tiên: **Successful (231 ms)**
+- Vào **EDIT** để bật thông báo email khi cron fail (mặc định `onDisable` đã bật).
+
+Nếu cần tạo lại từ đầu: https://cron-job.org → tạo cron mới → URL trên → Schedule **every 5 minutes** → Enable → Save. Endpoint trả về JSON nhanh nên không tốn tài nguyên.
+
+Có thể dùng UptimeRobot (GET) thay thế.
 
 ---
 
