@@ -218,23 +218,41 @@ Lịch mặc định: **08:00** và **21:30** (GMT+7). Có thể đổi trong ta
 
 ## BƯỚC 8 — Quản Lý Schema Database Với Alembic Migrations
 
-Hệ thống đã được thiết lập migration an toàn với Alembic (`backend/alembic`):
-1. **Kiểm tra trạng thái hiện tại**:
+Hệ thống đã được thiết lập migration với Alembic (`backend/alembic`), có **guard chống chạm nhầm DB prod**:
+
+> 🛡️ **Guard**: `alembic/env.py` phát hiện `DATABASE_URL` là PostgreSQL sẽ **dừng và báo lỗi** trừ khi bạn set `ALEMBIC_ALLOW_PROD=true`. Chế độ `TESTING=true` luôn dùng SQLite cách ly.
+
+### 8.1 Lần ĐẦU TIÊN trên DB prod đã có 19 bảng sẵn
+
+DB Neon đã tồn tại toàn bộ schema (do `Base.metadata.create_all()` tạo từ trước) → **không được** chạy `upgrade head` (sẽ báo "already exists"). Hãy **đánh dấu** schema hiện tại đã khớp baseline:
+
+```bash
+cd backend
+ALEMBIC_ALLOW_PROD=true alembic current        # xem trạng thái (sẽ trống)
+ALEMBIC_ALLOW_PROD=true alembic stamp head     # ghi nhận "đã ở revision b402edb2b37f" — KHÔNG chạy DDL gì cả
+ALEMBIC_ALLOW_PROD=true alembic current        # xác nhận hiện tại = b402edb2b37f
+```
+
+### 8.2 Quy trình với các migration MỚI (khi sửa models)
+
+1. **Thử trên DB test cục bộ trước** (không cần guard):
    ```bash
    cd backend
-   alembic current
+   TEST_DATABASE_URL=sqlite:///./alembic_local.db alembic upgrade head
    ```
-2. **Tạo migration mới khi thay đổi models**:
+2. Tạo migration mới:
    ```bash
-   cd backend
    alembic revision --autogenerate -m "mo_ta_thay_doi"
    ```
-3. **Áp dụng migration lên database**:
+3. Chạy **toàn bộ test** (pytest unit + e2e) — phải pass.
+4. Mới áp lên prod (có backup sẵn ở BƯỚC 9):
    ```bash
-   cd backend
-   alembic upgrade head
+   ALEMBIC_ALLOW_PROD=true alembic upgrade head
    ```
-> **Lưu ý an toàn**: Luôn chạy test trước trên database test cục bộ hoặc SQLite test trước khi upgrade lên Neon Production.
+
+### 8.3 ⛔ CẤM trên production
+- **`alembic downgrade`** — baseline của nó là `DROP` 19 bảng = **mất toàn bộ dữ liệu người dùng**. Rollback schema phải viết migration bù, hoặc restore từ backup (BƯỚC 9).
+- Chạy `alembic` khi `.env` trỏ prod mà **không** set `ALEMBIC_ALLOW_PROD=true` (guard sẽ chặn, đừng tắt guard).
 
 ---
 

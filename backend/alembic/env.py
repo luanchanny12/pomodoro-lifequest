@@ -37,15 +37,39 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def get_url() -> str:
-    # If run in test mode or TEST_DATABASE_URL is set, prioritize test db
+    # 1) TEST_DATABASE_URL được đặt thủ công -> dùng nó (ưu tiên tuyệt đối)
     test_db = os.getenv("TEST_DATABASE_URL")
     if test_db:
         return test_db
+
+    # 2) Chế độ test: dùng đúng SQLite cách ly của app (KHÔNG BAO GIỜ chạm DB thật)
+    if os.getenv("TESTING", "").lower() in ("true", "1") or "pytest" in sys.modules:
+        from app.database import engine as _local_engine
+        return str(_local_engine.url)
+
     url = os.getenv("DATABASE_URL")
     if not url:
         url = config.get_main_option("sqlalchemy.url", "sqlite:///./pomodoro.db")
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
+
+    # 3) Chống tai nạn: DATABASE_URL mặc định trong .env trỏ thẳng tới Neon production.
+    #    Chạy alembic upgrade/downgrade lúc này sẽ DDL trên DB THẬT (downgrade = DROP bảng).
+    #    Phải set ALEMBIC_ALLOW_PROD=true chủ động thì mới cho phép.
+    if url.startswith(("postgres://", "postgresql://")) and os.getenv(
+        "ALEMBIC_ALLOW_PROD", ""
+    ).lower() not in ("true", "1"):
+        raise SystemExit(
+            "\n[ALEMBIC STOPPED] DATABASE_URL trỏ tới PostgreSQL (rất có thể là Neon production).\n"
+            "\n"
+            "Nếu ĐÚNG là muốn migration DB này:\n"
+            "    ALEMBIC_ALLOW_PROD=true alembic upgrade head\n"
+            "DB đã tồn tại schema (19 bảng): hãy chạy `alembic stamp head` TRƯỚC,\n"
+            "chỉ `upgrade head` khi có migration MỚI.\n"
+            "\n"
+            "Nếu muốn thử trên DB cục bộ:\n"
+            "    TEST_DATABASE_URL=sqlite:///./alembic_local.db alembic upgrade head\n"
+        )
     return url
 
 
