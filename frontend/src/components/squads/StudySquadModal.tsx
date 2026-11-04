@@ -23,6 +23,7 @@ import {
   SquadMessageItem,
 } from '@/services/squadService'
 import { StudyGoal } from '@/services/focusService'
+import { parseSafeDate } from '@/utils/dateUtils'
 
 export interface StudySquadModalProps {
   isOpen: boolean
@@ -38,7 +39,8 @@ const VEHICLE_OPTIONS = ['🏎️', '🚀', '⚡', '🛸', '🏍️', '🚗', '�
 
 function formatChatTime(dateStr: string): string {
   try {
-    const d = new Date(dateStr)
+    const d = parseSafeDate(dateStr)
+    if (!d) return ''
     const now = new Date()
     const diffMins = Math.floor((now.getTime() - d.getTime()) / 60000)
     if (diffMins < 1) return 'Vừa xong'

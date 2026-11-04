@@ -23,6 +23,7 @@ import {
   AggregatedVisitorItem,
   LiveVisitLogItem,
 } from '@/services/adminService'
+import { formatSafeTime } from '@/utils/dateUtils'
 
 const AdminTrafficChart = React.lazy(() => import('@/components/admin/AdminTrafficChart'))
 
@@ -588,7 +589,7 @@ export const AdminTrafficTab: React.FC<AdminTrafficTabProps> = ({
                           {formatRelativeTime(log.created_at)}
                         </div>
                         <div className="text-[10px] text-slate-500">
-                          {log.created_at ? new Date(log.created_at).toLocaleTimeString('vi-VN') : ''}
+                          {formatSafeTime(log.created_at)}
                         </div>
                       </td>
 

@@ -58,6 +58,7 @@ import {
 } from '@/services/adminService'
 import { authService, UserProfile } from '@/services/authService'
 import { useDebounce } from '@/hooks/useDebounce'
+import { formatSafeRelativeTime } from '@/utils/dateUtils'
 import { AdminUserRow } from '@/components/admin/AdminUserRow'
 import { AdminTrafficTab } from '@/components/admin/AdminTrafficTab'
 import { AdminFeedbackTab } from '@/components/admin/AdminFeedbackTab'
@@ -269,26 +270,7 @@ export default function AdminDashboard() {
   }, [activeAdminTab, visitorFilterType, selectedTimeframe, visitorFilterDate, visitorPageSize, debouncedVisitorSearch])
 
   const formatRelativeTime = (isoString: string | null): string => {
-    if (!isoString) return 'Chưa ghi nhận'
-    try {
-      const d = new Date(isoString)
-      const now = new Date()
-      const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000)
-      if (diffSec < 45) return 'Vừa xong'
-      if (diffSec < 3600) return `${Math.floor(diffSec / 60)} phút trước`
-      if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} giờ trước`
-      const diffDays = Math.floor(diffSec / 86400)
-      if (diffDays === 1) return 'Hôm qua'
-      if (diffDays < 7) return `${diffDays} ngày trước`
-      return d.toLocaleDateString('vi-VN', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    } catch {
-      return isoString || ''
-    }
+    return formatSafeRelativeTime(isoString)
   }
 
   const handleUpdateFeedbackStatus = async (

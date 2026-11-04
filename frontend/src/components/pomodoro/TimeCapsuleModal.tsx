@@ -25,6 +25,7 @@ import {
 import { TimeCapsule, focusService } from '../../services/focusService'
 import { soundManager } from '../../utils/soundEffects'
 import { toast } from 'sonner'
+import { formatSafeDate } from '../../utils/dateUtils'
 
 interface TimeCapsuleModalProps {
   isOpen: boolean
@@ -525,9 +526,9 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
                         />
                         <span className="text-xs text-amber-300 font-medium">
                           → Mở vào:{' '}
-                          {new Date(
+                          {formatSafeDate(
                             Date.now() + (customDays ? parseInt(customDays, 10) || 0 : targetDays) * 86400000
-                          ).toLocaleDateString('vi-VN')}
+                          )}
                         </span>
                       </div>
                     </div>
@@ -689,7 +690,7 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
                     const isLocked = !cap.is_unlocked
                     const isUnlockDays = cap.unlock_days && cap.unlock_days > 0
                     const unlockDateStr = cap.unlock_date
-                      ? new Date(cap.unlock_date).toLocaleDateString('vi-VN')
+                      ? formatSafeDate(cap.unlock_date)
                       : null
 
                     return (
@@ -737,7 +738,7 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
 
                             <span className="text-[10px] text-slate-500 flex items-center gap-1">
                               <Calendar className="w-3 h-3" />
-                              {new Date(cap.created_at).toLocaleDateString('vi-VN')}
+                              {formatSafeDate(cap.created_at)}
                             </span>
                           </div>
 
@@ -847,12 +848,12 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
             </h3>
 
             <div className="text-xs text-slate-400 mb-4 pb-3 border-b border-amber-500/20 flex flex-wrap items-center gap-2">
-              <span>Niêm phong ngày: {new Date(readingCapsule.created_at).toLocaleDateString('vi-VN')}</span>
+              <span>Niêm phong ngày: {formatSafeDate(readingCapsule.created_at)}</span>
               <span>•</span>
               <span className="text-emerald-400">
                 Mở khóa ngày:{' '}
                 {readingCapsule.unlocked_at
-                  ? new Date(readingCapsule.unlocked_at).toLocaleDateString('vi-VN')
+                  ? formatSafeDate(readingCapsule.unlocked_at)
                   : 'Hôm nay'}
               </span>
             </div>
@@ -978,7 +979,7 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
                   HÒM THƯ GỬI TƯƠNG LAI
                 </div>
                 <div style={{ fontSize: '11px', color: '#555555', marginTop: '4px' }}>
-                  Niêm phong: {new Date(readingCapsule.created_at).toLocaleDateString('vi-VN')} • Mở khóa: {readingCapsule.unlocked_at ? new Date(readingCapsule.unlocked_at).toLocaleDateString('vi-VN') : 'Hôm nay'}
+                  Niêm phong: {formatSafeDate(readingCapsule.created_at)} • Mở khóa: {readingCapsule.unlocked_at ? formatSafeDate(readingCapsule.unlocked_at) : 'Hôm nay'}
                 </div>
               </div>
 

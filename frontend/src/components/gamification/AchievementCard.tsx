@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Lock, Unlock } from 'lucide-react'
 import type { Achievement } from '@/types'
+import { formatSafeDate } from '@/utils/dateUtils'
 
 interface AchievementCardProps {
   achievement: Achievement
@@ -45,7 +46,7 @@ export default function AchievementCard({ achievement, index = 0 }: AchievementC
             <p className="text-xs text-muted-foreground mt-0.5">{achievement.description}</p>
             {isUnlocked && achievement.unlocked_at && (
               <p className="text-[10px] text-yellow-600 mt-1">
-                Đạt được: {new Date(achievement.unlocked_at).toLocaleDateString('vi-VN')}
+                Đạt được: {formatSafeDate(achievement.unlocked_at)}
               </p>
             )}
           </div>

@@ -10,6 +10,7 @@ import {
   AdminOverview,
   AdminFeedbackItem,
 } from '@/services/adminService'
+import { formatSafeDate } from '@/utils/dateUtils'
 
 export interface AdminFeedbackTabProps {
   overview: AdminOverview | null
@@ -172,7 +173,7 @@ export const AdminFeedbackTab: React.FC<AdminFeedbackTabProps> = ({
                       <span className="text-cyan-400">({f.sender_contact})</span>
                     )}
                     <span>•</span>
-                    <span>{f.created_at ? new Date(f.created_at).toLocaleDateString('vi-VN') : ''}</span>
+                    <span>{formatSafeDate(f.created_at)}</span>
                   </div>
                 </div>
 

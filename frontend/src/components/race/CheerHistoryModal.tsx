@@ -13,6 +13,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { raceService, CheerItem } from '@/services/raceService'
+import { formatSafeRelativeTime } from '@/utils/dateUtils'
 
 export interface CheerHistoryModalProps {
   isOpen: boolean
@@ -26,28 +27,7 @@ export interface CheerHistoryModalProps {
 }
 
 function formatRelativeTime(dateStr: string): string {
-  try {
-    const date = new Date(dateStr)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
-
-    if (diffMins < 1) return 'Vừa xong'
-    if (diffMins < 60) return `${diffMins} phút trước`
-    const diffHours = Math.floor(diffMins / 60)
-    if (diffHours < 24) return `${diffHours} giờ trước`
-    const diffDays = Math.floor(diffHours / 24)
-    if (diffDays === 1) return 'Hôm qua'
-    if (diffDays < 7) return `${diffDays} ngày trước`
-
-    return date.toLocaleDateString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    })
-  } catch {
-    return dateStr
-  }
+  return formatSafeRelativeTime(dateStr)
 }
 
 export const CheerHistoryModal: React.FC<CheerHistoryModalProps> = ({

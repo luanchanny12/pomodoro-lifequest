@@ -12,6 +12,7 @@ import {
   Monitor,
 } from 'lucide-react'
 import { UserActivityDetail } from '@/services/adminService'
+import { formatSafeDateTime } from '@/utils/dateUtils'
 
 export interface AdminUserDetailModalProps {
   selectedUserId: number | null
@@ -352,7 +353,7 @@ export const AdminUserDetailModal: React.FC<AdminUserDetailModalProps> = ({
                               <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px]">
                                 <div className="text-white font-medium">{formatRelativeTime(v.created_at)}</div>
                                 <div className="text-[10px] text-slate-500">
-                                  {v.created_at ? new Date(v.created_at).toLocaleString('vi-VN') : ''}
+                                  {formatSafeDateTime(v.created_at)}
                                 </div>
                               </td>
                               <td className="py-2.5 px-3">

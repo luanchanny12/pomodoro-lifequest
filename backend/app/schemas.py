@@ -832,7 +832,7 @@ class RewardItemResponse(BaseModel):
     category: str
     description: Optional[str] = None
     is_custom: bool
-    created_at: datetime.datetime
+    created_at: Optional[datetime.datetime] = None
 
     class Config:
         from_attributes = True
@@ -850,7 +850,7 @@ class RewardRedemptionResponse(BaseModel):
     reward_icon: str
     pearls_spent: float
     note: Optional[str] = None
-    redeemed_at: datetime.datetime
+    redeemed_at: Optional[datetime.datetime] = None
 
     class Config:
         from_attributes = True
@@ -957,7 +957,7 @@ class TimeCapsuleResponse(BaseModel):
     is_unlocked: bool
     unlocked_at: Optional[datetime.datetime] = None
     unlocked_by_key: bool = False
-    created_at: datetime.datetime
+    created_at: Optional[datetime.datetime] = None
 
     class Config:
         from_attributes = True

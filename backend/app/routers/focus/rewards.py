@@ -113,6 +113,7 @@ _SEED_LOCK = threading.Lock()
 def _seed_default_rewards(db: Session):
     with _SEED_LOCK:
         if not db.query(RewardItem).first():
+            now = datetime.datetime.utcnow()
             defaults = [
                 RewardItem(
                     user_id=None,
@@ -122,6 +123,7 @@ def _seed_default_rewards(db: Session):
                     category="giải trí",
                     description="Tận hưởng 1 bộ phim rạp hoặc tập phim Netflix dài trọn vẹn không chút mặc cảm!",
                     is_custom=False,
+                    created_at=now,
                 ),
                 RewardItem(
                     user_id=None,
@@ -131,6 +133,7 @@ def _seed_default_rewards(db: Session):
                     category="giải trí",
                     description="1 tiếng giải trí thỏa thích với trò chơi bạn yêu thích sau giờ học chăm chỉ.",
                     is_custom=False,
+                    created_at=now,
                 ),
                 RewardItem(
                     user_id=None,
@@ -140,6 +143,7 @@ def _seed_default_rewards(db: Session):
                     category="ẩm thực",
                     description="Tự thưởng 1 ly đồ uống thơm ngon tại quán cà phê chill cuối tuần.",
                     is_custom=False,
+                    created_at=now,
                 ),
                 RewardItem(
                     user_id=None,
@@ -149,6 +153,7 @@ def _seed_default_rewards(db: Session):
                     category="nghỉ ngơi",
                     description="Thức dậy muộn hơn 1 tiếng vào buổi sáng cuối tuần không cần báo thức.",
                     is_custom=False,
+                    created_at=now,
                 ),
                 RewardItem(
                     user_id=None,
@@ -158,6 +163,7 @@ def _seed_default_rewards(db: Session):
                     category="ẩm thực",
                     description="Tự thưởng 1 bữa ăn thịnh soạn cùng bạn bè để ăn mừng tiến độ học tập.",
                     is_custom=False,
+                    created_at=now,
                 ),
             ]
             try:

@@ -45,6 +45,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
+import { formatSafeDate } from '@/utils/dateUtils'
 
 import {
   focusService,
@@ -311,7 +312,7 @@ const SessionLogRowItem = React.memo(function SessionLogRowItem({
             +{session.duration_minutes} phút ({session.duration_hours}h)
           </span>
           <span className="text-white/60">
-            {format(new Date(session.session_date), 'dd/MM/yyyy')}
+            {formatSafeDate(session.session_date, 'dd/MM/yyyy')}
           </span>
         </div>
 

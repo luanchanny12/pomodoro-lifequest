@@ -139,7 +139,7 @@ const PomodoroQuestCardComponent: React.FC<PomodoroQuestCardProps> = ({
           <div className="text-3xl animate-bounce">💎</div>
           <div className="text-xs font-black text-amber-200 mt-1">Lọ Ngọc Dopamine</div>
           <div className="text-xl font-black font-mono text-white mt-0.5">
-            {currentUser ? availablePearls.toFixed(1) : 0} <span className="text-xs font-normal text-amber-300">viên</span>
+            {currentUser ? Number(availablePearls || 0).toFixed(1) : 0} <span className="text-xs font-normal text-amber-300">viên</span>
           </div>
           <p className="text-[10px] text-white/60 mt-1 leading-tight">
             1 giờ học = 1 ngọc • Đổi giờ xem phim, chơi game không lo tội lỗi!
@@ -147,7 +147,7 @@ const PomodoroQuestCardComponent: React.FC<PomodoroQuestCardProps> = ({
           <button
             type="button"
             onClick={onOpenRewardShop}
-            className="mt-3 px-3 py-1.5 w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-extrabold text-xs shadow-md active:scale-95 transition flex items-center justify-center gap-1.5"
+            className="mt-3 px-3 py-1.5 w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-extrabold text-xs shadow-md active:scale-95 transition flex items-center justify-center gap-1.5 touch-manipulation cursor-pointer"
           >
             <Gift className="w-3.5 h-3.5" />
             <span>Đổi Thưởng {!currentUser && '🔒'}</span>

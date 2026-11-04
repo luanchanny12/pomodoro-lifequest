@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { X, Target, Check, Trash2, Calendar, Clock, Sparkles, Layers, Info } from 'lucide-react'
 import { toast } from 'sonner'
 import { focusService, StudyGoal } from '@/services/focusService'
+import { parseSafeDate } from '@/utils/dateUtils'
 
 interface GoalModalProps {
   isOpen: boolean
@@ -96,8 +97,9 @@ export const GoalModal: React.FC<GoalModalProps> = ({
   if (!isOpen) return null
 
   // Real-time calculation of days left & required daily hours for deadline mode
-  const daysLeft = targetDate
-    ? Math.max(1, Math.ceil((new Date(targetDate).getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24)))
+  const targetDateObj = parseSafeDate(targetDate)
+  const daysLeft = targetDateObj
+    ? Math.max(1, Math.ceil((targetDateObj.getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24)))
     : null
 
   const neededHours = Math.max(0, targetHours - currentHours)

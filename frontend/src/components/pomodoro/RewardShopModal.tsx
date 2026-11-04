@@ -23,6 +23,7 @@ import {
   PearlsBalance,
 } from '@/services/focusService'
 import { soundManager } from '@/utils/soundEffects'
+import { formatSafeDateTime } from '@/utils/dateUtils'
 
 interface RewardShopModalProps {
   isOpen: boolean
@@ -47,7 +48,7 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
   // Create custom reward modal state
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newTitle, setNewTitle] = useState('')
-  const [newCost, setNewCost] = useState(2.0)
+  const [newCost, setNewCost] = useState<string>('2.0')
   const [newIcon, setNewIcon] = useState('🎁')
   const [newCategory, setNewCategory] = useState('giải trí')
   const [newDesc, setNewDesc] = useState('')
@@ -112,11 +113,16 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
       toast.error('Vui lòng nhập tên phần thưởng')
       return
     }
+    const parsedCost = parseFloat(String(newCost).replace(',', '.'))
+    if (isNaN(parsedCost) || parsedCost <= 0) {
+      toast.error('Chi phí ngọc phải là số hợp lệ lớn hơn 0!')
+      return
+    }
     try {
       setIsSubmitting(true)
       await focusService.createReward({
         title: newTitle.trim(),
-        pearl_cost: newCost,
+        pearl_cost: parsedCost,
         icon: newIcon,
         category: newCategory,
         description: newDesc.trim() || undefined,
@@ -125,6 +131,7 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
       setShowCreateForm(false)
       setNewTitle('')
       setNewDesc('')
+      setNewCost('2.0')
       await loadData()
     } catch (err: any) {
       toast.error(err.message || 'Lỗi tạo phần thưởng')
@@ -173,15 +180,15 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
                 Quỹ Ngọc Khả Dụng
               </div>
               <div className="text-2xl font-black text-amber-300 flex items-baseline gap-1.5">
-                <span>{balance.available_pearls}</span>
+                <span>{Number(balance?.available_pearls || 0).toFixed(1)}</span>
                 <span className="text-xs font-semibold text-white/70">Viên Ngọc</span>
               </div>
             </div>
           </div>
 
           <div className="text-right text-xs text-white/60 space-y-0.5 hidden sm:block">
-            <div>Đã đúc từ học tập: <strong className="text-white">{balance.total_earned_pearls} 💎</strong></div>
-            <div>Đã đổi phần thưởng: <strong className="text-white">{balance.spent_pearls} 💎</strong></div>
+            <div>Đã đúc từ học tập: <strong className="text-white">{Number(balance?.total_earned_pearls || 0).toFixed(1)} 💎</strong></div>
+            <div>Đã đổi phần thưởng: <strong className="text-white">{Number(balance?.spent_pearls || 0).toFixed(1)} 💎</strong></div>
             <div className="text-[10px] text-amber-400/80">1 giờ học = 1 Ngọc</div>
           </div>
         </div>
@@ -259,12 +266,12 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
               <div>
                 <label className="block text-white/70 mb-1">Chi phí (Ngọc) *</label>
                 <input
-                  type="number"
-                  min="0.5"
-                  step="0.5"
+                  type="text"
+                  inputMode="decimal"
                   required
                   value={newCost}
-                  onChange={(e) => setNewCost(parseFloat(e.target.value) || 1)}
+                  onChange={(e) => setNewCost(e.target.value.replace(',', '.'))}
+                  placeholder="2.0"
                   className="w-full px-3 py-1.5 bg-[#141720] border border-white/20 rounded-xl text-white text-xs text-center font-bold focus:outline-none focus:border-amber-400"
                 />
               </div>
@@ -333,7 +340,7 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
                         {canAfford ? (
                           <span className="text-emerald-400 font-medium">✓ Đủ ngọc để đổi</span>
                         ) : (
-                          <span>Còn thiếu {(item.pearl_cost - balance.available_pearls).toFixed(1)} 💎</span>
+                          <span>Còn thiếu {Math.max(0, item.pearl_cost - Number(balance?.available_pearls || 0)).toFixed(1)} 💎</span>
                         )}
                       </span>
 
@@ -375,7 +382,7 @@ export const RewardShopModal: React.FC<RewardShopModalProps> = ({
                     <div>
                       <div className="font-bold text-sm text-white">{h.reward_title}</div>
                       <div className="text-[11px] text-white/50">
-                        Đổi lúc: {new Date(h.redeemed_at).toLocaleString('vi-VN')}
+                        Đổi lúc: {formatSafeDateTime(h.redeemed_at, 'Vừa xong')}
                       </div>
                     </div>
                   </div>
