@@ -253,7 +253,32 @@ Hệ thống sử dụng GitHub Actions workflow `.github/workflows/db-backup.ym
 
 ---
 
-## 🔧 Những lỗi đã được sửa để deploy được
+## BƯỚC 10 — Giám Sát Uptime & Log Retention (Observability)
+
+1. **UptimeRobot (Giám Sát 24/7 Miễn Phí)**:
+   - Đăng ký tài khoản miễn phí tại https://uptimerobot.com.
+   - Bấm **Add New Monitor**:
+     - **Monitor Type**: `HTTP(s)`
+     - **Friendly Name**: `LifeQuest Backend Health`
+     - **URL (or IP)**: `https://pomodoro-lifequest.onrender.com/api/health`
+     - **Monitoring Interval**: `5 minutes` (mỗi 5 phút)
+     - **Alert Contacts**: Chọn email của bạn.
+   - **Tác dụng kép**: Vừa giữ server Render luôn thức (keep-alive) bổ trợ cho task Windows, vừa lập tức gửi email thông báo nếu server gặp sự cố hoặc mất mạng!
+
+2. **Render Free Tier Log Retention**:
+   - Gói Render Free chỉ lưu log trực tiếp trong **15 - 60 phút gần nhất** trên web dashboard (mọi log cũ hơn sẽ bị xoay vòng và biến mất khi server sleep/restart).
+   - **Giải pháp theo dõi**:
+     - Lỗi crash/exception: Đã tích hợp **Sentry** (xem Bước 7), lưu trữ lỗi tự động trong 30 ngày (miễn phí 5.000 errors/tháng).
+     - Dữ liệu truy cập & người dùng: Đã lưu trực tiếp trong bảng `visitor_logs` và xem tại tab **Lưu Lượng** trong Cổng Quản Trị Admin.
+
+3. **Tối Ưu Độ Trễ DB Region (Oregon vs Singapore)**:
+   - Hiện tại: Render service ở Oregon (`us-west-2`), Neon DB ở Singapore (`ap-southeast-1`).
+   - Độ trễ mạng xuyên Thái Bình Dương cộng dồn làm các API query DB (như `/api/focus/goals`) tốn ~1.200ms TTFB.
+   - **Để đạt tốc độ tối đa (<250ms)**:
+     - Tạo project Neon mới chọn region `US West (Oregon) aws-us-west-2`.
+     - Xuất dữ liệu từ Singapore và nhập vào Oregon, sau đó cập nhật `DATABASE_URL` trên Render.
+
+---
 
 | Vấn đề | Cách sửa |
 |---|---|
