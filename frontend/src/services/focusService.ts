@@ -636,6 +636,11 @@ export const focusService = {
     return res.data
   },
 
+  getDeadlines: async (): Promise<{ items: any[], summary: any }> => {
+    const res = await api.get('/focus/deadlines')
+    return res.data
+  },
+
   updateMatrixReflection: async (taskId: number, reflection_note: string): Promise<DailyMatrixTask> => {
     const res = await api.patch(`/focus/matrix/${taskId}/reflection`, { reflection_note })
     return res.data

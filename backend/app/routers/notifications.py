@@ -1,4 +1,5 @@
 import datetime
+from datetime import date
 import json
 import os
 import hmac
@@ -10,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import NotificationSetting, DailyMatrixTask, StudySessionLog
+from app.models import NotificationSetting, DailyMatrixTask, StudySessionLog, StudyGoal
 from app.models_auth import User
 from app.routers.auth import get_current_user_optional, get_current_user
 from app.schemas import (
@@ -102,6 +103,7 @@ def format_telegram_task_message(
     mode: str,
     date_str: str,
     include_task_details: bool = True,
+    deadlines: Optional[list] = None,
 ) -> str:
     completed = [t for t in tasks if getattr(t, "is_completed", False)]
     uncompleted = [t for t in tasks if not getattr(t, "is_completed", False)]
@@ -137,6 +139,13 @@ def format_telegram_task_message(
         else:
             lines.append("✨ <b>Hôm nay bạn chưa lên lịch Ma Trận 4 Ô!</b>")
             lines.append("Hãy dành 3 phút mở app lên lịch để có ngày làm việc thật năng suất và rõ ràng nhé!")
+        
+        if deadlines:
+            lines.append("")
+            lines.append("🚨 <b>DEADLINE CẦN CHÚ Ý:</b>")
+            for d in deadlines[:3]:
+                days = (d.target_date - date.today()).days if hasattr(d, 'target_date') and d.target_date else 99
+                lines.append(f"  ▫️ {d.title} (Còn {days} ngày)")
 
         lines.append("")
         lines.append(f"👉 <a href='{app_url}'>Mở Focus Hub & Bắt đầu Pomodoro</a>")
@@ -173,6 +182,14 @@ def format_telegram_task_message(
         else:
             lines.append("📝 <i>Hãy dành 3 phút lên trước Ma Trận 4 Ô cho ngày mai để sáng dậy có lộ trình rõ ràng nhé!</i>")
 
+        if deadlines:
+            lines.append("")
+            lines.append("🚨 <b>HẠN CHÓT SẮP ĐẾN (CHUẨN BỊ):</b>")
+            for d in deadlines[:3]:
+                days = (d.target_date - date.today()).days if hasattr(d, 'target_date') and d.target_date else 99
+                badge = f"🔥 [Quá hạn {abs(days)}d]" if days < 0 else ("⚠️ [Hôm nay]" if days == 0 else (f"⏳ [Ngày mai - {d.target_date.strftime('%d/%m')}]" if days == 1 else f"🗓️ [Còn {days} ngày]"))
+                lines.append(f"  ▫️ {badge} {d.title}")
+
         lines.append("")
         lines.append(f"👉 <a href='{app_url}'>Mở ứng dụng tổng kết & lên lịch ngày mai</a>")
         return "\n".join(lines)
@@ -197,6 +214,16 @@ def format_telegram_task_message(
         if not q1_tasks and not q2_tasks:
             for t in uncompleted[:4]:
                 lines.append(f"  ▫️ {t.title}")
+
+        if deadlines:
+            urgent_deadlines = [d for d in deadlines if hasattr(d, 'target_date') and d.target_date and (d.target_date - date.today()).days <= 1]
+            if urgent_deadlines:
+                lines.append("")
+                lines.append("🚨 <b>DEADLINE GẤP CẦN XỬ LÝ:</b>")
+                for d in urgent_deadlines[:2]:
+                    days = (d.target_date - date.today()).days
+                    badge = "🔥 [QUÁ HẠN]" if days < 0 else ("⚠️ [HÔM NAY]" if days == 0 else "⏳ [NGÀY MAI]")
+                    lines.append(f"  ▫️ {badge} {d.title}")
 
         lines.append("")
         lines.append("⏱️ Hãy bật ngay 1 phiên Pomodoro 25 phút để dứt điểm việc này thôi nào! Cố lên nhé! 💪")
@@ -247,6 +274,7 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
         # Lấy danh sách nhiệm vụ hôm nay và giờ học của user
         tasks = []
         today_hours = 0.0
+        deadlines = []
         display_name = "Bạn"
 
         if setting.user_id:
@@ -267,6 +295,12 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
                 .all()
             )
             today_hours = round(sum(s.duration_hours for s in sessions), 1)
+            
+            deadlines = db.query(StudyGoal).filter(
+                StudyGoal.user_id == setting.user_id,
+                StudyGoal.target_date.isnot(None),
+                StudyGoal.is_completed == False
+            ).order_by(StudyGoal.target_date.asc()).all()
 
         uncompleted_count = len([t for t in tasks if not getattr(t, "is_completed", False)])
 
@@ -281,6 +315,7 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
                 mode="morning",
                 date_str=date_display_str,
                 include_task_details=include_details,
+                deadlines=deadlines,
             )
             try:
                 send_telegram_msg(bot_token, chat_id, msg)
@@ -304,6 +339,7 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
                 mode="evening",
                 date_str=date_display_str,
                 include_task_details=include_details,
+                deadlines=deadlines,
             )
             try:
                 send_telegram_msg(bot_token, chat_id, msg)
@@ -327,6 +363,7 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
                 mode="interval",
                 date_str=date_display_str,
                 include_task_details=include_details,
+                deadlines=deadlines,
             )
             try:
                 send_telegram_msg(bot_token, chat_id, msg)

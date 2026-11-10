@@ -73,6 +73,10 @@ from app.routers.focus.ai_buddy import (
     router as ai_buddy_router,
     get_ai_buddy_prompt,
 )
+from app.routers.focus.deadlines import (
+    router as deadlines_router,
+    get_deadlines,
+)
 
 # Backwards compatibility aliases
 get_stats = get_focus_stats
@@ -93,6 +97,7 @@ router.include_router(galaxy_router)
 router.include_router(time_capsules_router)
 router.include_router(matrix_router)
 router.include_router(ai_buddy_router)
+router.include_router(deadlines_router)
 
 __all__ = [
     "router",
@@ -155,4 +160,5 @@ __all__ = [
     "rollover_uncompleted_matrix_tasks",
     "get_monthly_matrix_summary",
     "get_ai_buddy_prompt",
+    "get_deadlines",
 ]

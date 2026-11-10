@@ -41,6 +41,8 @@ import {
   ChevronDown,
   Flame,
   Users,
+  Calendar,
+  AlertCircle,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
@@ -98,6 +100,8 @@ const DonateModal = lazy(() => import('@/components/common/DonateModal').then(m 
 const FeedbackModal = lazy(() => import('@/components/common/FeedbackModal').then(m => ({ default: m.FeedbackModal })))
 const ZenDeskClockModal = lazy(() => import('@/components/pomodoro/ZenDeskClockModal').then(m => ({ default: m.ZenDeskClockModal })))
 const ShareableAchievementModal = lazy(() => import('@/components/pomodoro/ShareableAchievementModal').then(m => ({ default: m.ShareableAchievementModal })))
+const DeadlineCalendarModal = lazy(() => import('@/components/pomodoro/DeadlineCalendarModal').then(m => ({ default: m.DeadlineCalendarModal })))
+import { DeadlineAlertBanner } from '@/components/pomodoro/DeadlineAlertBanner'
 
 type TimerMode = 'pomodoro' | 'shortBreak' | 'longBreak'
 
@@ -645,6 +649,8 @@ export default function PomodoroApp() {
   const [isCheerModalOpen, setIsCheerModalOpen] = useState<boolean>(false)
   const [isCheerHistoryModalOpen, setIsCheerHistoryModalOpen] = useState<boolean>(false)
   const [isSquadsModalOpen, setIsSquadsModalOpen] = useState<boolean>(false)
+  const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState<boolean>(false)
+  const [deadlineSummary, setDeadlineSummary] = useState<any>(null)
   const [isTimerToggling, setIsTimerToggling] = useState<boolean>(false)
   const [isSavingEarly, setIsSavingEarly] = useState<boolean>(false)
   const isSavingEarlyRef = useRef<boolean>(false)
@@ -830,6 +836,7 @@ export default function PomodoroApp() {
     }
 
     fetchUnread()
+    focusService.getDeadlines().then(res => setDeadlineSummary(res.summary))
     const interval = setInterval(() => {
       if (!document.hidden) fetchUnread()
     }, 45 * 1000)
@@ -1050,6 +1057,7 @@ export default function PomodoroApp() {
   const handleOpenDonate = useCallback(() => setIsDonateModalOpen(true), [])
   const handleOpenFeedback = useCallback(() => setIsFeedbackModalOpen(true), [])
   const handleOpenRace = useCallback(() => setIsRaceModalOpen(true), [])
+  const handleOpenDeadlineModal = useCallback(() => setIsDeadlineModalOpen(true), [])
 
   const handleStartMatrixPomodoro = useCallback((goalId?: number, taskTitle?: string) => {
     if (goalId) {
@@ -1463,6 +1471,21 @@ export default function PomodoroApp() {
               <Users className="w-3.5 h-3.5 text-cyan-400" />
               <span className="hidden sm:inline">Nhóm Học F1</span>
             </button>
+            
+            {/* Deadline Button */}
+            <button
+              type="button"
+              onClick={handleOpenDeadlineModal}
+              className={`relative p-2 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/30 text-amber-300 transition active:scale-95 flex items-center justify-center min-w-[36px] min-h-[36px]`}
+              title="Lịch Deadline"
+            >
+              <Calendar className="w-4 h-4" />
+              {deadlineSummary && (deadlineSummary.overdue + deadlineSummary.today > 0) && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white font-black text-[10px] flex items-center justify-center animate-bounce shadow-md">
+                    {(deadlineSummary.overdue || 0) + (deadlineSummary.today || 0)}
+                  </span>
+              )}
+            </button>
 
             {/* Cosmic Race Track Button (Main CTA) */}
             <button
@@ -1671,6 +1694,10 @@ export default function PomodoroApp() {
         <div className="mt-5">
           <DailyQuoteCard />
         </div>
+
+        {deadlineSummary && (deadlineSummary.overdue > 0 || deadlineSummary.today > 0) && (
+            <DeadlineAlertBanner count={(deadlineSummary.overdue || 0) + (deadlineSummary.today || 0)} onOpen={handleOpenDeadlineModal} />
+        )}
 
         {/* ── UNIFIED EPIC QUEST & CRYSTAL DOPAMINE CARD (REACT.MEMO EXTRACTED) ── */}
         <PomodoroQuestCard
@@ -2071,6 +2098,13 @@ export default function PomodoroApp() {
             onClose={() => setIsSquadsModalOpen(false)}
             userGoals={goals}
             currentUser={currentUser}
+          />
+        )}
+        {isDeadlineModalOpen && (
+          <DeadlineCalendarModal
+            isOpen={isDeadlineModalOpen}
+            onClose={() => setIsDeadlineModalOpen(false)}
+            onStartPomodoro={handleSelectGoal}
           />
         )}
       </Suspense>
