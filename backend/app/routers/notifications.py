@@ -30,6 +30,72 @@ _send_lock = threading.Lock()
 
 # Nếu server ngủ/restart đúng phút hẹn, vẫn gửi bù trong vòng 90 phút.
 REMINDER_WINDOW_MINUTES = 90
+VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
+
+
+def _vn_now() -> datetime.datetime:
+    return datetime.datetime.now(VN_TZ)
+
+
+def _vn_today() -> date:
+    return _vn_now().date()
+
+
+class _DeadlineEntry:
+    def __init__(self, title: str, target_date: date, source: str = "goal"):
+        self.title = title
+        self.target_date = target_date
+        self.source = source
+
+
+def _format_deadline_badge(target_date: Optional[date], ref_date: date) -> str:
+    if not target_date:
+        return "📌 [Deadline]"
+    days = (target_date - ref_date).days
+    if days < 0:
+        return f"🔥 [Quá hạn {abs(days)}d]"
+    if days == 0:
+        return "⚠️ [Hôm nay]"
+    if days == 1:
+        return f"⏳ [Ngày mai - {target_date.strftime('%d/%m')}]"
+    return f"🗓️ [Còn {days} ngày - {target_date.strftime('%d/%m')}]"
+
+
+def _query_user_deadlines(db: Session, user_id: Optional[int], today_vn: date) -> list:
+    if not user_id:
+        return []
+    entries = []
+    goals = (
+        db.query(StudyGoal)
+        .filter(
+            StudyGoal.user_id == user_id,
+            StudyGoal.target_date.isnot(None),
+            StudyGoal.is_completed == False,
+        )
+        .order_by(StudyGoal.target_date.asc())
+        .all()
+    )
+    for g in goals:
+        entries.append(_DeadlineEntry(title=g.title, target_date=g.target_date, source="goal"))
+
+    min_date = today_vn - datetime.timedelta(days=14)
+    max_date = today_vn + datetime.timedelta(days=3)
+    matrix_tasks = (
+        db.query(DailyMatrixTask)
+        .filter(
+            DailyMatrixTask.user_id == user_id,
+            DailyMatrixTask.is_completed == False,
+            DailyMatrixTask.date >= min_date,
+            DailyMatrixTask.date <= max_date,
+        )
+        .order_by(DailyMatrixTask.date.asc(), DailyMatrixTask.quadrant.asc())
+        .all()
+    )
+    for t in matrix_tasks:
+        entries.append(_DeadlineEntry(title=t.title, target_date=t.date, source="matrix"))
+
+    entries.sort(key=lambda item: (item.target_date, 0 if item.source == "goal" else 1))
+    return entries
 
 
 def send_telegram_msg(token: str, chat_id: str, message: str) -> dict:
@@ -65,12 +131,17 @@ def _is_due(now_vn: datetime.datetime, target_hhmm: str, last_sent_date, today_s
     return scheduled <= now_vn < scheduled + datetime.timedelta(minutes=REMINDER_WINDOW_MINUTES)
 
 
-def _is_interval_due(now_vn: datetime.datetime, setting: NotificationSetting, uncompleted_count: int) -> bool:
+def _is_interval_due(
+    now_vn: datetime.datetime,
+    setting: NotificationSetting,
+    uncompleted_count: int,
+    urgent_deadlines_count: int = 0,
+) -> bool:
     interval_hours = getattr(setting, "telegram_interval_hours", 0) or 0
     if interval_hours <= 0:
         return False
-    # Chỉ nhắc nhở khi còn công việc chưa hoàn thành
-    if uncompleted_count <= 0:
+    # Nhắc nhở khi còn công việc chưa hoàn thành hoặc còn deadline gấp (<= 1 ngày)
+    if (uncompleted_count + urgent_deadlines_count) <= 0:
         return False
     # Giới hạn khung giờ hoạt động (08:00 đến 22:00) tránh làm phiền ban đêm
     if now_vn.hour < 8 or now_vn.hour >= 22:
@@ -95,6 +166,20 @@ def _is_interval_due(now_vn: datetime.datetime, setting: NotificationSetting, un
     return delta_seconds >= (interval_hours * 3600 - 60)
 
 
+def _is_deadline_nudge_due(
+    now_vn: datetime.datetime,
+    setting: NotificationSetting,
+    has_urgent_deadlines: bool,
+    today_str: str,
+) -> bool:
+    enabled = getattr(setting, "telegram_deadline_reminder_enabled", True)
+    if enabled is False:
+        return False
+    if not has_urgent_deadlines:
+        return False
+    return _is_due(now_vn, "15:00", getattr(setting, "last_deadline_nudge_date", None), today_str)
+
+
 def format_telegram_task_message(
     display_name: str,
     app_url: str,
@@ -104,7 +189,9 @@ def format_telegram_task_message(
     date_str: str,
     include_task_details: bool = True,
     deadlines: Optional[list] = None,
+    today_vn: Optional[date] = None,
 ) -> str:
+    ref_date = today_vn or _vn_today()
     completed = [t for t in tasks if getattr(t, "is_completed", False)]
     uncompleted = [t for t in tasks if not getattr(t, "is_completed", False)]
     total_tasks = len(tasks)
@@ -143,9 +230,10 @@ def format_telegram_task_message(
         if deadlines:
             lines.append("")
             lines.append("🚨 <b>DEADLINE CẦN CHÚ Ý:</b>")
-            for d in deadlines[:3]:
-                days = (d.target_date - date.today()).days if hasattr(d, 'target_date') and d.target_date else 99
-                lines.append(f"  ▫️ {d.title} (Còn {days} ngày)")
+            for d in deadlines[:4]:
+                d_date = getattr(d, "target_date", None)
+                badge = _format_deadline_badge(d_date, ref_date)
+                lines.append(f"  ▫️ {badge} {d.title}")
 
         lines.append("")
         lines.append(f"👉 <a href='{app_url}'>Mở Focus Hub & Bắt đầu Pomodoro</a>")
@@ -185,9 +273,9 @@ def format_telegram_task_message(
         if deadlines:
             lines.append("")
             lines.append("🚨 <b>HẠN CHÓT SẮP ĐẾN (CHUẨN BỊ):</b>")
-            for d in deadlines[:3]:
-                days = (d.target_date - date.today()).days if hasattr(d, 'target_date') and d.target_date else 99
-                badge = f"🔥 [Quá hạn {abs(days)}d]" if days < 0 else ("⚠️ [Hôm nay]" if days == 0 else (f"⏳ [Ngày mai - {d.target_date.strftime('%d/%m')}]" if days == 1 else f"🗓️ [Còn {days} ngày]"))
+            for d in deadlines[:4]:
+                d_date = getattr(d, "target_date", None)
+                badge = _format_deadline_badge(d_date, ref_date)
                 lines.append(f"  ▫️ {badge} {d.title}")
 
         lines.append("")
@@ -195,9 +283,14 @@ def format_telegram_task_message(
         return "\n".join(lines)
 
     elif mode == "interval":
+        if len(uncompleted) > 0:
+            header_line = f"<b>{display_name}</b> ơi, bạn vẫn còn <b>{len(uncompleted)} công việc</b> chưa hoàn thành hôm nay:"
+        else:
+            header_line = f"<b>{display_name}</b> ơi, bạn đang có <b>Deadline gấp</b> sắp đến hạn cần chú ý:"
+
         lines = [
             "⏰ <b>[Pomodoro LifeQuest] Nhắc Nhở Công Việc Đang Chờ!</b>",
-            f"<b>{display_name}</b> ơi, bạn vẫn còn <b>{len(uncompleted)} công việc</b> chưa hoàn thành hôm nay:",
+            header_line,
             "",
         ]
         q1_tasks = [t for t in uncompleted if getattr(t, "quadrant", 2) == 1]
@@ -216,19 +309,42 @@ def format_telegram_task_message(
                 lines.append(f"  ▫️ {t.title}")
 
         if deadlines:
-            urgent_deadlines = [d for d in deadlines if hasattr(d, 'target_date') and d.target_date and (d.target_date - date.today()).days <= 1]
+            urgent_deadlines = [
+                d for d in deadlines
+                if getattr(d, "target_date", None) and (d.target_date - ref_date).days <= 1
+            ]
             if urgent_deadlines:
                 lines.append("")
                 lines.append("🚨 <b>DEADLINE GẤP CẦN XỬ LÝ:</b>")
-                for d in urgent_deadlines[:2]:
-                    days = (d.target_date - date.today()).days
-                    badge = "🔥 [QUÁ HẠN]" if days < 0 else ("⚠️ [HÔM NAY]" if days == 0 else "⏳ [NGÀY MAI]")
+                for d in urgent_deadlines[:3]:
+                    badge = _format_deadline_badge(d.target_date, ref_date)
                     lines.append(f"  ▫️ {badge} {d.title}")
 
         lines.append("")
         lines.append("⏱️ Hãy bật ngay 1 phiên Pomodoro 25 phút để dứt điểm việc này thôi nào! Cố lên nhé! 💪")
         lines.append("")
         lines.append(f"👉 <a href='{app_url}'>Bấm vào đây để vào phiên Focus ngay</a>")
+        return "\n".join(lines)
+
+    elif mode == "deadline_nudge":
+        lines = [
+            "🚨 <b>[Pomodoro LifeQuest] Nhắc Nhở Quên Deadline!</b>",
+            f"<b>{display_name}</b> ơi, kiểm tra gấp các hạn chót đang chờ xử lý ({date_str}):",
+            "",
+        ]
+        if deadlines:
+            for d in deadlines[:8]:
+                d_date = getattr(d, "target_date", None)
+                badge = _format_deadline_badge(d_date, ref_date)
+                source_tag = " [Việc]" if getattr(d, "source", None) == "matrix" else ""
+                lines.append(f"  ▫️ {badge} {d.title}{source_tag}")
+        else:
+            lines.append("✨ Hiện không có deadline nào bị sót! Tiếp tục giữ vững phong độ nhé! 💪")
+
+        lines.append("")
+        lines.append("⏱️ Hãy mở app ngay để hoàn thành hoặc gia hạn trước khi trễ hạn nhé!")
+        lines.append("")
+        lines.append(f"👉 <a href='{app_url}'>Mở Lịch Deadline & Tập Trung Ngay</a>")
         return "\n".join(lines)
 
     return ""
@@ -295,14 +411,17 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
                 .all()
             )
             today_hours = round(sum(s.duration_hours for s in sessions), 1)
-            
-            deadlines = db.query(StudyGoal).filter(
-                StudyGoal.user_id == setting.user_id,
-                StudyGoal.target_date.isnot(None),
-                StudyGoal.is_completed == False
-            ).order_by(StudyGoal.target_date.asc()).all()
+            deadlines = _query_user_deadlines(db, setting.user_id, today_vn)
 
         uncompleted_count = len([t for t in tasks if not getattr(t, "is_completed", False)])
+        urgent_deadlines = [
+            d for d in deadlines
+            if getattr(d, "target_date", None) and (d.target_date - today_vn).days <= 1
+        ]
+        critical_deadlines = [
+            d for d in deadlines
+            if getattr(d, "target_date", None) and (d.target_date - today_vn).days <= 0
+        ]
 
         # 1. Check Morning
         morning_due = _is_due(now_vn, morning_time, setting.last_morning_sent_date, today_str)
@@ -316,6 +435,7 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
                 date_str=date_display_str,
                 include_task_details=include_details,
                 deadlines=deadlines,
+                today_vn=today_vn,
             )
             try:
                 send_telegram_msg(bot_token, chat_id, msg)
@@ -340,6 +460,7 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
                 date_str=date_display_str,
                 include_task_details=include_details,
                 deadlines=deadlines,
+                today_vn=today_vn,
             )
             try:
                 send_telegram_msg(bot_token, chat_id, msg)
@@ -352,9 +473,33 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
                 db.rollback()
                 details.append(f"Lỗi gửi tối (Chat ID {chat_id[:4]}***): {str(e)}")
 
-        # 3. Check In-Day Periodic Interval Reminder (nhắc nhở việc chưa xong sau mỗi N giờ)
-        interval_due = _is_interval_due(now_vn, setting, uncompleted_count)
-        if interval_due and not morning_due and not evening_due:
+        # 3. Check Afternoon 15:00 Deadline Forgotten Nudge
+        nudge_due = _is_deadline_nudge_due(now_vn, setting, len(critical_deadlines) > 0, today_str)
+        if nudge_due and not morning_due and not evening_due:
+            msg = format_telegram_task_message(
+                display_name=display_name,
+                app_url=app_url,
+                tasks=tasks,
+                today_hours=today_hours,
+                mode="deadline_nudge",
+                date_str=date_display_str,
+                include_task_details=include_details,
+                deadlines=urgent_deadlines or critical_deadlines,
+                today_vn=today_vn,
+            )
+            try:
+                send_telegram_msg(bot_token, chat_id, msg)
+                setting.last_deadline_nudge_date = today_str
+                db.commit()
+                sent_any = True
+                details.append(f"Đã gửi nhắc nhở quên Deadline tới Chat ID {chat_id[:4]}***")
+            except Exception as e:
+                db.rollback()
+                details.append(f"Lỗi gửi nhắc quên Deadline (Chat ID {chat_id[:4]}***): {str(e)}")
+
+        # 4. Check In-Day Periodic Interval Reminder (nhắc nhở việc/deadline chưa xong sau mỗi N giờ)
+        interval_due = _is_interval_due(now_vn, setting, uncompleted_count, len(urgent_deadlines))
+        if interval_due and not morning_due and not evening_due and not nudge_due:
             msg = format_telegram_task_message(
                 display_name=display_name,
                 app_url=app_url,
@@ -364,6 +509,7 @@ def _check_and_send_scheduled_reminders_locked(db: Session, force: bool = False)
                 date_str=date_display_str,
                 include_task_details=include_details,
                 deadlines=deadlines,
+                today_vn=today_vn,
             )
             try:
                 send_telegram_msg(bot_token, chat_id, msg)
@@ -398,6 +544,7 @@ def _get_or_create_settings(db: Session, user_id: Optional[int] = None) -> Notif
                 telegram_enabled=False,
                 telegram_interval_hours=0,
                 telegram_task_reminder_enabled=True,
+                telegram_deadline_reminder_enabled=True,
                 updated_at=datetime.datetime.utcnow(),
             )
             db.add(setting)
@@ -420,6 +567,7 @@ def _get_or_create_settings(db: Session, user_id: Optional[int] = None) -> Notif
         telegram_chat_id=None,
         telegram_interval_hours=0,
         telegram_task_reminder_enabled=True,
+        telegram_deadline_reminder_enabled=True,
         updated_at=datetime.datetime.utcnow(),
     )
 
@@ -618,72 +766,13 @@ def test_telegram_notification(
         raise HTTPException(status_code=500, detail=f"Không thể kết nối Telegram: {str(e)}")
 
 
-@router.post("/test-telegram-summary")
-def test_telegram_summary_notification(
-    data: TelegramSummaryTestRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Sends a test summary message (morning, evening, or interval) to user's Telegram
-    using their actual daily tasks and study time today.
-    """
-    setting = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
-    if not setting or not setting.telegram_bot_token or not setting.telegram_chat_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Bạn chưa lưu cấu hình Telegram Bot Token hoặc Chat ID. Vui lòng điền và bấm 'Lưu Cài Đặt' trước khi thử!",
-        )
-
-    bot_token = setting.telegram_bot_token.strip()
-    chat_id = setting.telegram_chat_id.strip()
-
-    # Giờ VN hôm nay
-    vn_tz = datetime.timezone(datetime.timedelta(hours=7))
-    now_vn = datetime.datetime.now(vn_tz)
-    today_vn = now_vn.date()
-    date_display_str = today_vn.strftime("%d/%m/%Y")
-
-    display_name = user.display_name or "Bạn"
-    app_url = setting.app_public_url or "https://pomodoro-lifequest.vercel.app"
-    include_details = getattr(setting, "telegram_task_reminder_enabled", True)
-    if include_details is None:
-        include_details = True
-
-    # Lấy danh sách nhiệm vụ hôm nay và giờ học
-    tasks = (
-        db.query(DailyMatrixTask)
-        .filter(DailyMatrixTask.user_id == user.id, DailyMatrixTask.date == today_vn)
-        .order_by(DailyMatrixTask.quadrant.asc(), DailyMatrixTask.order_index.asc())
-        .all()
-    )
-
-    sessions = (
-        db.query(StudySessionLog)
-        .filter(StudySessionLog.user_id == user.id, StudySessionLog.session_date == today_vn)
-        .all()
-    )
-    today_hours = round(sum(s.duration_hours for s in sessions), 1)
-
-    msg = format_telegram_task_message(
-        display_name=display_name,
-        app_url=app_url,
-        tasks=tasks,
-        today_hours=today_hours,
-        mode=data.mode,
-        date_str=date_display_str,
-        include_task_details=include_details,
-    )
-
+def _send_telegram_with_friendly_errors(bot_token: str, chat_id: str, msg: str) -> None:
     try:
         res = send_telegram_msg(bot_token, chat_id, msg)
         if not res.get("ok"):
             raise HTTPException(status_code=400, detail="Lỗi Telegram: " + str(res))
-        return {
-            "message": f"Đã bắn thử tin nhắn tổng kết ({data.mode}) thành công đến Telegram!",
-            "ok": True,
-            "preview": msg[:150] + "...",
-        }
+    except HTTPException:
+        raise
     except urllib.error.HTTPError as e:
         err_raw = e.read().decode("utf-8", errors="ignore")
         if "chat not found" in err_raw.lower():
@@ -700,3 +789,114 @@ def test_telegram_summary_notification(
             raise HTTPException(status_code=400, detail=f"Telegram API Error ({e.code}): {err_raw}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Không thể gửi tin Telegram: {str(e)}")
+
+
+@router.post("/test-telegram-summary")
+def test_telegram_summary_notification(
+    data: TelegramSummaryTestRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Sends a test summary message (morning, evening, interval, or deadline_nudge) to user's Telegram
+    using their actual daily tasks, deadlines, and study time today.
+    """
+    setting = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
+    if not setting or not setting.telegram_bot_token or not setting.telegram_chat_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Bạn chưa lưu cấu hình Telegram Bot Token hoặc Chat ID. Vui lòng điền và bấm 'Lưu Cài Đặt' trước khi thử!",
+        )
+
+    bot_token = setting.telegram_bot_token.strip()
+    chat_id = setting.telegram_chat_id.strip()
+
+    now_vn = _vn_now()
+    today_vn = now_vn.date()
+    date_display_str = today_vn.strftime("%d/%m/%Y")
+
+    display_name = user.display_name or "Bạn"
+    app_url = setting.app_public_url or "https://pomodoro-lifequest.vercel.app"
+    include_details = getattr(setting, "telegram_task_reminder_enabled", True)
+    if include_details is None:
+        include_details = True
+
+    tasks = (
+        db.query(DailyMatrixTask)
+        .filter(DailyMatrixTask.user_id == user.id, DailyMatrixTask.date == today_vn)
+        .order_by(DailyMatrixTask.quadrant.asc(), DailyMatrixTask.order_index.asc())
+        .all()
+    )
+
+    sessions = (
+        db.query(StudySessionLog)
+        .filter(StudySessionLog.user_id == user.id, StudySessionLog.session_date == today_vn)
+        .all()
+    )
+    today_hours = round(sum(s.duration_hours for s in sessions), 1)
+    deadlines = _query_user_deadlines(db, user.id, today_vn)
+
+    msg = format_telegram_task_message(
+        display_name=display_name,
+        app_url=app_url,
+        tasks=tasks,
+        today_hours=today_hours,
+        mode=data.mode,
+        date_str=date_display_str,
+        include_task_details=include_details,
+        deadlines=deadlines,
+        today_vn=today_vn,
+    )
+
+    _send_telegram_with_friendly_errors(bot_token, chat_id, msg)
+    return {
+        "message": f"Đã bắn thử tin nhắn tổng kết ({data.mode}) thành công đến Telegram!",
+        "ok": True,
+        "preview": msg[:150] + "...",
+    }
+
+
+@router.post("/send-deadline-reminder")
+def send_deadline_reminder_now(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Sends an immediate Telegram reminder listing all active Goal and Matrix Task deadlines.
+    """
+    setting = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
+    if not setting or not setting.telegram_bot_token or not setting.telegram_chat_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Bạn chưa lưu cấu hình Telegram Bot Token hoặc Chat ID. Vui lòng mở Cài đặt Thông báo → Bot Telegram để liên kết trước!",
+        )
+
+    bot_token = setting.telegram_bot_token.strip()
+    chat_id = setting.telegram_chat_id.strip()
+
+    now_vn = _vn_now()
+    today_vn = now_vn.date()
+    date_display_str = today_vn.strftime("%d/%m/%Y")
+    display_name = user.display_name or "Bạn"
+    app_url = (setting.app_public_url or os.getenv("APP_PUBLIC_URL") or "https://pomodoro-lifequest.vercel.app").rstrip("/")
+    deadlines = _query_user_deadlines(db, user.id, today_vn)
+
+    msg = format_telegram_task_message(
+        display_name=display_name,
+        app_url=app_url,
+        tasks=[],
+        today_hours=0.0,
+        mode="deadline_nudge",
+        date_str=date_display_str,
+        include_task_details=True,
+        deadlines=deadlines,
+        today_vn=today_vn,
+    )
+
+    _send_telegram_with_friendly_errors(bot_token, chat_id, msg)
+    return {
+        "message": f"Đã gửi nhắc nhở {len(deadlines)} deadline tới Telegram!",
+        "ok": True,
+        "count": len(deadlines),
+        "preview": msg[:150] + "...",
+    }

@@ -56,6 +56,8 @@ async def lifespan(app: FastAPI):
             ("notification_settings", "app_public_url", "VARCHAR"),
             ("notification_settings", "last_morning_sent_date", "VARCHAR"),
             ("notification_settings", "last_evening_sent_date", "VARCHAR"),
+            ("notification_settings", "last_deadline_nudge_date", "VARCHAR"),
+            ("notification_settings", "telegram_deadline_reminder_enabled", "BOOLEAN DEFAULT TRUE"),
             ("notification_settings", "user_id", "INTEGER"),
             ("players", "user_id", "INTEGER"),
             ("study_session_logs", "user_id", "INTEGER"),

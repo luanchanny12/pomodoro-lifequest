@@ -150,3 +150,151 @@ def test_telegram_deadline_message_formatting():
     )
     assert "DEADLINE GẤP CẦN XỬ LÝ" in msg_interval
     assert "Kỳ thi Cuối Kỳ Giải Tích" in msg_interval
+
+
+def test_telegram_deadline_nudge_and_vn_timezone():
+    from unittest.mock import MagicMock
+
+    ref_vn = datetime.date(2026, 11, 11)
+    d_overdue = MagicMock(title="Nộp đề cương", target_date=datetime.date(2026, 11, 9), source="goal")
+    d_today = MagicMock(title="Thi Giữa Kỳ", target_date=datetime.date(2026, 11, 11), source="matrix")
+    d_tomorrow = MagicMock(title="Thuyết trình", target_date=datetime.date(2026, 11, 12), source="goal")
+
+    msg_nudge = format_telegram_task_message(
+        display_name="Luân",
+        app_url="https://pomodoro-lifequest.vercel.app",
+        tasks=[],
+        today_hours=0.0,
+        mode="deadline_nudge",
+        date_str="11/11/2026",
+        include_task_details=True,
+        deadlines=[d_overdue, d_today, d_tomorrow],
+        today_vn=ref_vn,
+    )
+    assert "Nhắc Nhở Quên Deadline" in msg_nudge
+    assert "Quá hạn 2d" in msg_nudge
+    assert "Hôm nay" in msg_nudge
+    assert "Ngày mai - 12/11" in msg_nudge
+    assert "Nộp đề cương" in msg_nudge
+    assert "Thi Giữa Kỳ [Việc]" in msg_nudge
+
+    # Interval with 0 matrix tasks but urgent deadline should not say "0 công việc"
+    msg_interval_deadline_only = format_telegram_task_message(
+        display_name="Luân",
+        app_url="https://pomodoro-lifequest.vercel.app",
+        tasks=[],
+        today_hours=0.0,
+        mode="interval",
+        date_str="11/11/2026",
+        include_task_details=True,
+        deadlines=[d_today],
+        today_vn=ref_vn,
+    )
+    assert "0 công việc" not in msg_interval_deadline_only
+    assert "Deadline gấp" in msg_interval_deadline_only
+    assert "DEADLINE GẤP CẦN XỬ LÝ" in msg_interval_deadline_only
+
+
+def test_is_deadline_nudge_due_and_interval_with_urgent_deadlines():
+    from types import SimpleNamespace
+    from app.routers.notifications import _is_deadline_nudge_due, _is_interval_due
+
+    vn_tz = datetime.timezone(datetime.timedelta(hours=7))
+    at_15_10 = datetime.datetime(2026, 11, 11, 15, 10, tzinfo=vn_tz)
+    at_12_00 = datetime.datetime(2026, 11, 11, 12, 0, tzinfo=vn_tz)
+
+    setting = SimpleNamespace(
+        telegram_deadline_reminder_enabled=True,
+        last_deadline_nudge_date=None,
+        telegram_interval_hours=2,
+        morning_reminder_time="08:00",
+        last_interval_sent_at=None,
+    )
+
+    assert _is_deadline_nudge_due(at_15_10, setting, True, "2026-11-11") is True
+    assert _is_deadline_nudge_due(at_15_10, setting, False, "2026-11-11") is False
+    assert _is_deadline_nudge_due(at_12_00, setting, True, "2026-11-11") is False
+
+    # Deduplicated once sent today
+    setting.last_deadline_nudge_date = "2026-11-11"
+    assert _is_deadline_nudge_due(at_15_10, setting, True, "2026-11-11") is False
+
+    # Respects disabled setting
+    setting.last_deadline_nudge_date = None
+    setting.telegram_deadline_reminder_enabled = False
+    assert _is_deadline_nudge_due(at_15_10, setting, True, "2026-11-11") is False
+
+    # Interval due when matrix tasks=0 but urgent deadline exists
+    assert _is_interval_due(at_12_00, setting, uncompleted_count=0, urgent_deadlines_count=1) is True
+    assert _is_interval_due(at_12_00, setting, uncompleted_count=0, urgent_deadlines_count=0) is False
+
+
+def test_send_deadline_reminder_endpoint_and_settings(auth_headers, monkeypatch):
+    from unittest.mock import MagicMock
+    from app.routers import notifications as notif_module
+
+    # Unauthenticated -> 401
+    assert client.post("/api/notifications/send-deadline-reminder").status_code == 401
+
+    # Save settings with unique chat_id + toggle telegram_deadline_reminder_enabled
+    put_res = client.put(
+        "/api/notifications/settings",
+        json={
+            "telegram_bot_token": "123456:TEST_DEADLINE_BOT",
+            "telegram_chat_id": "9988776655",
+            "telegram_enabled": True,
+            "telegram_deadline_reminder_enabled": True,
+        },
+        headers=auth_headers,
+    )
+    assert put_res.status_code == 200
+    assert put_res.json()["telegram_deadline_reminder_enabled"] is True
+
+    # Ensure active matrix task exists for VN today
+    vn_tz = datetime.timezone(datetime.timedelta(hours=7))
+    vn_today_date = datetime.datetime.now(vn_tz).date()
+    client.post(
+        "/api/focus/matrix",
+        json={
+            "title": "Ôn tập Chương 4 Matrix",
+            "date": vn_today_date.isoformat(),
+            "quadrant": 1,
+        },
+        headers=auth_headers,
+    )
+
+    mock_send = MagicMock(return_value={"ok": True, "result": {"message_id": 42}})
+    monkeypatch.setattr(notif_module, "send_telegram_msg", mock_send)
+
+    # Trigger immediate deadline reminder endpoint
+    send_res = client.post("/api/notifications/send-deadline-reminder", headers=auth_headers)
+    assert send_res.status_code == 200
+    body = send_res.json()
+    assert body["ok"] is True
+    assert body["count"] >= 1
+    assert mock_send.called
+    sent_text = mock_send.call_args[0][2]
+    assert "Nhắc Nhở Quên Deadline" in sent_text
+    assert "Ôn tập Chương 4 Matrix" in sent_text
+
+    # Test summary endpoint also includes deadlines
+    mock_send.reset_mock()
+    summary_res = client.post(
+        "/api/notifications/test-telegram-summary",
+        json={"mode": "evening"},
+        headers=auth_headers,
+    )
+    assert summary_res.status_code == 200
+    assert "HẠN CHÓT SẮP ĐẾN" in mock_send.call_args[0][2]
+
+    # Toggle off & verify persistence
+    off_res = client.put(
+        "/api/notifications/settings",
+        json={"telegram_deadline_reminder_enabled": False},
+        headers=auth_headers,
+    )
+    assert off_res.status_code == 200
+    assert off_res.json()["telegram_deadline_reminder_enabled"] is False
+    get_res = client.get("/api/notifications/settings", headers=auth_headers)
+    assert get_res.status_code == 200
+    assert get_res.json()["telegram_deadline_reminder_enabled"] is False
