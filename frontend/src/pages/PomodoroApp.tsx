@@ -102,6 +102,8 @@ const ZenDeskClockModal = lazy(() => import('@/components/pomodoro/ZenDeskClockM
 const ShareableAchievementModal = lazy(() => import('@/components/pomodoro/ShareableAchievementModal').then(m => ({ default: m.ShareableAchievementModal })))
 const DeadlineCalendarModal = lazy(() => import('@/components/pomodoro/DeadlineCalendarModal').then(m => ({ default: m.DeadlineCalendarModal })))
 import { DeadlineAlertBanner } from '@/components/pomodoro/DeadlineAlertBanner'
+import { DeadlineHomeSection } from '@/components/pomodoro/DeadlineHomeSection'
+import { buildDeadlinesPayload, type DeadlinesResponse } from '@/utils/deadlineUtils'
 
 type TimerMode = 'pomodoro' | 'shortBreak' | 'longBreak'
 
@@ -650,7 +652,6 @@ export default function PomodoroApp() {
   const [isCheerHistoryModalOpen, setIsCheerHistoryModalOpen] = useState<boolean>(false)
   const [isSquadsModalOpen, setIsSquadsModalOpen] = useState<boolean>(false)
   const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState<boolean>(false)
-  const [deadlineSummary, setDeadlineSummary] = useState<any>(null)
   const [isTimerToggling, setIsTimerToggling] = useState<boolean>(false)
   const [isSavingEarly, setIsSavingEarly] = useState<boolean>(false)
   const isSavingEarlyRef = useRef<boolean>(false)
@@ -686,8 +687,30 @@ export default function PomodoroApp() {
     queryFn: () => focusService.getRewards(),
     enabled: !!currentUser,
   })
+  const matrixQuery = useQuery({
+    queryKey: ['focus', focusKey, 'matrix'],
+    queryFn: () => focusService.getMatrixTasks(),
+    enabled: !!currentUser,
+  })
+  const deadlinesQuery = useQuery<DeadlinesResponse>({
+    queryKey: ['focus', focusKey, 'deadlines'],
+    queryFn: () => focusService.getDeadlines(),
+    enabled: !!currentUser,
+  })
 
   const goals = useMemo<StudyGoal[]>(() => goalsQuery.data ?? [], [goalsQuery.data])
+  const matrixTasks = useMemo(() => matrixQuery.data ?? [], [matrixQuery.data])
+  const clientDeadlines = useMemo(
+    () => buildDeadlinesPayload(goals, matrixTasks),
+    [goals, matrixTasks]
+  )
+  const deadlinesData = useMemo<DeadlinesResponse>(() => {
+    if (deadlinesQuery.data && !deadlinesQuery.data.fallback) {
+      return deadlinesQuery.data
+    }
+    return clientDeadlines
+  }, [deadlinesQuery.data, clientDeadlines])
+  const deadlineSummary = currentUser ? deadlinesData.summary : null
   const goalsRef = useRef<StudyGoal[]>(goals)
   goalsRef.current = goals
 
@@ -836,7 +859,6 @@ export default function PomodoroApp() {
     }
 
     fetchUnread()
-    focusService.getDeadlines().then(res => setDeadlineSummary(res.summary))
     const interval = setInterval(() => {
       if (!document.hidden) fetchUnread()
     }, 45 * 1000)
@@ -1058,6 +1080,13 @@ export default function PomodoroApp() {
   const handleOpenFeedback = useCallback(() => setIsFeedbackModalOpen(true), [])
   const handleOpenRace = useCallback(() => setIsRaceModalOpen(true), [])
   const handleOpenDeadlineModal = useCallback(() => setIsDeadlineModalOpen(true), [])
+  const handleOpenNotificationModal = useCallback(() => setIsNotificationModalOpen(true), [])
+  const handleStartPomodoroFromDeadline = useCallback((goalId: number) => {
+    setSelectedGoalId(goalId)
+    if (typeof window !== 'undefined') {
+      document.getElementById('pomodoro-timer-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [])
 
   const handleStartMatrixPomodoro = useCallback((goalId?: number, taskTitle?: string) => {
     if (goalId) {
@@ -1656,7 +1685,7 @@ export default function PomodoroApp() {
       </header>
 
       {/* ── MAIN CONTENT CONTAINER ── */}
-      <main className="max-w-6xl mx-auto px-4 pt-6 pb-16 relative z-10">
+      <main id="pomodoro-timer-top" className="max-w-6xl mx-auto px-4 pt-6 pb-16 relative z-10">
         {/* ── POMODORO TIMER CARD (CYBER FOCUS COCKPIT / TIMER PANEL) ── */}
         <TimerPanel
           mode={mode}
@@ -1698,6 +1727,19 @@ export default function PomodoroApp() {
         {deadlineSummary && (deadlineSummary.overdue > 0 || deadlineSummary.today > 0) && (
             <DeadlineAlertBanner count={(deadlineSummary.overdue || 0) + (deadlineSummary.today || 0)} onOpen={handleOpenDeadlineModal} />
         )}
+
+        {/* ── MAIN-PAGE DEADLINE CALENDAR & QUICK ACTIONS ── */}
+        <DeadlineHomeSection
+          id="deadline-home-section"
+          isAuthenticated={!!currentUser}
+          data={deadlinesData}
+          loading={!!currentUser && (goalsQuery.isLoading || matrixQuery.isLoading)}
+          onRefresh={loadData}
+          onStartPomodoro={handleStartPomodoroFromDeadline}
+          onOpenCalendarModal={handleOpenDeadlineModal}
+          onOpenNotificationSettings={handleOpenNotificationModal}
+          onOpenAuthModal={handleOpenAuthModal}
+        />
 
         {/* ── UNIFIED EPIC QUEST & CRYSTAL DOPAMINE CARD (REACT.MEMO EXTRACTED) ── */}
         <PomodoroQuestCard
@@ -2104,7 +2146,10 @@ export default function PomodoroApp() {
           <DeadlineCalendarModal
             isOpen={isDeadlineModalOpen}
             onClose={() => setIsDeadlineModalOpen(false)}
-            onStartPomodoro={handleSelectGoal}
+            onStartPomodoro={handleStartPomodoroFromDeadline}
+            onDataChanged={loadData}
+            onOpenNotificationSettings={handleOpenNotificationModal}
+            initialData={deadlinesData}
           />
         )}
       </Suspense>

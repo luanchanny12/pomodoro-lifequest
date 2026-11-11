@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v3.3-api-swr";
+const CACHE_VERSION = "v3.4-deadlines-home";
 const STATIC_CACHE = `life-quest-static-${CACHE_VERSION}`;
 const API_CACHE = `life-quest-api-${CACHE_VERSION}`;
 const STATIC_ASSETS = ["/", "/index.html", "/manifest.json"];

@@ -13,6 +13,7 @@ export interface BackendNotificationSettings {
   telegram_enabled: boolean
   telegram_interval_hours?: number
   telegram_task_reminder_enabled?: boolean
+  telegram_deadline_reminder_enabled?: boolean
   app_public_url?: string | null
   updated_at: string
 }
@@ -58,9 +59,19 @@ export const notificationService = {
   },
 
   testTelegramSummary: async (
-    mode: 'morning' | 'evening' | 'interval' = 'evening'
+    mode: 'morning' | 'evening' | 'interval' | 'deadline_nudge' = 'evening'
   ): Promise<{ message: string; ok: boolean; preview?: string }> => {
     const res = await api.post('/notifications/test-telegram-summary', { mode })
+    return res.data
+  },
+
+  sendDeadlineReminder: async (): Promise<{
+    message: string
+    ok: boolean
+    count: number
+    preview?: string
+  }> => {
+    const res = await api.post('/notifications/send-deadline-reminder')
     return res.data
   },
 

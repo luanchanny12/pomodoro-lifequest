@@ -59,6 +59,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
   const [eveningTime, setEveningTime] = useState<string>('21:30')
   const [telegramIntervalHours, setTelegramIntervalHours] = useState<number>(0)
   const [telegramTaskReminderEnabled, setTelegramTaskReminderEnabled] = useState<boolean>(true)
+  const [telegramDeadlineReminderEnabled, setTelegramDeadlineReminderEnabled] = useState<boolean>(true)
   const [isSavingTelegram, setIsSavingTelegram] = useState<boolean>(false)
   const [isTestingTelegram, setIsTestingTelegram] = useState<boolean>(false)
   const [isTestingSummary, setIsTestingSummary] = useState<boolean>(false)
@@ -80,6 +81,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
           if (s.evening_reminder_time) setEveningTime(s.evening_reminder_time)
           if (typeof s.telegram_interval_hours === 'number') setTelegramIntervalHours(s.telegram_interval_hours)
           if (typeof s.telegram_task_reminder_enabled === 'boolean') setTelegramTaskReminderEnabled(s.telegram_task_reminder_enabled)
+          if (typeof s.telegram_deadline_reminder_enabled === 'boolean') setTelegramDeadlineReminderEnabled(s.telegram_deadline_reminder_enabled)
         })
         .catch(() => {})
     } else {
@@ -156,6 +158,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
         evening_reminder_time: eveningTime,
         telegram_interval_hours: telegramIntervalHours,
         telegram_task_reminder_enabled: telegramTaskReminderEnabled,
+        telegram_deadline_reminder_enabled: telegramDeadlineReminderEnabled,
         app_public_url: appPublicUrl.trim() || undefined,
       })
       toast.success('Đã lưu cấu hình trợ lý Telegram thành công! 🎉')
@@ -166,7 +169,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
     }
   }
 
-  const handleTestSummary = async (mode: 'morning' | 'evening' | 'interval' = 'evening') => {
+  const handleTestSummary = async (mode: 'morning' | 'evening' | 'interval' | 'deadline_nudge' = 'evening') => {
     if (!telegramToken.trim() || !telegramChatId.trim()) {
       toast.error('Vui lòng nhập Bot Token và Chat ID và lưu cài đặt trước khi thử!')
       return
@@ -182,9 +185,13 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
         evening_reminder_time: eveningTime,
         telegram_interval_hours: telegramIntervalHours,
         telegram_task_reminder_enabled: telegramTaskReminderEnabled,
+        telegram_deadline_reminder_enabled: telegramDeadlineReminderEnabled,
         app_public_url: appPublicUrl.trim() || undefined,
       })
-      const res = await notificationService.testTelegramSummary(mode)
+      const res =
+        mode === 'deadline_nudge'
+          ? await notificationService.sendDeadlineReminder()
+          : await notificationService.testTelegramSummary(mode)
       toast.success(res.message || 'Đã gửi tin nhắn mẫu đến Telegram! 📱')
     } catch (err: any) {
       toast.error(err.response?.data?.detail || err.message || 'Lỗi gửi tin nhắn tổng kết')
@@ -214,6 +221,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
         evening_reminder_time: eveningTime,
         telegram_interval_hours: telegramIntervalHours,
         telegram_task_reminder_enabled: telegramTaskReminderEnabled,
+        telegram_deadline_reminder_enabled: telegramDeadlineReminderEnabled,
         app_public_url: appPublicUrl.trim() || undefined,
       })
       toast.success('Đã gửi tin nhắn đến Telegram trên điện thoại của bạn! 📱')
@@ -617,6 +625,24 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                   />
                 </div>
 
+                {/* Toggle nhắc quên Deadline lúc 15:00 */}
+                <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                  <div>
+                    <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span>🚨 Nhắc nhở quên Deadline lúc 15:00 hằng ngày</span>
+                    </div>
+                    <p className="text-[10px] text-white/60">
+                      Tự động nhắn Telegram buổi chiều (GMT+7) nếu còn deadline Hôm nay hoặc Quá hạn chưa hoàn thành.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={telegramDeadlineReminderEnabled}
+                    onChange={(e) => setTelegramDeadlineReminderEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-rose-500 rounded cursor-pointer"
+                  />
+                </div>
+
                 {/* Bot Credentials Inputs */}
                 <div className="space-y-2 pt-1">
                   <div className="space-y-1">
@@ -680,6 +706,16 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                     >
                       <Clock className="w-3.5 h-3.5 text-amber-300" />
                       <span>Bắn Thử Việc Sáng 🌅</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleTestSummary('deadline_nudge')}
+                      disabled={isTestingSummary}
+                      className="px-3 py-2 bg-rose-600/30 hover:bg-rose-600/50 border border-rose-500/40 text-rose-200 font-bold rounded-xl transition flex items-center gap-1.5 active:scale-95 text-xs disabled:opacity-50"
+                      title="Gửi ngay danh sách deadline đang chờ tới Telegram"
+                    >
+                      <Send className="w-3.5 h-3.5 text-rose-300" />
+                      <span>📲 Bắn Thử Nhắc Deadline Ngay</span>
                     </button>
 
                     <button

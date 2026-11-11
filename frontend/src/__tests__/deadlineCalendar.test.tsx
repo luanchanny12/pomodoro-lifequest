@@ -3,11 +3,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { DeadlineAlertBanner } from '../components/pomodoro/DeadlineAlertBanner'
 import { DeadlineCalendarModal } from '../components/pomodoro/DeadlineCalendarModal'
+import { DeadlineHomeSection } from '../components/pomodoro/DeadlineHomeSection'
 import { focusService } from '../services/focusService'
+import { notificationService } from '../services/notificationService'
 
 vi.mock('../services/focusService', () => ({
   focusService: {
     getDeadlines: vi.fn(),
+    createGoal: vi.fn(),
+    updateGoal: vi.fn(),
+    createMatrixTask: vi.fn(),
+    updateMatrixTask: vi.fn(),
+    toggleMatrixTask: vi.fn(),
+  },
+}))
+
+vi.mock('../services/notificationService', () => ({
+  notificationService: {
+    sendDeadlineReminder: vi.fn(),
   },
 }))
 
@@ -152,5 +165,122 @@ describe('DeadlineCalendarModal', () => {
 
     expect(screen.queryByText('Thi Giữa Kỳ Giải Tích')).not.toBeInTheDocument()
     expect(screen.getByText('Thi Chứng Chỉ IELTS')).toBeInTheDocument()
+  })
+})
+
+describe('DeadlineHomeSection', () => {
+  const sampleData = {
+    items: [
+      {
+        type: 'goal' as const,
+        id: 11,
+        title: 'Nộp Đồ Án Chuyên Ngành',
+        date: '2026-11-11',
+        days_left: 0,
+        urgency: 'today' as const,
+        current_hours: 4,
+        target_hours: 10,
+        progress_percent: 40,
+        category: 'Deadline',
+        color: '#f97316',
+        planet_type: 'earth',
+      },
+      {
+        type: 'goal' as const,
+        id: 12,
+        title: 'Thi IELTS Writing',
+        date: '2026-11-13',
+        days_left: 2,
+        urgency: 'urgent' as const,
+        current_hours: 10,
+        target_hours: 30,
+        progress_percent: 33,
+        category: 'Ngoại ngữ',
+        color: '#f59e0b',
+        planet_type: 'earth',
+      },
+    ],
+    summary: {
+      overdue: 0,
+      today: 1,
+      urgent: 1,
+      soon: 0,
+      future: 0,
+      total_active: 2,
+    },
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('renders guest prompt without errors when unauthenticated', () => {
+    const onOpenAuthModal = vi.fn()
+    render(
+      <DeadlineHomeSection
+        isAuthenticated={false}
+        data={{ items: [], summary: { overdue: 0, today: 0, urgent: 0, soon: 0, future: 0, total_active: 0 } }}
+        onRefresh={vi.fn()}
+        onOpenCalendarModal={vi.fn()}
+        onOpenAuthModal={onOpenAuthModal}
+      />
+    )
+    expect(screen.getByText(/Lịch Deadline Của Bạn/i)).toBeInTheDocument()
+    const loginBtn = screen.getByRole('button', { name: /Đăng nhập để bật Lịch/i })
+    fireEvent.click(loginBtn)
+    expect(onOpenAuthModal).toHaveBeenCalledTimes(1)
+  })
+
+  it('supports inline quick add, complete goal, and Telegram reminder on main page', async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(focusService.createGoal).mockResolvedValue({} as never)
+    vi.mocked(focusService.updateGoal).mockResolvedValue({} as never)
+    vi.mocked(notificationService.sendDeadlineReminder).mockResolvedValue({
+      message: 'Đã gửi nhắc nhở 2 deadline tới Telegram!',
+      ok: true,
+      count: 2,
+    })
+
+    render(
+      <DeadlineHomeSection
+        isAuthenticated={true}
+        data={sampleData}
+        onRefresh={onRefresh}
+        onOpenCalendarModal={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('Nộp Đồ Án Chuyên Ngành')).toBeInTheDocument()
+    expect(screen.getByText('Thi IELTS Writing')).toBeInTheDocument()
+
+    // Inline quick add
+    fireEvent.click(screen.getByRole('button', { name: /\+ Thêm Deadline/i }))
+    fireEvent.change(screen.getByPlaceholderText(/VD: Thi cuối kỳ/i), {
+      target: { value: 'Nộp Slide Thuyết Trình' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Lưu Deadline/i }))
+
+    await waitFor(() => {
+      expect(focusService.createGoal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Nộp Slide Thuyết Trình',
+          goal_type: 'deadline',
+        })
+      )
+      expect(onRefresh).toHaveBeenCalled()
+    })
+
+    // Mark complete
+    const completeButtons = screen.getAllByRole('button', { name: /Xong/i })
+    fireEvent.click(completeButtons[0])
+    await waitFor(() => {
+      expect(focusService.updateGoal).toHaveBeenCalledWith(11, { is_completed: true })
+    })
+
+    // Telegram nudge button
+    fireEvent.click(screen.getByRole('button', { name: /Nhắc Telegram/i }))
+    await waitFor(() => {
+      expect(notificationService.sendDeadlineReminder).toHaveBeenCalledTimes(1)
+    })
   })
 })

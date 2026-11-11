@@ -1,4 +1,12 @@
 import api from './api'
+import {
+  buildDeadlinesPayload,
+  type DeadlineItem,
+  type DeadlineSummary,
+  type DeadlinesResponse,
+} from '@/utils/deadlineUtils'
+
+export type { DeadlineItem, DeadlineSummary, DeadlinesResponse }
 
 export interface StudyGoal {
   id: number
@@ -402,6 +410,11 @@ export const focusService = {
     title: string
     target_hours: number
     current_hours?: number
+    goal_type?: 'hours' | 'deadline'
+    target_date?: string | null
+    parent_id?: number | null
+    planet_type?: string
+    celestial_name?: string | null
     color?: string
     category?: string
     notes?: string
@@ -636,9 +649,23 @@ export const focusService = {
     return res.data
   },
 
-  getDeadlines: async (): Promise<{ items: any[], summary: any }> => {
-    const res = await api.get('/focus/deadlines')
-    return res.data
+  getDeadlines: async (): Promise<DeadlinesResponse> => {
+    try {
+      const res = await api.get('/focus/deadlines')
+      if (res?.data && Array.isArray(res.data.items) && res.data.summary) {
+        return res.data
+      }
+    } catch (err) {
+      console.warn('[FocusService] /focus/deadlines unavailable, falling back to client-side calculation:', err)
+    }
+
+    const [goalsResult, tasksResult] = await Promise.allSettled([
+      focusService.getGoals(),
+      focusService.getMatrixTasks(),
+    ])
+    const goals = goalsResult.status === 'fulfilled' ? goalsResult.value : focusService.getCachedGoals()
+    const tasks = tasksResult.status === 'fulfilled' ? tasksResult.value : []
+    return buildDeadlinesPayload(goals, tasks)
   },
 
   updateMatrixReflection: async (taskId: number, reflection_note: string): Promise<DailyMatrixTask> => {
