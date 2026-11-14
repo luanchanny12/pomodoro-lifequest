@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models_auth import User
 from app.models import Player, StudyGoal, NotificationSetting
+from app.services.streak import vn_today, calculate_real_user_streak
 
 RAW_SECRET_KEY = os.getenv("SECRET_KEY")
 INSECURE_SECRETS = {
@@ -256,10 +257,22 @@ def _build_user_response(user: User, db: Session) -> UserResponse:
         db.commit()
         db.refresh(player)
 
-    today = datetime.date.today()
+    today = vn_today()
+    real_streak, _ = calculate_real_user_streak(db, user.id, today)
+
+    # Tự động đồng bộ và phục hồi nếu streak trong DB thấp hơn thực tế do lỗi
+    if real_streak > (player.streak or 0):
+        player.streak = real_streak
+        player.last_streak_date = today
+        db.commit()
+        db.refresh(player)
+
     effective_streak = player.streak or 0
     if player.last_streak_date and player.last_streak_date < today - datetime.timedelta(days=1):
-        effective_streak = 0
+        if real_streak > 0:
+            effective_streak = real_streak
+        else:
+            effective_streak = 0
 
     return UserResponse(
         id=user.id,

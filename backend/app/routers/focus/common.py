@@ -106,14 +106,13 @@ def _verify_resource_ownership(resource, current_user: Optional[User]):
             )
 
 
-# Timezone chuẩn Việt Nam (UTC+7 / GMT+7)
-VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
-
-def vn_now() -> datetime.datetime:
-    return datetime.datetime.now(VN_TZ)
-
-def vn_today() -> datetime.date:
-    return datetime.datetime.now(VN_TZ).date()
+from app.services.streak import (
+    VN_TZ,
+    vn_now,
+    vn_today,
+    calculate_real_user_streak,
+    update_user_streak,
+)
 
 
 def _propagate_goal_hours(db: Session, parent_id: Optional[int], hours_delta: float, now: datetime.datetime):
@@ -228,67 +227,17 @@ def _update_user_streak(
     activity_date: Optional[datetime.date] = None,
 ) -> Optional[Player]:
     """
-    Thuật toán Chuỗi Ngày Liên Tục (Streak) chuẩn quốc tế:
+    Thuật toán Chuỗi Ngày Liên Tục (Streak) chuẩn quốc tế & thông minh:
     - Nếu hôm nay đã có hoạt động: Giữ nguyên streak (không tăng lặp trong ngày).
     - Nếu hôm qua có hoạt động: Kéo dài streak (+1 ngày).
-    - Nếu bị đứt chuỗi (> 1 ngày không hoạt động): Khởi động lại từ 1 ngày.
+    - Nếu bị đứt chuỗi nhẹ (ví dụ học muộn qua nửa đêm): Cơ chế Smart Grace bảo toàn chuỗi.
+    - Tự động đồng bộ và phục hồi nếu streak trong DB bị lệch thấp hơn thực tế.
     - Thưởng +50 EXP mỗi ngày học và +300 EXP kèm Huy hiệu STREAK_7 khi đạt mốc 7 ngày liên tục.
     """
     real_user = _get_real_user(user)
     if not real_user:
         return None
-
-    today = activity_date or vn_today()
-    current_vn_date = vn_today()
-    if today > current_vn_date:
-        today = current_vn_date
-
-    player = db.query(Player).filter(Player.user_id == real_user.id).first()
-    if not player:
-        player = Player(user_id=real_user.id, level=1, exp=0, coins=0, streak=0)
-        db.add(player)
-        db.flush()
-
-    if player.last_streak_date:
-        if player.last_streak_date == today:
-            return player
-        elif player.last_streak_date > today:
-            # Hoạt động trong quá khứ không làm thay đổi streak hiện tại
-            return player
-        elif player.last_streak_date == today - datetime.timedelta(days=1):
-            player.streak = (player.streak or 0) + 1
-        elif player.last_streak_date < today - datetime.timedelta(days=1):
-            player.streak = 1
-    else:
-        player.streak = 1
-
-    player.last_streak_date = today
-
-    # EXP Rewards: +50 EXP cho ngày học kiên trì
-    player.exp = (player.exp or 0) + 50
-    player.level = max(1, (player.exp // 200) + 1)
-
-    # Mốc thưởng 7 ngày liên tục
-    if player.streak > 0 and player.streak % 7 == 0:
-        player.exp += 300
-        player.level = max(1, (player.exp // 200) + 1)
-        ach = (
-            db.query(Achievement)
-            .filter(Achievement.player_id == player.id, Achievement.code == "STREAK_7")
-            .first()
-        )
-        if not ach:
-            new_ach = Achievement(
-                player_id=player.id,
-                code="STREAK_7",
-                name="Kiên Trì",
-                description="Duy trì chuỗi học tập 7 ngày liên tiếp",
-                icon="🔥",
-            )
-            db.add(new_ach)
-
-    db.flush()
-    return player
+    return update_user_streak(db, real_user.id, activity_date)
 
 
 def _format_goal_response(

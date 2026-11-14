@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from datetime import date, timedelta
 from app.models import DailyLog, Player
+from app.services.streak import vn_today
 
 
 SMART_STREAK_LIMIT = 3
@@ -8,7 +9,7 @@ SMART_STREAK_LIMIT = 3
 
 def check_recovery_day(db: Session, query_date: date = None) -> dict:
     if query_date is None:
-        query_date = date.today()
+        query_date = vn_today()
 
     player = db.query(Player).first()
     if not player:

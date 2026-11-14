@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from datetime import date, timedelta
 from app.models import Player, Level, Achievement, DailyLog, Task
+from app.services.streak import vn_today
 
 DAILY_LOG_BONUS = 100
 TASK_COMPLETE_BONUS = 20
@@ -51,7 +52,7 @@ def check_streak(db: Session, player_id: int) -> Player:
     player = db.query(Player).filter(Player.id == player_id).first()
     if not player:
         raise ValueError("Người chơi không tồn tại")
-    today = date.today()
+    today = vn_today()
     has_activity = db.query(DailyLog).filter(DailyLog.date == today).first()
     if not has_activity:
         task_done = db.query(Task).filter(Task.date == today, Task.status == "hoàn thành").first()

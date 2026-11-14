@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.routers.auth import get_current_admin, hash_password
 from app.cache import invalidate_user_cache, invalidate_admin_cache, get_cache, set_cache
+from app.services.streak import vn_today
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Portal & User Management"])
 
@@ -775,7 +776,7 @@ def get_user_activity_detail(
             "level": player.level if player else 1,
             "exp": player.exp if player else 0,
             "coins": player.coins if player else 0,
-            "streak": (player.streak if (player and (not player.last_streak_date or player.last_streak_date >= datetime.date.today() - datetime.timedelta(days=1))) else 0) if player else 0,
+            "streak": (player.streak if (player and (not player.last_streak_date or player.last_streak_date >= vn_today() - datetime.timedelta(days=1))) else 0) if player else 0,
             "has_telegram": bool(notif and notif.telegram_chat_id),
         },
         "goals": goals_data,
