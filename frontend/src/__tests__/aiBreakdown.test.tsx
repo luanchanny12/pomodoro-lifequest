@@ -12,8 +12,10 @@ vi.mock('../services/focusService', () => ({
     applyAIBreakdown: vi.fn(),
     rollbackAIBreakdown: vi.fn(),
     getAIBreakdownHistory: vi.fn(),
-    parseScheduleText: vi.fn(),
+    parseScheduleTextWithAI: vi.fn(),
     importTasksBulk: vi.fn(),
+    uploadNotebookLMSource: vi.fn(),
+    askSources: vi.fn(),
     createGoal: vi.fn(),
     createMatrixTask: vi.fn(),
   },
@@ -25,7 +27,7 @@ vi.mock('../services/notificationService', () => ({
   },
 }))
 
-describe('AIBreakdownModal Component', () => {
+describe('AIBreakdownModal (NotebookLM Studio)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(focusService.getAIBreakdownHistory).mockResolvedValue([])
@@ -40,8 +42,8 @@ describe('AIBreakdownModal Component', () => {
       />
     )
 
-    expect(screen.getByText(/AI Chia Nhỏ Deadline & Lên Lịch Tự Động/i)).toBeInTheDocument()
-    expect(screen.getByText(/Mục Tiêu Lớn Cần Phân Rã/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/NotebookLM Studio/i).length).toBeGreaterThan(0)
+    expect(screen.getByText(/Mục Tiêu & Nguồn Tài Liệu \(Sources\)/i)).toBeInTheDocument()
 
     // Switch to Import Tab
     const importTabBtn = screen.getByText(/Import CSV \/ JSON & Text/i)
@@ -54,12 +56,51 @@ describe('AIBreakdownModal Component', () => {
     expect(screen.getByText(/Lịch Sử Các Lần AI Chia Lịch/i)).toBeInTheDocument()
   })
 
-  it('handles breakdown preview and user approval flow', async () => {
+  it('supports uploading source document into NotebookLM shelf', async () => {
+    vi.mocked(focusService.uploadNotebookLMSource).mockResolvedValueOnce({
+      name: 'Slide_ThuongMaiDienTu.pdf',
+      content: 'Chuong 1: Tong quan ve B2B va B2C...',
+      source_type: 'pdf',
+      words_count: 150,
+      page_count: 2,
+    })
+
+    const { container } = render(
+      <AIBreakdownModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    )
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    expect(fileInput).toBeInTheDocument()
+
+    const fakeFile = new File(['content'], 'Slide_ThuongMaiDienTu.pdf', { type: 'application/pdf' })
+    fireEvent.change(fileInput, { target: { files: [fakeFile] } })
+
+    await waitFor(() => {
+      expect(focusService.uploadNotebookLMSource).toHaveBeenCalledWith(fakeFile)
+      expect(screen.getByText(/Slide_ThuongMaiDienTu.pdf/i)).toBeInTheDocument()
+    })
+  })
+
+  it('handles breakdown preview and user approval flow with NotebookLM artifacts', async () => {
     const mockProposal = {
       title: 'Ôn thi Thương mại điện tử',
       target_date: '2026-11-20',
       explanation: 'Chia làm 3 giai đoạn: ôn lý thuyết, giải đề, tổng ôn.',
-      days_count: 3,
+      days_count: 2,
+      study_guide: {
+        briefing_summary: 'Bản tin chiến lược: Nắm chắc B2B và thanh toán điện tử.',
+        core_concepts: [
+          { concept: 'Mô hình B2B', explanation: 'Giao dịch doanh nghiệp', source: 'Slide Chuong 1' },
+        ],
+        exam_questions: ['Phân biệt B2B và B2C?'],
+        difficulty_assessment: 'Độ khó: Khá',
+        audio_overview_script: 'Host A: Chào mừng bạn đến với bản tóm tắt.\nHost B: Cùng điểm qua các mẹo thi nhé!',
+      },
+      sources_summary: 'Đã nạp 1 tài liệu nguồn',
       tasks: [
         {
           date: '2026-11-17',
@@ -67,6 +108,8 @@ describe('AIBreakdownModal Component', () => {
           quadrant: 1,
           duration_minutes: 90,
           notes: 'Ô 1: Làm ngay',
+          source_reference: 'Slide Chuong 1',
+          key_question: 'B2B khac B2C the nao?',
         },
         {
           date: '2026-11-18',
@@ -74,6 +117,8 @@ describe('AIBreakdownModal Component', () => {
           quadrant: 1,
           duration_minutes: 90,
           notes: 'Ô 1: Làm ngay',
+          source_reference: 'De thi mau 2025',
+          key_question: 'Toc do lam bai da on chua?',
         },
       ],
     }
@@ -83,7 +128,7 @@ describe('AIBreakdownModal Component', () => {
       ok: true,
       message: 'Đã thêm các nhiệm vụ vào lịch thành công!',
       batch_id: 'batch_test_123',
-      created_count: 2,
+      count: 2,
     })
 
     const handleSuccess = vi.fn()
@@ -102,7 +147,7 @@ describe('AIBreakdownModal Component', () => {
     fireEvent.change(input, { target: { value: 'Ôn thi Thương mại điện tử' } })
 
     // Click preview button
-    const previewBtn = screen.getByText(/Phân Tích & Lập Đề Xuất/i)
+    const previewBtn = screen.getByText(/Phân Tích Bằng NotebookLM Studio/i)
     fireEvent.click(previewBtn)
 
     await waitFor(() => {
@@ -116,7 +161,20 @@ describe('AIBreakdownModal Component', () => {
 
     // Expect proposal explanation to show
     expect(await screen.findByText(/Chia làm 3 giai đoạn: ôn lý thuyết/i)).toBeInTheDocument()
+    expect(screen.getByText(/📌 Slide Chuong 1/i)).toBeInTheDocument()
     expect(screen.getByText(/Đồng Ý & Đẩy Lên Lịch/i)).toBeInTheDocument()
+
+    // Switch to Audio Overview sub-tab
+    const audioTabBtn = screen.getByText(/Podcast Audio Overview/i)
+    fireEvent.click(audioTabBtn)
+    expect(screen.getByText(/Phát Podcast Tóm Tắt/i)).toBeInTheDocument()
+    expect(screen.getByText(/Host A: Chào mừng bạn đến với bản tóm tắt./i)).toBeInTheDocument()
+
+    // Switch to Study Guide sub-tab
+    const studyGuideTabBtn = screen.getByText(/Study Guide & Khái Niệm/i)
+    fireEvent.click(studyGuideTabBtn)
+    expect(screen.getByText(/Bản tin chiến lược: Nắm chắc B2B/i)).toBeInTheDocument()
+    expect(screen.getByText(/Mô hình B2B/i)).toBeInTheDocument()
 
     // User approves
     const approveBtn = screen.getByText(/Đồng Ý & Đẩy Lên Lịch/i)
@@ -139,6 +197,7 @@ describe('AIBreakdownModal Component', () => {
   it('allows 1-click rollback in History tab', async () => {
     const mockLogs = [
       {
+        id: 101,
         batch_id: 'batch_xyz_789',
         title: 'Đề án Tốt nghiệp',
         target_date: '2026-11-30',
@@ -153,7 +212,6 @@ describe('AIBreakdownModal Component', () => {
       ok: true,
       message: 'Đã hoàn tác thành công!',
       deleted_count: 4,
-      batch_id: 'batch_xyz_789',
     })
 
     render(
@@ -177,8 +235,8 @@ describe('AIBreakdownModal Component', () => {
   })
 })
 
-describe('DeadlineHomeSection with AI button', () => {
-  it('opens AI Breakdown modal when clicking AI Chia Nhỏ button', () => {
+describe('DeadlineHomeSection with NotebookLM Studio', () => {
+  it('opens NotebookLM modal when clicking AI Chia Nhỏ button', () => {
     const mockData = {
       items: [],
       summary: {
@@ -204,6 +262,6 @@ describe('DeadlineHomeSection with AI button', () => {
     expect(aiBtn).toBeInTheDocument()
 
     fireEvent.click(aiBtn)
-    expect(screen.getByText(/AI Chia Nhỏ Deadline & Lên Lịch Tự Động/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/NotebookLM Studio/i).length).toBeGreaterThan(0)
   })
 })

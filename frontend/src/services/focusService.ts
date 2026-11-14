@@ -145,12 +145,42 @@ export interface ConstellationCheckResult {
   total_constellations: number
 }
 
+export interface NotebookLMSourceItem {
+  name: string
+  content: string
+  source_type?: string
+  words_count?: number
+  page_count?: number
+}
+
+export interface NotebookLMStudyGuide {
+  briefing_summary: string
+  core_concepts: Array<{ concept: string; explanation: string; source?: string }>
+  exam_questions: string[]
+  difficulty_assessment?: string
+  audio_overview_script?: string
+}
+
+export interface AskSourcesRequest {
+  subject: string
+  question: string
+  sources: NotebookLMSourceItem[]
+}
+
+export interface AskSourcesResponse {
+  answer: string
+  citations: string[]
+  suggested_followups: string[]
+}
+
 export interface AIBreakdownTaskItem {
   title: string
   date: string
   quadrant?: number
   duration_minutes?: number
   notes?: string
+  source_reference?: string
+  key_question?: string
 }
 
 export interface AIBreakdownProposal {
@@ -159,6 +189,8 @@ export interface AIBreakdownProposal {
   explanation: string
   days_count: number
   tasks: AIBreakdownTaskItem[]
+  study_guide?: NotebookLMStudyGuide
+  sources_summary?: string
 }
 
 export interface AIBreakdownLogItem {
@@ -732,8 +764,23 @@ export const focusService = {
     notes_or_syllabus?: string
     daily_hours?: number
     quadrant?: number
+    sources?: NotebookLMSourceItem[]
   }): Promise<AIBreakdownProposal> => {
     const res = await api.post('/focus/ai/breakdown-preview', data)
+    return res.data
+  },
+
+  uploadNotebookLMSource: async (file: File): Promise<NotebookLMSourceItem> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await api.post('/focus/ai/upload-source', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data
+  },
+
+  askSources: async (data: AskSourcesRequest): Promise<AskSourcesResponse> => {
+    const res = await api.post('/focus/ai/ask-sources', data)
     return res.data
   },
 

@@ -1108,8 +1108,24 @@ class WindowsToastRequest(BaseModel):
 
 
 # =====================================================================
-# AI Breakdown, Schedule Proposal & Batch Rollback Schemas
+# AI Breakdown, Schedule Proposal, NotebookLM Studio & Batch Rollback Schemas
 # =====================================================================
+
+class NotebookLMSourceItem(BaseModel):
+    name: str
+    content: str
+    source_type: Optional[str] = "document"  # 'pdf', 'docx', 'notes', 'syllabus', 'exam'
+    words_count: Optional[int] = 0
+    page_count: Optional[int] = 1
+
+
+class NotebookLMStudyGuide(BaseModel):
+    briefing_summary: str
+    core_concepts: List[Dict[str, str]] = []  # [{"concept": "...", "explanation": "...", "source": "..."}]
+    exam_questions: List[str] = []
+    difficulty_assessment: Optional[str] = None
+    audio_overview_script: Optional[str] = None  # Dialog script for Podcast overview
+
 
 class AIBreakdownTaskItem(BaseModel):
     title: str
@@ -1117,6 +1133,8 @@ class AIBreakdownTaskItem(BaseModel):
     quadrant: int = 1
     duration_minutes: int = 60
     notes: Optional[str] = None
+    source_reference: Optional[str] = None  # e.g. "Slide Chương 2 trang 10-18"
+    key_question: Optional[str] = None      # e.g. "B2B khác B2C ở những điểm pháp lý nào?"
 
 
 class AIBreakdownPreviewRequest(BaseModel):
@@ -1126,6 +1144,7 @@ class AIBreakdownPreviewRequest(BaseModel):
     notes_or_syllabus: Optional[str] = None
     daily_hours: Optional[float] = 1.5
     quadrant: Optional[int] = 1
+    sources: Optional[List[NotebookLMSourceItem]] = None
 
 
 class AIBreakdownProposalResponse(BaseModel):
@@ -1134,6 +1153,20 @@ class AIBreakdownProposalResponse(BaseModel):
     explanation: str
     days_count: int
     tasks: List[AIBreakdownTaskItem]
+    study_guide: Optional[NotebookLMStudyGuide] = None
+    sources_summary: Optional[str] = None
+
+
+class AskSourcesRequest(BaseModel):
+    subject: str
+    question: str
+    sources: List[NotebookLMSourceItem]
+
+
+class AskSourcesResponse(BaseModel):
+    answer: str
+    citations: List[str] = []
+    suggested_followups: List[str] = []
 
 
 class AIApplyBreakdownRequest(BaseModel):

@@ -1,21 +1,33 @@
 import React, { useEffect, useState } from 'react'
 import {
   AlertCircle,
+  BookOpen,
   Calendar,
   Check,
   CheckCircle2,
   Clock,
+  Compass,
   Download,
   FileSpreadsheet,
   FileText,
+  FileUp,
+  Headphones,
+  HelpCircle,
   History,
   Info,
+  Lightbulb,
   Loader2,
+  MessageSquare,
+  Pause,
+  Play,
   Plus,
   RotateCcw,
+  Send,
   Sparkles,
   Trash2,
   Upload,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -25,6 +37,7 @@ import {
   type AIBreakdownProposal,
   type AIBreakdownTaskItem,
   type DeadlineItem,
+  type NotebookLMSourceItem,
 } from '@/services/focusService'
 import { getLocalTodayYmd } from '@/utils/deadlineUtils'
 import { formatSafeDate, parseSafeDate } from '@/utils/dateUtils'
@@ -37,6 +50,7 @@ interface AIBreakdownModalProps {
 }
 
 type TabType = 'breakdown' | 'import' | 'history'
+type StudioSubTab = 'schedule' | 'audio' | 'studyguide' | 'qa'
 
 export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
   isOpen,
@@ -45,12 +59,12 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
   deadlines = [],
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('breakdown')
+  const [studioSubTab, setStudioSubTab] = useState<StudioSubTab>('schedule')
   const todayYmd = getLocalTodayYmd()
 
   // Form State (Tab 1)
   const [title, setTitle] = useState('')
   const [targetDate, setTargetDate] = useState(() => {
-    // Default 5 days in the future
     const d = new Date()
     d.setDate(d.getDate() + 5)
     return getLocalTodayYmd(d)
@@ -61,6 +75,20 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
   const [proposal, setProposal] = useState<AIBreakdownProposal | null>(null)
   const [editableTasks, setEditableTasks] = useState<AIBreakdownTaskItem[]>([])
   const [submittingApply, setSubmittingApply] = useState(false)
+
+  // NotebookLM Sources State
+  const [sources, setSources] = useState<NotebookLMSourceItem[]>([])
+  const [uploadingSource, setUploadingSource] = useState(false)
+
+  // Audio Overview State
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false)
+
+  // Q&A with Sources State
+  const [questionText, setQuestionText] = useState('')
+  const [askingQuestion, setAskingQuestion] = useState(false)
+  const [qaList, setQaList] = useState<
+    Array<{ q: string; a: string; citations?: string[]; suggested_followups?: string[] }>
+  >([])
 
   // Import State (Tab 2)
   const [rawText, setRawText] = useState('')
@@ -73,6 +101,23 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
   const [historyLogs, setHistoryLogs] = useState<AIBreakdownLogItem[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [rollingBackId, setRollingBackId] = useState<string | null>(null)
+
+  // Clean speech synthesis on unmount or close
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
+
+  const handleModalClose = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel()
+    }
+    setIsPlayingAudio(false)
+    onClose()
+  }
 
   // Fetch history when switching to tab 3
   const loadHistory = async () => {
@@ -95,7 +140,74 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
 
   if (!isOpen) return null
 
-  // 1. Phân tích & Tạo đề xuất bằng AI
+  // 1. Upload Source Document (PDF, DOCX, TXT)
+  const handleUploadSourceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      setUploadingSource(true)
+      const res = await focusService.uploadNotebookLMSource(file)
+      setSources((prev) => [...prev, res])
+      toast.success(`📘 Đã nạp thành công tài liệu: ${res.name} (${res.words_count} từ)`)
+      if (!title && res.name) {
+        const inferred = res.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
+        setTitle(inferred)
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Không thể đọc file tài liệu'
+      toast.error(msg)
+    } finally {
+      setUploadingSource(false)
+      // reset file input
+      e.target.value = ''
+    }
+  }
+
+  const handleRemoveSource = (idx: number) => {
+    setSources((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  // 2. Audio Overview Player (Web Speech API)
+  const handleToggleAudio = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      toast.error('Trình duyệt của bạn chưa hỗ trợ Web Speech Audio.')
+      return
+    }
+
+    if (isPlayingAudio) {
+      window.speechSynthesis.cancel()
+      setIsPlayingAudio(false)
+      return
+    }
+
+    const script = proposal?.study_guide?.audio_overview_script
+    if (!script) {
+      toast.error('Chưa có kịch bản âm thanh.')
+      return
+    }
+
+    const cleanText = script.replace(/Host [AB]:/g, '').trim()
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(cleanText)
+    utterance.lang = 'vi-VN'
+    utterance.rate = 1.05
+
+    const voices = window.speechSynthesis.getVoices()
+    const viVoice = voices.find((v) => v.lang.includes('vi') || v.lang.includes('VIE'))
+    if (viVoice) {
+      utterance.voice = viVoice
+    }
+
+    utterance.onend = () => setIsPlayingAudio(false)
+    utterance.onerror = () => setIsPlayingAudio(false)
+
+    setIsPlayingAudio(true)
+    window.speechSynthesis.speak(utterance)
+    toast.info('🎙️ Đang phát bản tóm tắt âm thanh NotebookLM...')
+  }
+
+  // 3. Phân tích & Tạo đề xuất bằng NotebookLM Studio
   const handlePreviewBreakdown = async () => {
     const cleanTitle = title.trim()
     if (!cleanTitle) {
@@ -114,11 +226,13 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
         target_date: targetDate,
         daily_hours: Number(dailyHours) || 1.5,
         notes_or_syllabus: notesOrSyllabus.trim() || undefined,
+        sources: sources.length > 0 ? sources : undefined,
         quadrant: 1,
       })
       setProposal(res)
       setEditableTasks(res.tasks)
-      toast.success('✨ AI đã phân tích và lập kế hoạch đề xuất xong!')
+      setStudioSubTab('schedule')
+      toast.success('✨ NotebookLM Studio đã phân tích và lập hồ sơ nghiên cứu thành công!')
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Không thể lập kế hoạch lúc này'
       toast.error(msg)
@@ -127,7 +241,37 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
     }
   }
 
-  // 2. Người dùng phê duyệt -> Lưu vào database
+  // 4. Hỏi đáp với tài liệu nguồn (Q&A with Sources)
+  const handleAskQuestion = async () => {
+    const q = questionText.trim()
+    if (!q) return
+
+    try {
+      setAskingQuestion(true)
+      const res = await focusService.askSources({
+        subject: title || 'Môn học',
+        question: q,
+        sources,
+      })
+      setQaList((prev) => [
+        ...prev,
+        {
+          q,
+          a: res.answer,
+          citations: res.citations,
+          suggested_followups: res.suggested_followups,
+        },
+      ])
+      setQuestionText('')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Không thể hỏi đáp lúc này'
+      toast.error(msg)
+    } finally {
+      setAskingQuestion(false)
+    }
+  }
+
+  // 5. Người dùng phê duyệt -> Lưu vào database
   const handleApproveAndApply = async () => {
     if (!proposal || editableTasks.length === 0) return
 
@@ -143,7 +287,7 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
 
       toast.success(res.message || '🎉 Đã thêm các nhiệm vụ vào lịch thành công!')
       await onSuccess(res.batch_id)
-      onClose()
+      handleModalClose()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Không thể lưu lịch'
       toast.error(msg)
@@ -163,7 +307,7 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
     )
   }
 
-  // 3. Hoàn tác một batch đã tạo
+  // 6. Hoàn tác một batch đã tạo
   const handleRollbackBatch = async (batchId: string) => {
     try {
       setRollingBackId(batchId)
@@ -179,7 +323,7 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
     }
   }
 
-  // 4. Bóc tách văn bản thô dán từ website/tài liệu
+  // 7. Bóc tách văn bản thô dán từ website/tài liệu
   const handleParseScheduleText = async () => {
     if (!rawText.trim()) {
       toast.error('Vui lòng dán văn bản thời khóa biểu hoặc đề cương!')
@@ -203,7 +347,7 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
     }
   }
 
-  // 5. Upload File CSV / JSON
+  // 8. Upload File CSV / JSON
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -219,33 +363,22 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
           const list = Array.isArray(parsed) ? parsed : parsed.items || parsed.tasks || []
           const normalized: AIBreakdownTaskItem[] = list.map((item: Record<string, unknown>) => ({
             title: String(item.title || item.name || 'Nhiệm vụ'),
-            date: String(item.date || todayYmd),
-            quadrant: Number(item.quadrant) || 1,
+            date: String(item.date || item.deadline || todayYmd).slice(0, 10),
+            quadrant: 1,
             notes: item.notes ? String(item.notes) : undefined,
-            duration_minutes: Number(item.duration_minutes) || 60,
+            duration_minutes: Number(item.duration_minutes || 60),
           }))
           setImportedTasks(normalized)
           toast.success(`📁 Đã nạp ${normalized.length} mục từ file JSON!`)
-        } else {
-          // Parse CSV
-          const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0)
-          if (lines.length < 2) {
-            toast.error('File CSV phải có ít nhất 1 dòng tiêu đề và 1 dòng dữ liệu!')
-            return
-          }
-          const headers = lines[0].split(',').map((h) => h.trim().toLowerCase())
-          const titleIdx = headers.findIndex((h) => h.includes('title') || h.includes('môn') || h.includes('task'))
-          const dateIdx = headers.findIndex((h) => h.includes('date') || h.includes('ngày'))
-          const notesIdx = headers.findIndex((h) => h.includes('note') || h.includes('phòng') || h.includes('ghi chú'))
-
+        } else if (file.name.endsWith('.csv')) {
+          const lines = content.split('\n').filter((l) => l.trim())
           const normalized: AIBreakdownTaskItem[] = []
           for (let i = 1; i < lines.length; i++) {
-            const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
-            if (cols.length === 0 || !cols[0]) continue
-            const t = titleIdx >= 0 ? cols[titleIdx] : cols[0]
-            const d = dateIdx >= 0 ? cols[dateIdx] : todayYmd
-            const n = notesIdx >= 0 ? cols[notesIdx] : ''
-            if (t) {
+            const parts = lines[i].split(',')
+            if (parts.length >= 2) {
+              const t = parts[0].trim().replace(/^"|"$/g, '')
+              const d = parts[1].trim().replace(/^"|"$/g, '')
+              const n = parts[3] ? parts[3].trim().replace(/^"|"$/g, '') : ''
               normalized.push({
                 title: t,
                 date: d.slice(0, 10),
@@ -258,7 +391,7 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
           setImportedTasks(normalized)
           toast.success(`📁 Đã nạp ${normalized.length} mục từ file CSV!`)
         }
-      } catch (err: unknown) {
+      } catch {
         toast.error('Không thể đọc file. Vui lòng kiểm tra định dạng CSV hoặc JSON!')
       }
     }
@@ -296,7 +429,7 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
       })
       toast.success(res.message || '🎉 Đã import danh sách thành công!')
       await onSuccess(res.batch_id)
-      onClose()
+      handleModalClose()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Không thể import lúc này'
       toast.error(msg)
@@ -306,26 +439,26 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">
+      <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between gap-2 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="p-2.5 bg-gradient-to-br from-indigo-500/25 to-purple-500/25 rounded-xl border border-indigo-500/40 text-indigo-400 shrink-0">
-              <Sparkles className="w-5 h-5" />
+              <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
             </div>
             <div className="min-w-0">
               <h2 className="text-base sm:text-lg font-bold text-white tracking-tight truncate flex items-center gap-2">
-                AI Chia Nhỏ Deadline & Lên Lịch Tự Động
+                NotebookLM Studio • Phân Rã & Lên Lịch Ô 1
               </h2>
               <p className="text-xs text-slate-400">
-                Lên lộ trình từng ngày • Xem giải trình chi tiết • Duyệt mới lưu • Hoàn tác 1-click
+                Neo nguồn tài liệu thực tế • Study Guide & Podcast Audio • Duyệt mới lưu • Hoàn tác 1-click
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleModalClose}
             aria-label="Đóng cửa sổ"
             className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shrink-0"
           >
@@ -345,7 +478,7 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>✨ AI Chia Nhỏ Deadline</span>
+            <span>✨ NotebookLM Studio</span>
           </button>
 
           <button
@@ -377,15 +510,15 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 custom-scrollbar">
-          {/* TAB 1: AI BREAKDOWN */}
+          {/* TAB 1: NOTEBOOKLM STUDIO */}
           {activeTab === 'breakdown' && (
             <div className="space-y-4">
-              {/* Form Input */}
+              {/* Form Input + Sources Shelf */}
               <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 space-y-3.5 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Mục Tiêu Lớn Cần Phân Rã
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Mục Tiêu & Nguồn Tài Liệu (Sources)
                   </span>
 
                   {deadlines.length > 0 && (
@@ -455,9 +588,71 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
                   </div>
                 </div>
 
+                {/* NotebookLM Sources Upload Shelf */}
+                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <FileUp className="w-3.5 h-3.5 text-indigo-400" />
+                      <span className="text-xs font-bold text-slate-200">
+                        Nguồn Tài Liệu (PDF Slide, Word Đề Cương, TXT):
+                      </span>
+                    </div>
+
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white font-semibold text-xs cursor-pointer shadow-sm transition-all">
+                      {uploadingSource ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>Đang bóc tách...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-3 h-3" />
+                          <span>+ Tải Lên Nguồn Mới</span>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt"
+                        disabled={uploadingSource}
+                        onChange={handleUploadSourceFile}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {sources.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 italic">
+                      💡 Mẹo: Tải lên slide bài giảng PDF hoặc đề cương Word để NotebookLM phân tích sát 100% nội dung thực tế môn học.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {sources.map((src, idx) => (
+                        <div
+                          key={idx}
+                          className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-indigo-950/70 border border-indigo-500/40 text-xs text-indigo-200"
+                        >
+                          <span className="font-bold text-[10px] uppercase px-1 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+                            {src.source_type || 'file'}
+                          </span>
+                          <span className="truncate max-w-[180px] font-medium">{src.name}</span>
+                          <span className="text-[10px] text-slate-400">({src.words_count || 0} từ)</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSource(idx)}
+                            className="text-slate-400 hover:text-rose-400 cursor-pointer ml-1"
+                            title="Xóa nguồn này"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <label className="text-[11px] font-semibold text-slate-400 block mb-1">
-                    Ghi chú đề cương / Nội dung các chương (để AI chia sát thực tế):
+                    Ghi chú bổ sung / Dán nội dung các chương:
                   </label>
                   <textarea
                     rows={2}
@@ -471,101 +666,390 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
                   <div className="text-xs text-slate-400 flex items-center gap-1.5">
                     <Info className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    <span>Tất cả task chia nhỏ sẽ được xếp vào <b>Ô 1 (Làm ngay)</b> trên lịch.</span>
+                    <span>Nhiệm vụ phân rã sẽ được neo nguồn và xếp vào <b>Ô 1 (Làm ngay)</b> trên lịch.</span>
                   </div>
 
                   <button
                     type="button"
                     disabled={analyzing}
                     onClick={handlePreviewBreakdown}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all disabled:opacity-60 cursor-pointer"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-bold text-xs sm:text-sm shadow-md transition-all disabled:opacity-60 cursor-pointer"
                   >
                     {analyzing ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>AI đang phân tích...</span>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>NotebookLM đang phân tích...</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Phân Tích & Lập Đề Xuất</span>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Phân Tích Bằng NotebookLM Studio</span>
                       </>
                     )}
                   </button>
                 </div>
               </div>
 
-              {/* Proposal & Review Gate */}
+              {/* Proposal & NotebookLM Studio Hub */}
               {proposal && (
                 <div className="rounded-2xl border border-indigo-500/40 bg-slate-900/95 p-4 sm:p-5 space-y-4 animate-in fade-in slide-in-from-top-2">
-                  {/* AI Explanation Banner */}
-                  <div className="p-3.5 rounded-xl bg-indigo-950/60 border border-indigo-500/40 flex items-start gap-3">
-                    <span className="text-xl shrink-0">💡</span>
-                    <div className="space-y-1">
-                      <h4 className="text-xs sm:text-sm font-bold text-indigo-300">
-                        Giải Trình Lộ Trình Của AI:
-                      </h4>
-                      <p className="text-xs text-slate-300 leading-relaxed">
-                        {proposal.explanation}
-                      </p>
+                  {/* Studio Navigation Pills */}
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setStudioSubTab('schedule')}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                          studioSubTab === 'schedule'
+                            ? 'bg-sky-500 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>Lộ Trình Ô 1 ({editableTasks.length} ngày)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStudioSubTab('audio')}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                          studioSubTab === 'audio'
+                            ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                      >
+                        <Headphones className="w-3.5 h-3.5" />
+                        <span>🎙️ Podcast Audio Overview</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStudioSubTab('studyguide')}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                          studioSubTab === 'studyguide'
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                      >
+                        <Compass className="w-3.5 h-3.5" />
+                        <span>📑 Study Guide & Khái Niệm</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStudioSubTab('qa')}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
+                          studioSubTab === 'qa'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>💬 Hỏi Đáp Tài Liệu</span>
+                      </button>
                     </div>
+
+                    {proposal.sources_summary && (
+                      <span className="text-[11px] text-indigo-300 font-medium hidden md:inline truncate max-w-[240px]">
+                        {proposal.sources_summary}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Task List Table */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                      <span className="font-bold text-slate-300">
-                        Danh sách nhiệm vụ đề xuất (Bạn có thể sửa tên hoặc xóa trước khi duyệt):
-                      </span>
-                      <span>
-                        Tổng: <b>{editableTasks.length} nhiệm vụ Ô 1</b>
-                      </span>
-                    </div>
+                  {/* SUBTAB 1: LỘ TRÌNH Ô 1 ĐÃ NEO NGUỒN */}
+                  {studioSubTab === 'schedule' && (
+                    <div className="space-y-3">
+                      {/* AI Explanation Banner */}
+                      <div className="p-3.5 rounded-xl bg-indigo-950/60 border border-indigo-500/40 flex items-start gap-3">
+                        <span className="text-xl shrink-0">💡</span>
+                        <div className="space-y-1">
+                          <h4 className="text-xs sm:text-sm font-bold text-indigo-300">
+                            Giải Trình Chiến Lược Ôn Thi:
+                          </h4>
+                          <p className="text-xs text-slate-300 leading-relaxed">
+                            {proposal.explanation}
+                          </p>
+                        </div>
+                      </div>
 
-                    <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1 custom-scrollbar">
-                      {editableTasks.map((task, idx) => {
-                        const parsedDate = parseSafeDate(task.date)
-                        const formatted = parsedDate ? formatSafeDate(parsedDate, 'dd/MM') : task.date
+                      {/* Task List */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                          <span className="font-bold text-slate-300">
+                            Danh sách nhiệm vụ theo ngày (Có thể chỉnh sửa tiêu đề hoặc xóa bớt):
+                          </span>
+                          <span>Tổng: <b>{editableTasks.length} nhiệm vụ Ô 1</b></span>
+                        </div>
 
-                        return (
-                          <div
-                            key={idx}
-                            className="rounded-xl border border-slate-700/80 bg-slate-800/80 p-2.5 sm:p-3 flex items-center justify-between gap-2.5"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                              <span className="px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 font-bold text-[11px] shrink-0">
-                                {formatted}
-                              </span>
+                        <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1 custom-scrollbar">
+                          {editableTasks.map((task, idx) => {
+                            const parsedDate = parseSafeDate(task.date)
+                            const formatted = parsedDate ? formatSafeDate(parsedDate, 'dd/MM') : task.date
 
-                              <input
-                                type="text"
-                                value={task.title}
-                                onChange={(e) => handleUpdateTaskTitle(idx, e.target.value)}
-                                className="bg-transparent text-xs sm:text-sm font-semibold text-white focus:outline-none focus:bg-slate-700/50 px-1.5 py-0.5 rounded w-full"
-                              />
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-[10px] text-slate-400 hidden sm:inline">
-                                {task.duration_minutes || 60}p
-                              </span>
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                Ô 1
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveTaskFromProposal(idx)}
-                                title="Bỏ nhiệm vụ này"
-                                className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-700 rounded transition-colors cursor-pointer"
+                            return (
+                              <div
+                                key={idx}
+                                className="rounded-xl border border-slate-700/80 bg-slate-800/80 p-2.5 sm:p-3 space-y-1.5"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        )
-                      })}
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className="px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 font-bold text-[11px] shrink-0">
+                                      {formatted}
+                                    </span>
+                                    <input
+                                      type="text"
+                                      value={task.title}
+                                      onChange={(e) => handleUpdateTaskTitle(idx, e.target.value)}
+                                      className="bg-transparent text-xs sm:text-sm font-semibold text-white focus:outline-none focus:bg-slate-700/50 px-1.5 py-0.5 rounded w-full"
+                                    />
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-[10px] text-slate-400 hidden sm:inline">
+                                      {task.duration_minutes || 60}p
+                                    </span>
+                                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold text-[10px]">
+                                      Ô 1
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveTaskFromProposal(idx)}
+                                      className="p-1 text-slate-400 hover:text-rose-400 cursor-pointer"
+                                      title="Xóa nhiệm vụ này"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Source Reference & Key Question badges */}
+                                {(task.source_reference || task.key_question) && (
+                                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 pl-1 border-t border-slate-700/50 pt-1">
+                                    {task.source_reference && (
+                                      <span className="inline-flex items-center gap-1 text-indigo-300">
+                                        📌 {task.source_reference}
+                                      </span>
+                                    )}
+                                    {task.key_question && (
+                                      <span className="inline-flex items-center gap-1 text-amber-300 truncate max-w-[320px]">
+                                        ❓ {task.key_question}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  {/* SUBTAB 2: PODCAST AUDIO OVERVIEW */}
+                  {studioSubTab === 'audio' && (
+                    <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-950/30 via-slate-900 to-indigo-950/40 p-4 space-y-3.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-500/35 text-amber-400 shrink-0">
+                            <Headphones className="w-6 h-6 animate-pulse" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                              Bản Tin Audio Overview (NotebookLM Podcast)
+                              {isPlayingAudio && (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 animate-pulse">
+                                  <Volume2 className="w-3 h-3" /> Đang phát
+                                </span>
+                              )}
+                            </h4>
+                            <p className="text-xs text-slate-300 mt-0.5">
+                              Host A & Host B đàm thoại sâu, tóm lược những mẹo thi và kiến thức cốt lõi.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleToggleAudio}
+                          className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer ${
+                            isPlayingAudio
+                              ? 'bg-rose-500 hover:bg-rose-600 text-white'
+                              : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                          }`}
+                        >
+                          {isPlayingAudio ? (
+                            <>
+                              <Pause className="w-4 h-4 fill-current" />
+                              <span>Tạm Dừng Audio</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-4 h-4 fill-current" />
+                              <span>Phát Podcast Tóm Tắt</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Script Reader */}
+                      {proposal.study_guide?.audio_overview_script ? (
+                        <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300 space-y-2 max-h-[220px] overflow-y-auto custom-scrollbar font-mono">
+                          {proposal.study_guide.audio_overview_script.split('\n').map((line, lIdx) => (
+                            <p
+                              key={lIdx}
+                              className={
+                                line.startsWith('Host A:')
+                                  ? 'text-sky-300'
+                                  : line.startsWith('Host B:')
+                                  ? 'text-amber-300'
+                                  : 'text-slate-300'
+                              }
+                            >
+                              {line}
+                            </p>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">Chưa có kịch bản âm thanh.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* SUBTAB 3: STUDY GUIDE & CORE CONCEPTS */}
+                  {studioSubTab === 'studyguide' && (
+                    <div className="space-y-3.5">
+                      {/* Briefing summary */}
+                      {proposal.study_guide?.briefing_summary && (
+                        <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/30 space-y-1">
+                          <h4 className="text-xs sm:text-sm font-bold text-purple-300 flex items-center gap-1.5">
+                            <Lightbulb className="w-4 h-4 text-purple-400" />
+                            Bản Tin Định Hướng Chiến Lược (Briefing Doc):
+                          </h4>
+                          <p className="text-xs text-slate-300 leading-relaxed">
+                            {proposal.study_guide.briefing_summary}
+                          </p>
+                          {proposal.study_guide.difficulty_assessment && (
+                            <p className="text-[11px] text-amber-300 pt-1 font-medium">
+                              ⚠️ {proposal.study_guide.difficulty_assessment}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Core Concepts Grid */}
+                      <div className="space-y-2">
+                        <h5 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                          <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                          Khái Niệm Cốt Lõi Từ Tài Liệu (Core Concepts):
+                        </h5>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+                          {proposal.study_guide?.core_concepts?.map((c, cIdx) => (
+                            <div
+                              key={cIdx}
+                              className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 space-y-1 text-xs"
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-bold text-sky-300">{c.concept}</span>
+                                {c.source && (
+                                  <span className="text-[10px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-700/60">
+                                    {c.source}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-slate-300 text-[11px] leading-relaxed">
+                                {c.explanation}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Potential Exam Questions */}
+                      {proposal.study_guide?.exam_questions && (
+                        <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+                          <h5 className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                            <HelpCircle className="w-3.5 h-3.5" />
+                            Câu Hỏi Thi Trọng Tâm & Tự Kiểm Tra:
+                          </h5>
+                          <ul className="space-y-1.5 text-xs text-slate-300">
+                            {proposal.study_guide.exam_questions.map((q, qIdx) => (
+                              <li key={qIdx} className="flex items-start gap-2">
+                                <span className="text-amber-400 font-bold shrink-0">#{qIdx + 1}</span>
+                                <span>{q}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* SUBTAB 4: Q&A WITH SOURCES */}
+                  {studioSubTab === 'qa' && (
+                    <div className="space-y-3">
+                      <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+                        <h4 className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          Hỏi Đáp Trực Tiếp Với Tài Liệu Đã Nạp
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          AI sẽ chỉ trả lời dựa trên các file bài giảng, đề cương bạn đã nạp vào Studio.
+                        </p>
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <input
+                            type="text"
+                            value={questionText}
+                            onChange={(e) => setQuestionText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAskQuestion()
+                            }}
+                            placeholder="VD: Chương nào khó nhất? Có những công thức tính toán nào?..."
+                            className="flex-1 px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
+                          />
+                          <button
+                            type="button"
+                            disabled={askingQuestion || !questionText.trim()}
+                            onClick={handleAskQuestion}
+                            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            {askingQuestion ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5" />
+                            )}
+                            <span className="hidden sm:inline">Gửi câu hỏi</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Q&A Stream */}
+                      <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+                        {qaList.length === 0 ? (
+                          <div className="py-6 text-center text-xs text-slate-500 italic">
+                            Chưa có câu hỏi nào. Hãy thử hỏi về một nội dung bạn còn băn khoăn!
+                          </div>
+                        ) : (
+                          qaList.map((qa, qaIdx) => (
+                            <div
+                              key={qaIdx}
+                              className="rounded-xl border border-slate-800 bg-slate-800/60 p-3 space-y-1.5 text-xs"
+                            >
+                              <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                                <span>❓ {qa.q}</span>
+                              </div>
+                              <p className="text-slate-200 leading-relaxed">{qa.a}</p>
+                              {qa.citations && qa.citations.length > 0 && (
+                                <p className="text-[10px] text-slate-400 pt-0.5">
+                                  Trích dẫn: {qa.citations.join(', ')}
+                                </p>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Confirmation Gate Footer */}
                   <div className="p-3.5 rounded-xl bg-slate-800/90 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -574,14 +1058,20 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
                         🛡️ Dữ liệu cũ của bạn được giữ nguyên 100%!
                       </span>
                       <p className="text-slate-400">
-                        Chỉ khi bấm Đồng ý, hệ thống mới chính thức lưu {editableTasks.length} nhiệm vụ này vào lịch.
+                        Chỉ khi bấm Đồng ý, hệ thống mới chính thức lưu {editableTasks.length} nhiệm vụ này vào Ô 1 trên lịch.
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={() => setProposal(null)}
+                        onClick={() => {
+                          if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                            window.speechSynthesis.cancel()
+                          }
+                          setIsPlayingAudio(false)
+                          setProposal(null)
+                        }}
                         className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold cursor-pointer"
                       >
                         Làm lại
@@ -594,7 +1084,7 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
                       >
                         {submittingApply ? (
                           <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <Loader2 className="w-4 h-4 animate-spin" />
                             <span>Đang lưu...</span>
                           </>
                         ) : (
@@ -783,7 +1273,7 @@ export const AIBreakdownModal: React.FC<AIBreakdownModalProps> = ({
                   <div className="py-8 text-center text-xs text-slate-400">
                     Đang tải lịch sử...
                   </div>
-                ) : (!historyLogs || historyLogs.length === 0) ? (
+                ) : !historyLogs || historyLogs.length === 0 ? (
                   <div className="py-8 text-center text-xs text-slate-400 flex flex-col items-center justify-center space-y-2">
                     <History className="w-6 h-6 text-slate-500" />
                     <p>Chưa có đợt chia lịch AI nào trong tài khoản.</p>

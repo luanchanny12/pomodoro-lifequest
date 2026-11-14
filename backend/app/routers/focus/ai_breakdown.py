@@ -3,7 +3,7 @@ import json
 import uuid
 import re
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -18,10 +18,15 @@ from app.schemas import (
     AIBreakdownLogResponse,
     BulkImportTasksRequest,
     ParseScheduleTextRequest,
+    NotebookLMSourceItem,
+    NotebookLMStudyGuide,
+    AskSourcesRequest,
+    AskSourcesResponse,
 )
 from app.routers.auth import get_current_user_optional, get_current_user
 from app.routers.focus.common import _get_real_user, vn_today, vn_now
 from app.ai.gemini_bridge import call_gemini
+from app.ai.document_parser import parse_uploaded_file
 
 router = APIRouter()
 
@@ -32,33 +37,44 @@ def _generate_heuristic_breakdown(
     target: datetime.date,
     daily_hours: float,
     notes_or_syllabus: Optional[str] = None,
+    sources: Optional[List[NotebookLMSourceItem]] = None,
     quadrant: int = 1,
 ) -> tuple:
     """
     Fallback thông minh khi Gemini API chưa cấu hình hoặc mất mạng.
-    Tự động phân rã theo phương pháp sư phạm Spaced Repetition:
-    - Giai đoạn 1: Khởi động & Nắm vững nền tảng
-    - Giai đoạn 2: Luyện tập chuyên sâu & Vận dụng
-    - Giai đoạn 3: Giải đề thi thử / Bấm giờ
-    - Giai đoạn 4: Tổng kết & Tự tin vào thi
+    Tự động phân rã theo phong cách NotebookLM Studio & Spaced Repetition:
+    - Study Guide / Briefing Doc
+    - Khái niệm cốt lõi & Câu hỏi ôn tập then chốt
+    - Kịch bản Podcast Audio Overview (Host 1 & Host 2)
+    - Lộ trình Ô 1 theo ngày có neo nguồn tài liệu
     """
     days_span = (target - today).days + 1
     if days_span < 1:
         days_span = 1
 
-    # Trích xuất các ý trong đề cương nếu người dùng nhập
+    # Trích xuất các ý trong đề cương hoặc sources nếu người dùng nhập
     syllabus_points = []
+    source_names = [s.name for s in sources] if sources else []
+    sources_summary = f"Đã nạp {len(sources)} tài liệu nguồn: " + ", ".join(source_names) if sources else None
+
+    combined_text = ""
     if notes_or_syllabus:
-        raw_lines = [line.strip("- *• \t\r") for line in notes_or_syllabus.replace(";", "\n").split("\n")]
-        syllabus_points = [line for line in raw_lines if len(line) >= 3]
+        combined_text += notes_or_syllabus + "\n"
+    if sources:
+        for s in sources:
+            combined_text += f"\n{s.name}\n{s.content[:3000]}\n"
+
+    if combined_text:
+        raw_lines = [line.strip("- *• \t\r") for line in combined_text.replace(";", "\n").split("\n")]
+        syllabus_points = [line for line in raw_lines if len(line) >= 4 and not line.startswith("http")]
 
     duration_mins = int(max(30, min(240, daily_hours * 60)))
     tasks = []
-
-    # Chia các ngày
     step_dates = [today + datetime.timedelta(days=i) for i in range(days_span)]
 
+    # 1. Sinh danh sách tasks theo ngày
     if days_span == 1:
+        primary_ref = source_names[0] if source_names else "Tài liệu môn học"
         tasks.append(
             AIBreakdownTaskItem(
                 date=today.isoformat(),
@@ -66,32 +82,40 @@ def _generate_heuristic_breakdown(
                 quadrant=quadrant,
                 duration_minutes=duration_mins,
                 notes=f"Ôn tập cấp tốc, nắm chắc các định nghĩa và công thức cốt lõi.",
+                source_reference=f"Trọng tâm từ {primary_ref}",
+                key_question=f"Bạn đã thuộc lòng các công thức và thuật ngữ then chốt của {title} chưa?",
             )
         )
         explanation = (
-            f"Kỳ hạn còn duy nhất 1 ngày ({today.strftime('%d/%m')}). Kế hoạch tập trung 100% vào việc "
-            f"Ô 1 khẩn cấp để xử lý dứt điểm các kiến thức then chốt nhất."
+            f"Kỳ hạn còn duy nhất 1 ngày ({today.strftime('%d/%m')}). NotebookLM đã tối ưu 100% vào việc "
+            f"Ô 1 khẩn cấp để xử lý dứt điểm các kiến thức then chốt nhất từ tài liệu."
         )
     else:
         for idx, d in enumerate(step_dates):
             day_num = idx + 1
             if syllabus_points and idx < len(syllabus_points):
-                topic_focus = syllabus_points[idx]
+                topic_focus = syllabus_points[idx][:50]
             else:
-                topic_focus = f"Phần trọng tâm {day_num}"
+                topic_focus = f"Chương trọng tâm {day_num}"
+
+            src_tag = source_names[idx % len(source_names)] if source_names else f"Tài liệu phần {day_num}"
 
             if idx == 0:
-                t_title = f"Khởi động & Nắm vững nền tảng: {topic_focus}"
-                t_notes = "Đọc tài liệu, ghi chú các khái niệm cốt lõi vào sổ tay."
+                t_title = f"Nền tảng & Khái niệm cốt lõi: {topic_focus}"
+                t_notes = "Đọc kỹ tài liệu nguồn, lập sơ đồ tư duy cho các định nghĩa cơ bản."
+                t_q = f"Khái niệm cốt lõi của {topic_focus} là gì và có ứng dụng gì?"
             elif idx == days_span - 1:
-                t_title = f"Tổng ôn & Chuẩn bị tinh thần thi: {title}"
-                t_notes = "Xem lại các lỗi sai, kiểm tra lại phòng thi, số báo danh và công cụ."
+                t_title = f"Tổng duyệt & Sẵn sàng bước vào phòng thi: {title}"
+                t_notes = "Xem lại sổ tay công thức, các lỗi sai thường gặp và kiểm tra phòng thi."
+                t_q = f"Tự tin 100% với danh mục kiến thức của {title} trước giờ thi?"
             elif idx == days_span - 2:
-                t_title = f"Giải đề thi thử & Bấm giờ chuẩn: {title}"
-                t_notes = "Làm đề thi thử bấm giờ nghiêm túc để kiểm tra tốc độ và độ chính xác."
+                t_title = f"Giải đề thi thử & Bấm giờ chuẩn 90p: {title}"
+                t_notes = "Làm đề thi mẫu bấm giờ nghiêm túc để kiểm tra tốc độ và phản xạ."
+                t_q = f"Tốc độ làm bài và điểm số đề thử đã đạt mục tiêu chưa?"
             else:
-                t_title = f"Ôn tập chuyên sâu & Luyện bài tập: {topic_focus}"
-                t_notes = "Làm bài tập vận dụng, giải đáp các thắc mắc còn vướng."
+                t_title = f"Luyện chuyên sâu & Vận dụng bài tập: {topic_focus}"
+                t_notes = "Thực hành giải các dạng bài tập, đối chiếu đáp án với tài liệu mẫu."
+                t_q = f"Dạng bài tập tính toán/phân tích của {topic_focus} gồm những bước nào?"
 
             tasks.append(
                 AIBreakdownTaskItem(
@@ -100,16 +124,94 @@ def _generate_heuristic_breakdown(
                     quadrant=quadrant,
                     duration_minutes=duration_mins,
                     notes=t_notes,
+                    source_reference=f"Nguồn: {src_tag}",
+                    key_question=t_q,
                 )
             )
 
         explanation = (
             f"Kế hoạch gồm {days_span} ngày (từ {today.strftime('%d/%m')} đến {target.strftime('%d/%m')}), "
-            f"mỗi ngày {daily_hours}h được phân bổ theo phương pháp Spaced Repetition (Lý thuyết nền tảng → "
-            f"Luyện tập chuyên sâu → Thi thử bấm giờ → Tổng kết). Toàn bộ được xếp vào Ô 1 để ưu tiên xử lý mỗi ngày."
+            f"mỗi ngày {daily_hours}h được NotebookLM Studio neo chặt vào tài liệu nguồn theo phương pháp Spaced Repetition "
+            f"(Khái niệm nền tảng → Vận dụng thực chiến → Thi thử bấm giờ → Tổng kết). Toàn bộ được xếp vào Ô 1 để ưu tiên xử lý."
         )
 
-    return explanation, tasks
+    # 2. Sinh NotebookLM Study Guide
+    core_concepts = []
+    if syllabus_points:
+        for p in syllabus_points[:4]:
+            core_concepts.append({
+                "concept": p[:40],
+                "explanation": f"Khái niệm mấu chốt được trích xuất từ tài liệu {title}.",
+                "source": source_names[0] if source_names else "Tài liệu môn học"
+            })
+    else:
+        core_concepts = [
+            {"concept": f"Tổng quan lý thuyết {title}", "explanation": "Các định nghĩa, nguyên lý và khung sườn cơ bản.", "source": "Đề cương"},
+            {"concept": "Các mô hình & Phương pháp áp dụng", "explanation": "Các bước tiến hành giải bài tập và nghiên cứu tình huống.", "source": "Bài giảng"},
+            {"concept": "Quy trình giải quyết vấn đề", "explanation": "Thuật toán và cách trình bày chuẩn trong bài thi.", "source": "Giáo trình"},
+        ]
+
+    exam_questions = [
+        f"Trình bày định nghĩa và sự khác biệt giữa các mô hình cốt lõi của môn {title}?",
+        f"Phân tích một tình huống thực tế áp dụng kiến thức của {title}?",
+        f"Các lỗi sai thường gặp khi làm phần bài tập trắc nghiệm và tự luận của môn này là gì?",
+    ]
+
+    audio_script = (
+        f"Host A: Xin chào! Chào mừng bạn đến với bản tóm tắt âm thanh NotebookLM Studio cho môn {title}.\n"
+        f"Host B: Chào các bạn! Kỳ thi của chúng ta sẽ diễn ra vào ngày {target.strftime('%d/%m')}. Bạn có chính xác {days_span} ngày để làm chủ toàn bộ tài liệu này.\n"
+        f"Host A: Đúng vậy! Điểm mấu chốt ở đây là đừng cố học dồn vào đêm hôm trước. Lộ trình đã chia mỗi ngày {daily_hours} tiếng vào Ô 1: khởi đầu từ việc nắm chắc các khái niệm nền tảng, sau đó luyện đề thi thử có bấm giờ.\n"
+        f"Host B: Đặc biệt hãy chú ý các câu hỏi tự kiểm tra mỗi ngày nhé. Nắm vững bản chất sẽ giúp bạn tự tin đạt điểm tối đa. Chúc bạn ôn tập thật tốt và bứt phá điểm số!"
+    )
+
+    study_guide = NotebookLMStudyGuide(
+        briefing_summary=(
+            f"Bản tin chiến lược ôn thi môn {title}: Tổng thời gian {days_span} ngày, mỗi ngày {daily_hours}h. "
+            f"Chiến lược phân rã kiến thức từ nguồn tài liệu giúp tối ưu hóa khả năng ghi nhớ dài hạn, "
+            f"loại bỏ hoàn toàn cảm giác quá tải trước kỳ thi."
+        ),
+        core_concepts=core_concepts,
+        exam_questions=exam_questions,
+        difficulty_assessment=f"Độ khó: Trung bình - Khá. Cần đặc biệt chú ý phần bài tập vận dụng và giải đề bấm giờ trước ngày thi 2 ngày.",
+        audio_overview_script=audio_script,
+    )
+
+    return explanation, tasks, study_guide, sources_summary
+
+
+@router.post("/ai/upload-source")
+async def upload_source_document(
+    file: UploadFile = File(...),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Bóc tách file tài liệu môn học (.pdf, .docx, .txt) thành văn bản để nạp vào NotebookLM Studio.
+    """
+    filename = file.filename or "tailieu.txt"
+    content_bytes = await file.read()
+
+    if len(content_bytes) > 30 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File quá lớn (tối đa 30MB)!")
+
+    try:
+        parsed_text = parse_uploaded_file(content_bytes, filename)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Không thể đọc file {filename}: {str(e)}")
+
+    if not parsed_text or not parsed_text.strip():
+        raise HTTPException(status_code=400, detail=f"File {filename} không chứa văn bản có thể trích xuất!")
+
+    words = len(parsed_text.split())
+    estimated_pages = max(1, words // 350)
+    ext = filename.split(".")[-1].lower() if "." in filename else "text"
+
+    return {
+        "name": filename,
+        "content": parsed_text.strip(),
+        "source_type": ext,
+        "words_count": words,
+        "page_count": estimated_pages,
+    }
 
 
 @router.post("/ai/breakdown-preview", response_model=AIBreakdownProposalResponse)
@@ -118,7 +220,7 @@ def preview_ai_breakdown(
     user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
-    Phân tích và tạo bản ĐỀ XUẤT chia nhỏ nhiệm vụ lớn ra từng ngày.
+    Phân tích và tạo bản ĐỀ XUẤT NotebookLM Studio chia nhỏ nhiệm vụ lớn ra từng ngày.
     TUYỆT ĐỐI KHÔNG LƯU VÀO DATABASE ở bước này để người dùng xem trước và duyệt.
     """
     today = vn_today()
@@ -134,47 +236,100 @@ def preview_ai_breakdown(
     daily_hours = req.daily_hours or 1.5
     quadrant = req.quadrant or 1
 
-    # 1. Thử gọi Gemini AI nếu có API Key
-    prompt = f"""
-Bạn là AI Coach chuyên gia lập kế hoạch học tập cá nhân hóa của LifeQuest.
-Nhiệm vụ: Hãy chia nhỏ mục tiêu/kỳ thi lớn sau đây thành từng nhiệm vụ cụ thể cho từng ngày từ hôm nay ({today.isoformat()}) đến ngày hạn chót ({target.isoformat()}).
+    # Chuẩn bị context tài liệu nguồn (Sources Context)
+    sources_text = ""
+    sources_summary = None
+    if req.sources and len(req.sources) > 0:
+        sources_summary = f"Đã nạp {len(req.sources)} tài liệu nguồn: " + ", ".join([s.name for s in req.sources])
+        for s in req.sources:
+            snippet = s.content[:6000]
+            sources_text += f"\n--- TÀI LIỆU NGUỒN: {s.name} ({s.source_type}, {s.words_count} từ) ---\n{snippet}\n"
 
-MỤC TIÊU LỚN: {req.title}
+    # 1. Thử gọi Gemini AI NotebookLM Studio Engine nếu có API Key
+    prompt = f"""
+Bạn là AI Academic Engine của NotebookLM Studio trong LifeQuest.
+Nhiệm vụ: Phân tích sâu các tài liệu nguồn sau đây để lập Kế Hoạch Học Tập & Ôn Thi Cá Nhân Hóa cho sinh viên từ {today.isoformat()} đến ngày thi {target.isoformat()}.
+
+MỤC TIÊU / KỲ THI: {req.title}
 HẠN CHÓT / NGÀY THI: {target.isoformat()} (tổng cộng {days_span} ngày)
 THỜI LƯỢNG HỌC MỖI NGÀY: {daily_hours} giờ ({int(daily_hours * 60)} phút)
-ĐỀ CƯƠNG / GHI CHÚ BỔ SUNG: {req.notes_or_syllabus or 'Không có'}
+GHI CHÚ / ĐỀ CƯƠNG: {req.notes_or_syllabus or 'Không có'}
+CÁC NGUỒN TÀI LIỆU ĐÃ NẠP:
+{sources_text if sources_text else 'Chưa có tài liệu đính kèm, hãy lập kế hoạch dựa trên đề cương và kiến thức chuẩn của môn học.'}
 
-YÊU CẦU:
-1. Giải trình chi tiết bằng tiếng Việt: Tại sao chia như vậy? Phương pháp phân bổ thời gian ra sao?
-2. Trả về đúng {days_span} nhiệm vụ tương ứng với từng ngày từ {today.isoformat()} đến {target.isoformat()}.
-3. Mỗi nhiệm vụ phải có tiêu đề rõ ràng, hành động cụ thể, thời lượng (phút), quadrant=1 (Ô 1: Làm ngay) và ghi chú hướng dẫn.
+YÊU CẦU ĐẶC BIỆT CỦA NOTEBOOKLM STUDIO:
+1. explanation: Giải trình chiến lược tổng thể ngắn gọn, ấm áp, logic tại sao lại chia lịch như vậy.
+2. study_guide:
+   - briefing_summary: Bản tin định hướng chiến lược học tập, phân tích bối cảnh và mẹo thi then chốt.
+   - core_concepts: Mảng gồm 3-6 khái niệm cốt lõi kèm giải thích ngắn và trích nguồn (concept, explanation, source).
+   - exam_questions: Mảng gồm 3-5 câu hỏi tự kiểm tra / dự đoán đề thi trắc nghiệm hoặc tự luận từ tài liệu.
+   - difficulty_assessment: Đánh giá độ khó và cảnh báo các bẫy điểm số.
+   - audio_overview_script: Kịch bản đàm thoại Podcast Audio Overview giữa 2 chuyên gia (Host A và Host B) đàm thoại sinh động, súc tích (khoảng 150-250 từ) tóm tắt các điểm thú vị và mẹo thi của môn này.
+3. tasks: Đúng {days_span} nhiệm vụ tương ứng với từng ngày từ {today.isoformat()} đến {target.isoformat()}.
+   - date: YYYY-MM-DD
+   - title: Tên công việc cụ thể
+   - quadrant: 1 (Ô 1: Làm ngay)
+   - duration_minutes: số phút ước tính
+   - notes: Ghi chú hành động
+   - source_reference: Chỉ rõ đọc tài liệu nào, chương nào, trang nào từ nguồn
+   - key_question: Câu hỏi tự kiểm tra kiến thức của ngày hôm đó
 """
+
     schema = {
-        "explanation": "str - Đoạn giải trình ngắn gọn, ấm áp, logic tại sao lại chia lịch như vậy",
+        "explanation": "str",
+        "study_guide": {
+            "briefing_summary": "str",
+            "core_concepts": [
+                {
+                    "concept": "str",
+                    "explanation": "str",
+                    "source": "str"
+                }
+            ],
+            "exam_questions": ["str"],
+            "difficulty_assessment": "str",
+            "audio_overview_script": "str"
+        },
         "tasks": [
             {
-                "date": "str - Định dạng YYYY-MM-DD",
-                "title": "str - Tên nhiệm vụ cụ thể của ngày",
-                "duration_minutes": "int - Số phút ước tính (VD: 90)",
-                "quadrant": "int - 1 (Ô 1: Làm ngay)",
-                "notes": "str - Ghi chú ngắn về tài liệu hoặc nội dung cần làm"
+                "date": "str",
+                "title": "str",
+                "duration_minutes": "int",
+                "quadrant": "int",
+                "notes": "str",
+                "source_reference": "str",
+                "key_question": "str"
             }
         ]
     }
 
     explanation = ""
     tasks = []
+    study_guide = None
 
     try:
         ai_res = call_gemini(prompt, schema)
         if isinstance(ai_res, dict) and "tasks" in ai_res and isinstance(ai_res["tasks"], list) and len(ai_res["tasks"]) > 0:
             explanation = ai_res.get("explanation", "").strip()
+
+            sg_raw = ai_res.get("study_guide")
+            if isinstance(sg_raw, dict):
+                study_guide = NotebookLMStudyGuide(
+                    briefing_summary=sg_raw.get("briefing_summary", ""),
+                    core_concepts=sg_raw.get("core_concepts", []),
+                    exam_questions=sg_raw.get("exam_questions", []),
+                    difficulty_assessment=sg_raw.get("difficulty_assessment"),
+                    audio_overview_script=sg_raw.get("audio_overview_script"),
+                )
+
             for t in ai_res["tasks"]:
                 t_date = t.get("date") or today.isoformat()
                 t_title = t.get("title") or req.title
                 t_quadrant = int(t.get("quadrant", 1))
                 t_duration = int(t.get("duration_minutes", int(daily_hours * 60)))
                 t_notes = t.get("notes") or ""
+                t_src = t.get("source_reference")
+                t_q = t.get("key_question")
                 tasks.append(
                     AIBreakdownTaskItem(
                         date=t_date,
@@ -182,6 +337,8 @@ YÊU CẦU:
                         quadrant=t_quadrant,
                         duration_minutes=t_duration,
                         notes=t_notes,
+                        source_reference=t_src,
+                        key_question=t_q,
                     )
                 )
     except Exception:
@@ -189,14 +346,17 @@ YÊU CẦU:
 
     # Nếu Gemini không trả về đủ hoặc lỗi, dùng bộ sinh phương pháp sư phạm dự phòng
     if not tasks:
-        explanation, tasks = _generate_heuristic_breakdown(
+        explanation, tasks, study_guide, fallback_src_summary = _generate_heuristic_breakdown(
             title=req.title,
             today=today,
             target=target,
             daily_hours=daily_hours,
             notes_or_syllabus=req.notes_or_syllabus,
+            sources=req.sources,
             quadrant=quadrant,
         )
+        if not sources_summary:
+            sources_summary = fallback_src_summary
 
     return AIBreakdownProposalResponse(
         title=req.title,
@@ -204,6 +364,70 @@ YÊU CẦU:
         explanation=explanation,
         days_count=len(tasks),
         tasks=tasks,
+        study_guide=study_guide,
+        sources_summary=sources_summary,
+    )
+
+
+@router.post("/ai/ask-sources", response_model=AskSourcesResponse)
+def ask_sources(
+    req: AskSourcesRequest,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Hỏi đáp tương tác trực tiếp với các nguồn tài liệu đã nạp (Q&A with Sources).
+    Chỉ trả lời dựa trên tài liệu được cung cấp.
+    """
+    question = req.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Vui lòng nhập câu hỏi!")
+
+    sources_context = ""
+    for s in req.sources:
+        sources_context += f"\n--- NGUỒN: {s.name} ---\n{s.content[:8000]}\n"
+
+    prompt = f"""
+Bạn là AI trợ lý nghiên cứu của NotebookLM Studio trong LifeQuest.
+Nhiệm vụ: Trả lời câu hỏi của người dùng về môn học "{req.subject}" CHỈ DỰA TRÊN các tài liệu nguồn sau đây:
+
+{sources_context if sources_context else 'Không có tài liệu nguồn nào được cung cấp.'}
+
+CÂU HỎI CỦA NGƯỜI DÙNG: {question}
+
+YÊU CẦU:
+1. Trả lời chính xác, ngắn gọn, súc tích bằng tiếng Việt.
+2. Trích dẫn rõ nguồn/chương/mục nếu có trong tài liệu.
+3. Nếu trong tài liệu không có thông tin, hãy nói rõ là tài liệu chưa đề cập và gợi ý khái quát.
+4. Đưa ra 2-3 câu hỏi gợi mở tiếp theo (suggested_followups).
+"""
+    schema = {
+        "answer": "str",
+        "citations": ["str"],
+        "suggested_followups": ["str"]
+    }
+
+    try:
+        ai_res = call_gemini(prompt, schema)
+        if isinstance(ai_res, dict) and "answer" in ai_res and ai_res["answer"]:
+            return AskSourcesResponse(
+                answer=ai_res.get("answer", ""),
+                citations=ai_res.get("citations", []),
+                suggested_followups=ai_res.get("suggested_followups", [])
+            )
+    except Exception:
+        pass
+
+    # Heuristic fallback
+    answer = f"Dựa trên các tài liệu đã nạp cho môn {req.subject}: Về câu hỏi '{question}', bạn nên tập trung vào các định nghĩa cốt lõi và các dạng bài tập thực hành được nêu trong giáo trình/slide."
+    citations = [s.name for s in req.sources[:2]] if req.sources else ["Đề cương môn học"]
+    suggested_followups = [
+        "Có ví dụ minh họa cụ thể trong tài liệu không?",
+        "Dạng bài tập này thường chiếm bao nhiêu điểm trong đề thi?",
+    ]
+    return AskSourcesResponse(
+        answer=answer,
+        citations=citations,
+        suggested_followups=suggested_followups
     )
 
 
@@ -254,6 +478,14 @@ def apply_ai_breakdown(
             task_date = target_date_obj
 
         notes_combined = item.notes or ""
+        extras = []
+        if item.source_reference:
+            extras.append(f"📌 {item.source_reference}")
+        if item.key_question:
+            extras.append(f"❓ {item.key_question}")
+        if extras:
+            notes_combined = f"{notes_combined} | {' • '.join(extras)}".strip(" |")
+
         if item.duration_minutes:
             notes_combined = f"{item.duration_minutes} phút | {notes_combined}".strip(" |")
 
