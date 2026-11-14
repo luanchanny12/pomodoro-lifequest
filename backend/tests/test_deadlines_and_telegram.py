@@ -3,6 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.database import SessionLocal
+from app.models import StudyGoal, DailyMatrixTask
 from app.models_auth import User
 from app.routers.auth import hash_password, create_access_token
 from app.routers.notifications import format_telegram_task_message
@@ -25,6 +26,10 @@ def auth_headers():
         db.add(user)
         db.commit()
         db.refresh(user)
+    # Clean up stale goals and tasks from previous runs to ensure test isolation
+    db.query(StudyGoal).filter(StudyGoal.user_id == user.id).delete()
+    db.query(DailyMatrixTask).filter(DailyMatrixTask.user_id == user.id).delete()
+    db.commit()
     token = create_access_token(user.id, user.username)
     db.close()
     return {"Authorization": f"Bearer {token}"}

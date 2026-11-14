@@ -62,9 +62,10 @@ describe('DeadlineCalendarModal', () => {
         current_hours: 10,
         target_hours: 20,
         progress_percent: 50,
-        category: 'Học tập',
+        category: 'Lịch thi',
         color: '#E24A4A',
         planet_type: 'mars',
+        notes: '18:50 - 20:20 (Ca 6) | Phòng A4-201',
       },
       {
         type: 'task' as const,
@@ -79,6 +80,7 @@ describe('DeadlineCalendarModal', () => {
         category: 'Ma trận Ô 1',
         color: '#F59E0B',
         planet_type: 'task',
+        quadrant: 1,
       },
       {
         type: 'goal' as const,
@@ -109,7 +111,7 @@ describe('DeadlineCalendarModal', () => {
     vi.mocked(focusService.getDeadlines).mockResolvedValue(mockDeadlines)
   })
 
-  it('renders modal with deadlines items and countdown', async () => {
+  it('renders modal with month calendar view and switches to list view', async () => {
     const handleClose = vi.fn()
     const handleStartPomodoro = vi.fn()
 
@@ -120,6 +122,15 @@ describe('DeadlineCalendarModal', () => {
         onStartPomodoro={handleStartPomodoro}
       />
     )
+
+    await waitFor(() => {
+      expect(screen.getByText(/Lịch Thi & Deadline Cá Nhân/i)).toBeInTheDocument()
+      expect(screen.getByText('Lịch Tháng')).toBeInTheDocument()
+    })
+
+    // Switch to List view
+    const listBtn = screen.getByRole('button', { name: /Danh Sách/i })
+    fireEvent.click(listBtn)
 
     await waitFor(() => {
       expect(screen.getByText('Thi Giữa Kỳ Giải Tích')).toBeInTheDocument()
@@ -139,13 +150,20 @@ describe('DeadlineCalendarModal', () => {
     expect(handleClose).toHaveBeenCalled()
   })
 
-  it('filters items when switching tabs', async () => {
+  it('filters items when switching tabs in list mode', async () => {
     render(
       <DeadlineCalendarModal
         isOpen={true}
         onClose={vi.fn()}
       />
     )
+
+    await waitFor(() => {
+      expect(screen.getByText(/Lịch Thi & Deadline Cá Nhân/i)).toBeInTheDocument()
+    })
+
+    // Switch to List view
+    fireEvent.click(screen.getByRole('button', { name: /Danh Sách/i }))
 
     await waitFor(() => {
       expect(screen.getByText('Thi Giữa Kỳ Giải Tích')).toBeInTheDocument()
@@ -195,7 +213,7 @@ describe('DeadlineHomeSection', () => {
         current_hours: 10,
         target_hours: 30,
         progress_percent: 33,
-        category: 'Ngoại ngữ',
+        category: 'Lịch thi',
         color: '#f59e0b',
         planet_type: 'earth',
       },
@@ -225,13 +243,13 @@ describe('DeadlineHomeSection', () => {
         onOpenAuthModal={onOpenAuthModal}
       />
     )
-    expect(screen.getByText(/Lịch Deadline Của Bạn/i)).toBeInTheDocument()
+    expect(screen.getByText(/Lịch Deadline & Lịch Thi Của Bạn/i)).toBeInTheDocument()
     const loginBtn = screen.getByRole('button', { name: /Đăng nhập để bật Lịch/i })
     fireEvent.click(loginBtn)
     expect(onOpenAuthModal).toHaveBeenCalledTimes(1)
   })
 
-  it('supports inline quick add, complete goal, and Telegram reminder on main page', async () => {
+  it('supports month calendar view, list toggle, inline add, and Telegram reminder', async () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined)
     vi.mocked(focusService.createGoal).mockResolvedValue({} as never)
     vi.mocked(focusService.updateGoal).mockResolvedValue({} as never)
@@ -250,15 +268,21 @@ describe('DeadlineHomeSection', () => {
       />
     )
 
+    // Verify calendar view buttons
+    expect(screen.getByText('Lịch Tháng')).toBeInTheDocument()
+    expect(screen.getByText('Danh Sách')).toBeInTheDocument()
+
+    // Switch to List view to see all items
+    fireEvent.click(screen.getByRole('button', { name: /Danh Sách/i }))
     expect(screen.getByText('Nộp Đồ Án Chuyên Ngành')).toBeInTheDocument()
     expect(screen.getByText('Thi IELTS Writing')).toBeInTheDocument()
 
     // Inline quick add
-    fireEvent.click(screen.getByRole('button', { name: /\+ Thêm Deadline/i }))
-    fireEvent.change(screen.getByPlaceholderText(/VD: Thi cuối kỳ/i), {
+    fireEvent.click(screen.getByRole('button', { name: /\+ Thêm Lịch/i }))
+    fireEvent.change(screen.getByPlaceholderText(/VD: Lịch thi: Thương mại điện tử/i), {
       target: { value: 'Nộp Slide Thuyết Trình' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Lưu Deadline/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Lưu Lịch/i }))
 
     await waitFor(() => {
       expect(focusService.createGoal).toHaveBeenCalledWith(
@@ -270,7 +294,7 @@ describe('DeadlineHomeSection', () => {
       expect(onRefresh).toHaveBeenCalled()
     })
 
-    // Mark complete
+    // Mark complete in list view
     const completeButtons = screen.getAllByRole('button', { name: /Xong/i })
     fireEvent.click(completeButtons[0])
     await waitFor(() => {

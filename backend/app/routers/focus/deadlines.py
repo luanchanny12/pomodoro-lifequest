@@ -40,9 +40,10 @@ def get_deadlines(
         goals_query = goals_query.filter(StudyGoal.user_id.is_(None))
     goals = goals_query.all()
 
-    # 2. Query uncompleted Matrix Tasks with date
+    # 2. Query uncompleted Matrix Tasks with date (Ô 1 ONLY: Khẩn cấp & Quan trọng)
     tasks_query = db.query(DailyMatrixTask).filter(
-        DailyMatrixTask.is_completed == False
+        DailyMatrixTask.is_completed == False,
+        DailyMatrixTask.quadrant == 1
     )
     if real_user:
         tasks_query = tasks_query.filter(DailyMatrixTask.user_id == real_user.id)
@@ -73,9 +74,11 @@ def get_deadlines(
             "category": g.category or "Học tập",
             "color": g.color or "#E24A4A",
             "planet_type": g.planet_type or "earth",
+            "notes": g.notes,
+            "quadrant": None,
         })
 
-    # Process Tasks
+    # Process Tasks (Ô 1: Làm ngay)
     for t in tasks:
         if not t.date:
             continue
@@ -93,9 +96,11 @@ def get_deadlines(
             "current_hours": 0.0,
             "target_hours": 0.0,
             "progress_percent": 0.0,
-            "category": f"Ma trận Ô {t.quadrant}",
-            "color": "#F59E0B" if t.quadrant == 1 else "#3B82F6",
+            "category": "Ma trận Ô 1 (Làm ngay)",
+            "color": "#F59E0B",
             "planet_type": "task",
+            "notes": t.description,
+            "quadrant": 1,
         })
 
     # Sắp xếp: Quá hạn trước (days_left < 0), sau đó là hôm nay (0), rồi đến các ngày tăng dần

@@ -16,6 +16,8 @@ export interface DeadlineItem {
   category: string
   color: string
   planet_type: string
+  notes?: string | null
+  quadrant?: number | null
 }
 
 export interface DeadlineSummary {
@@ -87,11 +89,15 @@ export function buildDeadlinesPayload(
       category: g.category || 'Học tập',
       color: g.color || '#f59e0b',
       planet_type: g.planet_type || 'earth',
+      notes: g.notes || null,
+      quadrant: null,
     })
   }
 
   for (const t of matrixTasks) {
     if (t.is_completed || !t.date) continue
+    // CHỈ HIỂN THỊ Ô 1 (Làm ngay: Quan trọng & Khẩn cấp) theo yêu cầu người dùng
+    if (t.quadrant !== 1) continue
     const daysLeft = computeDaysLeft(t.date, now)
     if (daysLeft === null || daysLeft < -30 || daysLeft > 365) continue
 
@@ -105,9 +111,11 @@ export function buildDeadlinesPayload(
       current_hours: 0,
       target_hours: 1,
       progress_percent: 0,
-      category: `Việc Ô ${t.quadrant || 1}`,
-      color: t.goal_color || (t.quadrant === 1 ? '#ef4444' : '#3b82f6'),
+      category: 'Ma trận Ô 1 (Làm ngay)',
+      color: t.goal_color || '#f59e0b',
       planet_type: 'task',
+      notes: t.description || null,
+      quadrant: 1,
     })
   }
 
@@ -131,4 +139,64 @@ export function buildDeadlinesPayload(
     summary,
     fallback: true,
   }
+}
+
+export interface ParsedScheduleDetails {
+  timeRange?: string
+  room?: string
+  format?: string
+  cleanNotes: string
+}
+
+export function parseScheduleDetails(notes?: string | null): ParsedScheduleDetails {
+  if (!notes || !notes.trim()) {
+    return { cleanNotes: '' }
+  }
+
+  const raw = notes.trim()
+  let timeRange: string | undefined
+  let room: string | undefined
+  let format: string | undefined
+
+  // Regex time: e.g. "18:50 - 20:20 (Ca 6)" or "07:30 - 09:00"
+  const timeMatch = raw.match(/\b(\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}(?:\s*\([^\)]+\))?)/i)
+  if (timeMatch) {
+    timeRange = timeMatch[1].trim()
+  }
+
+  // Regex room: e.g. "Phòng A4-201.202" or "A4-201.202" or "Phòng 302"
+  const roomMatch = raw.match(/(?:phòng|room|p\.)\s*([A-Za-z0-9\.\-]+)|\b([A-Z]\d{1,2}\s*[-–]\s*[0-9\.]+)\b/i)
+  if (roomMatch) {
+    room = (roomMatch[1] || roomMatch[2] || '').trim()
+    if (room && !room.toLowerCase().startsWith('phòng') && !room.toLowerCase().startsWith('p.')) {
+      room = `Phòng ${room}`
+    }
+  }
+
+  // Regex format: e.g. "Trắc nghiệm kết hợp Tự luận 90p"
+  const formatMatch = raw.match(/(trắc nghiệm[^\n|]*|tự luận[^\n|]*|thi viết[^\n|]*|vấn đáp[^\n|]*|\d+\s*phút|\d+p\b)/i)
+  if (formatMatch) {
+    format = formatMatch[1].trim()
+  }
+
+  return {
+    timeRange,
+    room,
+    format,
+    cleanNotes: raw,
+  }
+}
+
+export function groupDeadlinesByDate(items: DeadlineItem[]): Record<string, DeadlineItem[]> {
+  const map: Record<string, DeadlineItem[]> = {}
+  for (const item of items) {
+    if (!item.date) continue
+    // Normalize date string YYYY-MM-DD
+    const ymd = item.date.slice(0, 10)
+    if (!map[ymd]) {
+      map[ymd] = []
+    }
+    map[ymd].push(item)
+  }
+  return map
 }

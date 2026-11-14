@@ -42,10 +42,24 @@ def _vn_today() -> date:
 
 
 class _DeadlineEntry:
-    def __init__(self, title: str, target_date: date, source: str = "goal"):
+    def __init__(self, title: str, target_date: date, source: str = "goal", notes: Optional[str] = None):
         self.title = title
         self.target_date = target_date
         self.source = source
+        self.notes = notes
+
+
+def _format_entry_title(entry) -> str:
+    title = getattr(entry, "title", "")
+    raw_notes = getattr(entry, "notes", None)
+    if not isinstance(raw_notes, str):
+        return str(title)
+    short_note = raw_notes.replace("\n", " ").strip()
+    if not short_note:
+        return str(title)
+    if len(short_note) > 45:
+        short_note = short_note[:42] + "..."
+    return f"{title} ({short_note})"
 
 
 def _format_deadline_badge(target_date: Optional[date], ref_date: date) -> str:
@@ -76,23 +90,25 @@ def _query_user_deadlines(db: Session, user_id: Optional[int], today_vn: date) -
         .all()
     )
     for g in goals:
-        entries.append(_DeadlineEntry(title=g.title, target_date=g.target_date, source="goal"))
+        entries.append(_DeadlineEntry(title=g.title, target_date=g.target_date, source="goal", notes=g.notes))
 
     min_date = today_vn - datetime.timedelta(days=14)
     max_date = today_vn + datetime.timedelta(days=3)
+    # Lọc ĐÚNG Ô 1 (Làm ngay: Quan trọng & Khẩn cấp) theo yêu cầu người dùng
     matrix_tasks = (
         db.query(DailyMatrixTask)
         .filter(
             DailyMatrixTask.user_id == user_id,
             DailyMatrixTask.is_completed == False,
+            DailyMatrixTask.quadrant == 1,
             DailyMatrixTask.date >= min_date,
             DailyMatrixTask.date <= max_date,
         )
-        .order_by(DailyMatrixTask.date.asc(), DailyMatrixTask.quadrant.asc())
+        .order_by(DailyMatrixTask.date.asc())
         .all()
     )
     for t in matrix_tasks:
-        entries.append(_DeadlineEntry(title=t.title, target_date=t.date, source="matrix"))
+        entries.append(_DeadlineEntry(title=t.title, target_date=t.date, source="matrix", notes=t.description))
 
     entries.sort(key=lambda item: (item.target_date, 0 if item.source == "goal" else 1))
     return entries
@@ -233,7 +249,7 @@ def format_telegram_task_message(
             for d in deadlines[:4]:
                 d_date = getattr(d, "target_date", None)
                 badge = _format_deadline_badge(d_date, ref_date)
-                lines.append(f"  ▫️ {badge} {d.title}")
+                lines.append(f"  ▫️ {badge} {_format_entry_title(d)}")
 
         lines.append("")
         lines.append(f"👉 <a href='{app_url}'>Mở Focus Hub & Bắt đầu Pomodoro</a>")
@@ -276,7 +292,7 @@ def format_telegram_task_message(
             for d in deadlines[:4]:
                 d_date = getattr(d, "target_date", None)
                 badge = _format_deadline_badge(d_date, ref_date)
-                lines.append(f"  ▫️ {badge} {d.title}")
+                lines.append(f"  ▫️ {badge} {_format_entry_title(d)}")
 
         lines.append("")
         lines.append(f"👉 <a href='{app_url}'>Mở ứng dụng tổng kết & lên lịch ngày mai</a>")
@@ -318,7 +334,7 @@ def format_telegram_task_message(
                 lines.append("🚨 <b>DEADLINE GẤP CẦN XỬ LÝ:</b>")
                 for d in urgent_deadlines[:3]:
                     badge = _format_deadline_badge(d.target_date, ref_date)
-                    lines.append(f"  ▫️ {badge} {d.title}")
+                    lines.append(f"  ▫️ {badge} {_format_entry_title(d)}")
 
         lines.append("")
         lines.append("⏱️ Hãy bật ngay 1 phiên Pomodoro 25 phút để dứt điểm việc này thôi nào! Cố lên nhé! 💪")
@@ -337,7 +353,7 @@ def format_telegram_task_message(
                 d_date = getattr(d, "target_date", None)
                 badge = _format_deadline_badge(d_date, ref_date)
                 source_tag = " [Việc]" if getattr(d, "source", None) == "matrix" else ""
-                lines.append(f"  ▫️ {badge} {d.title}{source_tag}")
+                lines.append(f"  ▫️ {badge} {_format_entry_title(d)}{source_tag}")
         else:
             lines.append("✨ Hiện không có deadline nào bị sót! Tiếp tục giữ vững phong độ nhé! 💪")
 

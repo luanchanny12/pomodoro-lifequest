@@ -145,52 +145,64 @@ interface DeadlineQuickAddFormProps {
   onCreated: () => Promise<void> | void
   onCancel?: () => void
   compact?: boolean
+  initialDate?: string
+  initialItemKind?: 'goal' | 'task'
 }
 
 export const DeadlineQuickAddForm: React.FC<DeadlineQuickAddFormProps> = ({
   onCreated,
   onCancel,
   compact = false,
+  initialDate,
+  initialItemKind,
 }) => {
   const [title, setTitle] = useState('')
-  const [targetDate, setTargetDate] = useState(getLocalTodayYmd())
-  const [itemKind, setItemKind] = useState<'goal' | 'task'>('goal')
+  const [targetDate, setTargetDate] = useState(initialDate || getLocalTodayYmd())
+  const [itemKind, setItemKind] = useState<'goal' | 'task'>(initialItemKind || 'goal')
   const [targetHours, setTargetHours] = useState('2')
+  const [notes, setNotes] = useState('')
+  const [showNotesField, setShowNotesField] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const cleanTitle = title.trim()
     if (!cleanTitle) {
-      toast.error('Vui lòng nhập tên deadline!')
+      toast.error('Vui lòng nhập tên deadline hoặc môn thi!')
       return
     }
     if (!targetDate) {
-      toast.error('Vui lòng chọn ngày hạn chót!')
+      toast.error('Vui lòng chọn ngày!')
       return
     }
 
     try {
       setSubmitting(true)
       const parsedHours = Math.max(0.5, Math.min(500, Number(targetHours) || 2))
+      const cleanNotes = notes.trim() || undefined
+
       if (itemKind === 'goal') {
+        const isExam = cleanTitle.toLowerCase().includes('thi')
         await focusService.createGoal({
           title: cleanTitle,
           goal_type: 'deadline',
           target_date: targetDate,
           target_hours: parsedHours,
-          category: 'Deadline',
-          color: '#f97316',
+          category: isExam ? 'Lịch thi' : 'Deadline',
+          color: isExam ? '#0284c7' : '#f97316',
+          notes: cleanNotes,
         })
       } else {
         await focusService.createMatrixTask({
           title: cleanTitle,
           date: targetDate,
           quadrant: 1,
+          description: cleanNotes,
         })
       }
-      toast.success(`📅 Đã thêm deadline "${cleanTitle}"!`)
+      toast.success(`📅 Đã lưu thành công "${cleanTitle}"!`)
       setTitle('')
+      setNotes('')
       await onCreated()
       if (onCancel) onCancel()
     } catch (err: unknown) {
@@ -200,6 +212,15 @@ export const DeadlineQuickAddForm: React.FC<DeadlineQuickAddFormProps> = ({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleApplyPhenikaaTemplate = () => {
+    setTitle('Lịch thi: Thương mại điện tử')
+    setTargetDate('2026-11-09')
+    setNotes('18:50 - 20:20 (Ca 6) | Phòng A4-201.202 | Trắc nghiệm kết hợp Tự luận 90p')
+    setShowNotesField(true)
+    setItemKind('goal')
+    toast.info('💡 Đã điền mẫu Lịch thi Phenikaa!')
   }
 
   return (
@@ -212,18 +233,28 @@ export const DeadlineQuickAddForm: React.FC<DeadlineQuickAddFormProps> = ({
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
           <Plus className="w-3.5 h-3.5" />
-          Thêm Deadline mới
+          Thêm Lịch Thi / Deadline / Việc Ô 1
         </span>
-        {onCancel && (
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onCancel}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
-            title="Đóng form"
+            onClick={handleApplyPhenikaaTemplate}
+            className="text-[11px] text-sky-300 hover:text-sky-200 underline font-medium cursor-pointer"
+            title="Điền nhanh ví dụ mẫu Lịch thi Phenikaa (Thương mại điện tử)"
           >
-            <X className="w-4 h-4" />
+            Mẫu ĐH Phenikaa
           </button>
-        )}
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Đóng form"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
@@ -231,7 +262,7 @@ export const DeadlineQuickAddForm: React.FC<DeadlineQuickAddFormProps> = ({
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="VD: Thi cuối kỳ Giải Tích, Nộp báo cáo đồ án..."
+          placeholder="VD: Lịch thi: Thương mại điện tử, Nộp đồ án..."
           maxLength={120}
           className="sm:col-span-6 w-full px-3 py-2 rounded-xl bg-slate-800/90 border border-slate-700 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-amber-400"
         />
@@ -266,29 +297,51 @@ export const DeadlineQuickAddForm: React.FC<DeadlineQuickAddFormProps> = ({
         )}
       </div>
 
+      {showNotesField ? (
+        <div>
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Chi tiết (VD: 18:50 - 20:20 (Ca 6) | Phòng A4-201.202 | Trắc nghiệm)"
+            maxLength={250}
+            className="w-full px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowNotesField(true)}
+          className="text-[11px] text-slate-400 hover:text-amber-300 transition-colors inline-flex items-center gap-1 cursor-pointer"
+        >
+          <Sparkles className="w-3 h-3 text-amber-400" />
+          <span>+ Thêm thông tin Giờ/Phòng thi/Ghi chú</span>
+        </button>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setItemKind('goal')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               itemKind === 'goal'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50'
                 : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-slate-200'
             }`}
           >
-            🎯 Mục tiêu lớn / Kỳ thi
+            🎯 Lịch Thi / Deadline
           </button>
           <button
             type="button"
             onClick={() => setItemKind('task')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               itemKind === 'task'
                 ? 'bg-sky-500/20 text-sky-300 border border-sky-500/50'
                 : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-slate-200'
             }`}
           >
-            ⚡ Việc Ô 1 hôm nay
+            ⚡ Việc Ô 1 làm ngay
           </button>
         </div>
 
@@ -298,7 +351,7 @@ export const DeadlineQuickAddForm: React.FC<DeadlineQuickAddFormProps> = ({
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 disabled:opacity-60 text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
-          {submitting ? 'Đang lưu...' : 'Lưu Deadline'}
+          {submitting ? 'Đang lưu...' : 'Lưu Lịch'}
         </button>
       </div>
     </form>
@@ -377,6 +430,12 @@ export const DeadlineItemRow: React.FC<DeadlineItemRowProps> = ({
           <h4 className="font-bold text-white text-sm sm:text-base leading-snug break-words">
             {item.title}
           </h4>
+
+          {item.notes && (
+            <div className="text-xs text-slate-300 font-normal line-clamp-2 bg-slate-800/50 px-2 py-1 rounded-lg border border-slate-700/60">
+              📌 {item.notes}
+            </div>
+          )}
 
           {item.type === 'goal' && item.target_hours > 0 && (
             <div className="flex items-center gap-2.5 max-w-sm">
