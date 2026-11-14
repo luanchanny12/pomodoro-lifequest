@@ -1105,3 +1105,67 @@ class TelegramSummaryTestRequest(BaseModel):
 class WindowsToastRequest(BaseModel):
     title: str
     message: str
+
+
+# =====================================================================
+# AI Breakdown, Schedule Proposal & Batch Rollback Schemas
+# =====================================================================
+
+class AIBreakdownTaskItem(BaseModel):
+    title: str
+    date: str  # YYYY-MM-DD
+    quadrant: int = 1
+    duration_minutes: int = 60
+    notes: Optional[str] = None
+
+
+class AIBreakdownPreviewRequest(BaseModel):
+    title: str
+    target_date: str  # YYYY-MM-DD
+    total_hours: Optional[float] = 4.0
+    notes_or_syllabus: Optional[str] = None
+    daily_hours: Optional[float] = 1.5
+    quadrant: Optional[int] = 1
+
+
+class AIBreakdownProposalResponse(BaseModel):
+    title: str
+    target_date: str
+    explanation: str
+    days_count: int
+    tasks: List[AIBreakdownTaskItem]
+
+
+class AIApplyBreakdownRequest(BaseModel):
+    title: str
+    target_date: str
+    explanation: Optional[str] = None
+    tasks: List[AIBreakdownTaskItem]
+    create_parent_goal: Optional[bool] = False
+
+
+class AIRollbackRequest(BaseModel):
+    batch_id: str
+
+
+class AIBreakdownLogResponse(BaseModel):
+    id: int
+    batch_id: str
+    title: str
+    target_date: Optional[datetime.date] = None
+    explanation: Optional[str] = None
+    task_count: int
+    is_reverted: bool
+    created_at: Optional[datetime.datetime] = None
+    reverted_at: Optional[datetime.datetime] = None
+
+
+class BulkImportTasksRequest(BaseModel):
+    title: Optional[str] = "Import Lịch Ngoài"
+    tasks: List[AIBreakdownTaskItem]
+
+
+class ParseScheduleTextRequest(BaseModel):
+    text: str
+    target_date: Optional[str] = None
+

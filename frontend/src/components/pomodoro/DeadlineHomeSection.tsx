@@ -12,10 +12,13 @@ import {
   LogIn,
   Plus,
   Send,
+  Sparkles,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { DeadlineItem, DeadlinesResponse } from '@/utils/deadlineUtils'
 import { getLocalTodayYmd } from '@/utils/deadlineUtils'
+import { focusService } from '@/services/focusService'
 import {
   completeDeadlineItem,
   DeadlineQuickAddForm,
@@ -28,6 +31,7 @@ import {
 } from './DeadlineShared'
 import { DeadlineMonthCalendar } from './DeadlineMonthCalendar'
 import { ScheduleDayDetailCard } from './ScheduleDayDetailCard'
+import { AIBreakdownModal } from './AIBreakdownModal'
 
 interface DeadlineHomeSectionProps {
   id?: string
@@ -60,6 +64,9 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
 
   const [activeTab, setActiveTab] = useState<DeadlineFilterTab>('all')
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showAIBreakdownModal, setShowAIBreakdownModal] = useState(false)
+  const [recentAIBatchId, setRecentAIBatchId] = useState<string | null>(null)
+  const [rollingBack, setRollingBack] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [sendingTelegram, setSendingTelegram] = useState(false)
@@ -117,6 +124,22 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
       await triggerTelegramDeadlineNudge(onOpenNotificationSettings)
     } finally {
       setSendingTelegram(false)
+    }
+  }
+
+  const handleUndoRecentAIBreakdown = async () => {
+    if (!recentAIBatchId) return
+    try {
+      setRollingBack(true)
+      const res = await focusService.rollbackAIBreakdown(recentAIBatchId)
+      toast.success(res.message || 'Đã hoàn tác lịch do AI tạo!')
+      setRecentAIBatchId(null)
+      await onRefresh()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Không thể hoàn tác lịch AI'
+      toast.error(msg)
+    } finally {
+      setRollingBack(false)
     }
   }
 
@@ -243,6 +266,16 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
 
           <button
             type="button"
+            onClick={() => setShowAIBreakdownModal(true)}
+            title="Dùng AI chia nhỏ nhiệm vụ lớn ra từng ngày hoặc Import thời khóa biểu"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500/25 via-purple-500/25 to-pink-500/25 hover:from-indigo-500/35 hover:to-pink-500/35 text-indigo-300 border border-indigo-500/40 font-semibold text-xs shadow-sm transition-all cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <span>✨ AI Chia Nhỏ</span>
+          </button>
+
+          <button
+            type="button"
             disabled={sendingTelegram}
             onClick={handleTelegramNudge}
             title="Gửi ngay danh sách deadline hiện tại tới Telegram điện thoại"
@@ -274,6 +307,36 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Undo Banner if AI batch created recently */}
+      {recentAIBatchId && (
+        <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-indigo-950/60 border border-indigo-500/40 text-xs text-indigo-200 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>AI đã thêm lịch thành công!</strong> Các task mới đã xuất hiện ở Ô 1 trên lịch. Bạn có thể bấm hoàn tác nếu chưa vừa ý.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              disabled={rollingBack}
+              onClick={handleUndoRecentAIBreakdown}
+              className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-semibold transition-all cursor-pointer disabled:opacity-50"
+            >
+              {rollingBack ? 'Đang hoàn tác...' : '↩️ Hoàn tác'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRecentAIBatchId(null)}
+              className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
+              title="Đóng thông báo"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Quick Add Form */}
       {showAddForm && (
@@ -403,6 +466,19 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
           )}
         </div>
       )}
+
+      {/* AI Breakdown & Import Modal */}
+      <AIBreakdownModal
+        isOpen={showAIBreakdownModal}
+        onClose={() => setShowAIBreakdownModal(false)}
+        onSuccess={async (batchId) => {
+          if (batchId) {
+            setRecentAIBatchId(batchId)
+          }
+          await onRefresh()
+        }}
+        deadlines={data.items}
+      />
     </section>
   )
 }

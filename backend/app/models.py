@@ -478,5 +478,22 @@ class NotificationSetting(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AIBreakdownLog(Base):
+    __tablename__ = "ai_breakdown_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    batch_id = Column(String, unique=True, index=True, nullable=False)
+    title = Column(String, nullable=False)
+    target_date = Column(Date, nullable=True)
+    explanation = Column(Text, nullable=True)
+    created_task_ids = Column(Text, nullable=False, default="[]")
+    created_goal_id = Column(Integer, ForeignKey("study_goals.id"), nullable=True)
+    task_count = Column(Integer, default=0)
+    is_reverted = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    reverted_at = Column(DateTime, nullable=True)
+
+
+
 
 

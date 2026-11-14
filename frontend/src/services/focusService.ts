@@ -145,6 +145,34 @@ export interface ConstellationCheckResult {
   total_constellations: number
 }
 
+export interface AIBreakdownTaskItem {
+  title: string
+  date: string
+  quadrant?: number
+  duration_minutes?: number
+  notes?: string
+}
+
+export interface AIBreakdownProposal {
+  title: string
+  target_date: string
+  explanation: string
+  days_count: number
+  tasks: AIBreakdownTaskItem[]
+}
+
+export interface AIBreakdownLogItem {
+  id: number
+  batch_id: string
+  title: string
+  target_date?: string | null
+  explanation?: string | null
+  task_count: number
+  is_reverted: boolean
+  created_at?: string | null
+  reverted_at?: string | null
+}
+
 export interface TopicGalaxy {
   planets: TopicPlanet[]
   total_goals: number
@@ -694,6 +722,57 @@ export const focusService = {
 
   getAIBuddyPrompt: async (): Promise<AIBuddyPrompt> => {
     const res = await api.get('/focus/ai-buddy/prompt')
+    return res.data
+  },
+
+  previewAIBreakdown: async (data: {
+    title: string
+    target_date: string
+    total_hours?: number
+    notes_or_syllabus?: string
+    daily_hours?: number
+    quadrant?: number
+  }): Promise<AIBreakdownProposal> => {
+    const res = await api.post('/focus/ai/breakdown-preview', data)
+    return res.data
+  },
+
+  applyAIBreakdown: async (data: {
+    title: string
+    target_date: string
+    explanation?: string
+    tasks: AIBreakdownTaskItem[]
+    create_parent_goal?: boolean
+  }): Promise<{ ok: boolean; batch_id: string; count: number; message: string }> => {
+    const res = await api.post('/focus/ai/apply-breakdown', data)
+    return res.data
+  },
+
+  rollbackAIBreakdown: async (
+    batch_id: string
+  ): Promise<{ ok: boolean; message: string; deleted_count: number }> => {
+    const res = await api.post('/focus/ai/rollback-breakdown', { batch_id })
+    return res.data
+  },
+
+  getAIBreakdownHistory: async (): Promise<AIBreakdownLogItem[]> => {
+    const res = await api.get('/focus/ai/breakdown-history')
+    return res.data
+  },
+
+  parseScheduleTextWithAI: async (
+    text: string,
+    target_date?: string
+  ): Promise<{ summary: string; tasks: AIBreakdownTaskItem[] }> => {
+    const res = await api.post('/focus/ai/parse-text-schedule', { text, target_date })
+    return res.data
+  },
+
+  importTasksBulk: async (data: {
+    title?: string
+    tasks: AIBreakdownTaskItem[]
+  }): Promise<{ ok: boolean; batch_id: string; count: number; message: string }> => {
+    const res = await api.post('/focus/import/tasks', data)
     return res.data
   },
 

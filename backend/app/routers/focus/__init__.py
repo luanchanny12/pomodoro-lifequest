@@ -77,6 +77,9 @@ from app.routers.focus.deadlines import (
     router as deadlines_router,
     get_deadlines,
 )
+from app.routers.focus.ai_breakdown import (
+    router as ai_breakdown_router,
+)
 
 # Backwards compatibility aliases
 get_stats = get_focus_stats
@@ -98,6 +101,7 @@ router.include_router(time_capsules_router)
 router.include_router(matrix_router)
 router.include_router(ai_buddy_router)
 router.include_router(deadlines_router)
+router.include_router(ai_breakdown_router)
 
 __all__ = [
     "router",
