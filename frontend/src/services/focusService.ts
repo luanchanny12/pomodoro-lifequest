@@ -654,6 +654,11 @@ export const focusService = {
     return res.data
   },
 
+  resealTimeCapsule: async (capsuleId: number, unlockDays: number = 30): Promise<TimeCapsule> => {
+    const res = await api.post(`/focus/time-capsules/${capsuleId}/reseal`, { unlock_days: unlockDays })
+    return res.data
+  },
+
   // ── Constellation Achievements ──
   getConstellations: async (): Promise<ConstellationAchievement[]> => {
     const res = await api.get('/focus/constellations')

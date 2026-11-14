@@ -963,6 +963,10 @@ class TimeCapsuleResponse(BaseModel):
         from_attributes = True
 
 
+class TimeCapsuleResealRequest(BaseModel):
+    unlock_days: Optional[int] = 30
+
+
 class MoodBalanceResponse(BaseModel):
     mood_keys: int
     total_capsules: int

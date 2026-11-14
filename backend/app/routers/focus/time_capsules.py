@@ -42,6 +42,7 @@ from app.schemas import (
     TimeWarpOracleResponse,
     TimeCapsuleCreate,
     TimeCapsuleResponse,
+    TimeCapsuleResealRequest,
     MoodBalanceResponse,
     ConstellationAchievementResponse,
     ConstellationCheckResponse,
@@ -467,5 +468,40 @@ def claim_breath_grant(
         "mood_keys": mood_keys,
         "message": "Bạn đã hoàn thành 30s tĩnh tâm và nhận được 1 Hạc Giấy Hy Vọng! 🕊️",
     }
+
+
+@router.post("/time-capsules/{capsule_id}/reseal", response_model=TimeCapsuleResponse)
+def reseal_time_capsule(
+    capsule_id: int,
+    data: Optional[TimeCapsuleResealRequest] = None,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Niêm phong lại lá thư:
+    Nếu người dùng đã mở lá thư nhưng muốn khóa lại để dành cho tương lai (ví dụ 30, 60, 100 ngày tới).
+    Lá thư được bảo toàn nguyên vẹn 100%, không bao giờ bị mất hay xóa đi!
+    """
+    query = db.query(TimeCapsule).filter(TimeCapsule.id == capsule_id)
+    if user:
+        capsule = query.filter(TimeCapsule.user_id == user.id).first()
+    else:
+        capsule = query.filter(TimeCapsule.user_id.is_(None)).first()
+
+    if not capsule:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hòm thư này!")
+
+    days = data.unlock_days if (data and data.unlock_days and data.unlock_days > 0) else 30
+    now = datetime.datetime.utcnow()
+    capsule.is_unlocked = False
+    capsule.unlock_days = days
+    capsule.unlock_date = now + datetime.timedelta(days=days)
+    capsule.unlocked_at = None
+    capsule.unlocked_by_key = False
+
+    db.commit()
+    db.refresh(capsule)
+    return TimeCapsuleResponse.model_validate(capsule)
+
 
 

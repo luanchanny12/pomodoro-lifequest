@@ -113,3 +113,45 @@ def test_claim_breath_grant(auth_headers):
     data = grant_res.json()
     assert data["success"] is True
     assert data["mood_keys"] == bal_before + 1
+
+
+def test_time_capsule_reseal_and_permanent_preservation(auth_headers):
+    # 1. Tạo thư
+    create_res = client.post(
+        "/api/focus/time-capsules",
+        json={
+            "unlock_days": 10,
+            "title": "Thư lưu trữ vĩnh viễn",
+            "message_content": "Lá thư này không bao giờ bị mất!",
+        },
+        headers=auth_headers,
+    )
+    assert create_res.status_code == 201
+    cap_id = create_res.json()["id"]
+
+    # 2. Mở khóa thư
+    unlock_res = client.post(f"/api/focus/time-capsules/{cap_id}/unlock-emergency", headers=auth_headers)
+    assert unlock_res.status_code == 200
+    assert unlock_res.json()["is_unlocked"] is True
+
+    # 3. Kiểm tra lá thư vẫn tồn tại trong danh sách tất cả các hòm thư (không bao giờ bị mất)
+    list_res = client.get("/api/focus/time-capsules", headers=auth_headers)
+    assert list_res.status_code == 200
+    caps = list_res.json()
+    found = [c for c in caps if c["id"] == cap_id]
+    assert len(found) == 1
+    assert found[0]["is_unlocked"] is True
+    assert found[0]["message_content"] == "Lá thư này không bao giờ bị mất!"
+
+    # 4. Niêm phong lại (reseal) trong 60 ngày tới
+    reseal_res = client.post(
+        f"/api/focus/time-capsules/{cap_id}/reseal",
+        json={"unlock_days": 60},
+        headers=auth_headers,
+    )
+    assert reseal_res.status_code == 200
+    resealed = reseal_res.json()
+    assert resealed["is_unlocked"] is False
+    assert resealed["unlock_days"] == 60
+    assert resealed["message_content"] == "Lá thư này không bao giờ bị mất!"
+

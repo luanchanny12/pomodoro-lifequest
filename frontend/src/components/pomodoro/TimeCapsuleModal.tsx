@@ -21,6 +21,10 @@ import {
   Heart,
   Plus,
   Smile,
+  Copy,
+  Download,
+  RotateCcw,
+  FileText,
 } from 'lucide-react'
 import { TimeCapsule, focusService } from '../../services/focusService'
 import { soundManager } from '../../utils/soundEffects'
@@ -84,6 +88,8 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
   const [isDrawingRescue, setIsDrawingRescue] = useState(false)
   const [readingCapsule, setReadingCapsule] = useState<TimeCapsule | null>(null)
   const [unlockingId, setUnlockingId] = useState<number | null>(null)
+  const [activeTab, setActiveTab] = useState<'all' | 'locked' | 'unlocked'>('all')
+  const [isResealingId, setIsResealingId] = useState<number | null>(null)
 
   // 30s Mindful Breathing modal
   const [showBreathing, setShowBreathing] = useState(false)
@@ -272,6 +278,55 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
   const handlePrintLetter = () => {
     soundManager.playDing()
     window.print()
+  }
+
+  // Sao chép nội dung thư
+  const handleCopyContent = (text: string) => {
+    navigator.clipboard.writeText(text)
+    toast.success('Đã sao chép nội dung bức thư vào bộ nhớ tạm! 📋')
+  }
+
+  // Tải bản sao bức thư (.txt) về máy tính để lưu trữ tuyệt đối
+  const handleDownloadTxt = (cap: TimeCapsule) => {
+    const file = new Blob([
+      `HÒM THƯ GỬI TƯƠNG LAI - LIFEQUEST\n` +
+      `Tiêu đề: ${cap.title}\n` +
+      `Niêm phong ngày: ${formatSafeDate(cap.created_at)}\n` +
+      `Mở khóa ngày: ${cap.unlocked_at ? formatSafeDate(cap.unlocked_at) : 'Đã mở khóa'}\n` +
+      `----------------------------------------\n\n` +
+      `${cap.message_content}\n\n` +
+      `----------------------------------------\n` +
+      `Bảo chứng và lưu trữ vĩnh viễn bởi LifeQuest Pomodoro.`
+    ], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${cap.title.replace(/[/\\?%*:|"<>]/g, '_')}_thu_ky_niem.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success('Đã tải bản sao lá thư về máy tính của bạn! 💾')
+  }
+
+  // Niêm phong lại lá thư (nếu muốn khóa lại cho tương lai)
+  const handleReseal = async (cap: TimeCapsule, days: number = 30) => {
+    if (!window.confirm(`Bạn có muốn niêm phong lại lá thư "${cap.title}" trong ${days} ngày tới không? Lá thư vẫn được lưu an toàn tuyệt đối.`)) {
+      return
+    }
+    setIsResealingId(cap.id)
+    try {
+      await focusService.resealTimeCapsule(cap.id, days)
+      toast.success(`Đã niêm phong lại lá thư thành công trong ${days} ngày tới! 🔒`)
+      if (readingCapsule?.id === cap.id) {
+        setReadingCapsule(null)
+      }
+      await loadData()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || err?.message || 'Không thể niêm phong lại thư')
+    } finally {
+      setIsResealingId(null)
+    }
   }
 
   const getMoodTagInfo = (code?: string | null) => {
@@ -661,13 +716,60 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
 
             {/* ── CAPSULES LIST ── */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                  <Award className="w-4 h-4 text-amber-400" />
-                  Hòm thư thời gian của bạn ({capsules.length})
-                </h3>
+              {/* Permanent Preservation Assurance Banner */}
+              <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs shadow-sm">
+                <Shield className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">Bảo vệ lưu trữ vĩnh viễn:</span> Khi bạn mở khóa hay bẻ khóa lá thư, <strong>lá thư sẽ KHÔNG BAO GIỜ bị mất hoặc xóa đi</strong>! Tất cả được lưu trữ trọn đời trong <strong>Kho Thư Kỷ Niệm</strong> để bạn có thể mở ra đọc lại bất cứ lúc nào.
+                </div>
+              </div>
+
+              {/* Tabs & Stats Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10 text-xs">
+                  <button
+                    onClick={() => setActiveTab('all')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+                      activeTab === 'all'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>Tất cả</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px]">{capsules.length}</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('locked')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+                      activeTab === 'locked'
+                        ? 'bg-purple-500 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Lock className="w-3 h-3" />
+                    <span>Đang niêm phong</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px]">
+                      {capsules.filter((c) => !c.is_unlocked).length}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('unlocked')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+                      activeTab === 'unlocked'
+                        ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <BookOpen className="w-3 h-3" />
+                    <span>Kho Thư Đã Mở</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px]">
+                      {capsules.filter((c) => c.is_unlocked).length}
+                    </span>
+                  </button>
+                </div>
+
                 <span className="text-xs text-slate-400">
-                  Đã mở: {capsules.filter((c) => c.is_unlocked).length} / {capsules.length}
+                  Đã mở khóa: <strong className="text-emerald-400">{capsules.filter((c) => c.is_unlocked).length}</strong> / {capsules.length} lá thư
                 </span>
               </div>
 
@@ -685,7 +787,13 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                  {capsules.map((cap) => {
+                  {capsules
+                    .filter((c) => {
+                      if (activeTab === 'locked') return !c.is_unlocked
+                      if (activeTab === 'unlocked') return c.is_unlocked
+                      return true
+                    })
+                    .map((cap) => {
                     const tagInfo = getMoodTagInfo(cap.mood_tag)
                     const isLocked = !cap.is_unlocked
                     const isUnlockDays = cap.unlock_days && cap.unlock_days > 0
@@ -709,14 +817,14 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
                               <span
                                 className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold ${
                                   cap.is_unlocked
-                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                                     : 'bg-slate-800 text-slate-400 border border-slate-700'
                                 }`}
                               >
                                 {cap.is_unlocked ? (
                                   <>
-                                    <Unlock className="w-3 h-3 text-amber-400" />
-                                    <span>ĐÃ MỞ KHÓA</span>
+                                    <Unlock className="w-3 h-3 text-emerald-400" />
+                                    <span>ĐÃ MỞ • LƯU VĨNH VIỄN</span>
                                   </>
                                 ) : (
                                   <>
@@ -749,9 +857,15 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
 
                           {/* Content or Teaser */}
                           {cap.is_unlocked ? (
-                            <p className="text-xs text-slate-300 line-clamp-2 italic bg-amber-500/5 border border-amber-500/20 p-2.5 rounded-xl mb-3 font-serif">
-                              "{cap.message_content}"
-                            </p>
+                            <div className="space-y-1.5 mb-3">
+                              <p className="text-xs text-slate-300 line-clamp-2 italic bg-amber-500/5 border border-amber-500/20 p-2.5 rounded-xl font-serif">
+                                "{cap.message_content}"
+                              </p>
+                              <div className="text-[10px] text-emerald-400/80 flex items-center gap-1">
+                                <Shield className="w-3 h-3" />
+                                <span>Lưu vĩnh viễn trong kho • Đọc lại bất cứ lúc nào</span>
+                              </div>
+                            </div>
                           ) : (
                             <div className="text-xs text-slate-400 mb-3 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 space-y-1">
                               <div className="font-mono text-slate-500 flex items-center gap-1">
@@ -772,22 +886,39 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
                         {/* Actions */}
                         <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
                           {cap.is_unlocked ? (
-                            <>
+                            <div className="w-full flex items-center justify-between gap-2">
                               <span className="text-[10px] text-emerald-400 flex items-center gap-1">
                                 <Sparkles className="w-3 h-3" />
-                                {cap.unlocked_by_key ? 'Mở bằng Hạc Giấy 🕊️' : 'Mở đúng hẹn ✨'}
+                                <span>{cap.unlocked_by_key ? 'Mở bằng 🕊️ Hạc Giấy' : 'Mở đúng hẹn ✨'}</span>
                               </span>
-                              <button
-                                onClick={() => {
-                                  soundManager.playCapsuleUnlock()
-                                  setReadingCapsule(cap)
-                                }}
-                                className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-semibold border border-amber-500/40 transition flex items-center gap-1.5"
-                              >
-                                <BookOpen className="w-3.5 h-3.5" />
-                                <span>Đọc thư</span>
-                              </button>
-                            </>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => handleCopyContent(cap.message_content)}
+                                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition"
+                                  title="Sao chép nội dung thư"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDownloadTxt(cap)}
+                                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition"
+                                  title="Tải về máy tính (.txt)"
+                                >
+                                  <Download className="w-3.5 h-3.5 text-emerald-300" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    soundManager.playCapsuleUnlock()
+                                    setReadingCapsule(cap)
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-bold transition flex items-center gap-1.5 shadow-sm active:scale-95"
+                                >
+                                  <BookOpen className="w-3.5 h-3.5" />
+                                  <span>Đọc thư</span>
+                                </button>
+                              </div>
+                            </div>
                           ) : (
                             <div className="w-full flex items-center justify-between gap-2">
                               <span className="text-[10px] text-slate-400">
@@ -833,6 +964,7 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
             <button
               onClick={() => setReadingCapsule(null)}
               className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              title="Đóng cửa sổ đọc thư (Lá thư vẫn được lưu an toàn)"
             >
               <X className="w-5 h-5" />
             </button>
@@ -846,6 +978,12 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
             <h3 className="text-xl sm:text-2xl font-bold text-amber-100 mb-2">
               {readingCapsule.title}
             </h3>
+
+            {/* Permanent Preservation Reassurance Note */}
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold mb-3 shadow-sm">
+              <Shield className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <span>Lá thư này được bảo toàn vĩnh viễn trong Kho Kỷ Niệm của bạn và không bao giờ bị mất!</span>
+            </div>
 
             <div className="text-xs text-slate-400 mb-4 pb-3 border-b border-amber-500/20 flex flex-wrap items-center gap-2">
               <span>Niêm phong ngày: {formatSafeDate(readingCapsule.created_at)}</span>
@@ -865,23 +1003,60 @@ export const TimeCapsuleModal: React.FC<TimeCapsuleModalProps> = ({
               </p>
             </div>
 
-            {/* Actions: Print and Close */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-              <button
-                onClick={handlePrintLetter}
-                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition flex items-center gap-2"
-                title="In bức thư ra giấy hoặc lưu thành file PDF làm kỷ niệm"
-              >
-                <Printer className="w-4 h-4 text-cyan-300" />
-                <span>🖨️ In Thư Ra Giấy / Lưu PDF</span>
-              </button>
+            {/* Actions: Copy, Download, Print, Reseal, Close */}
+            <div className="space-y-3 pt-2 border-t border-amber-500/20">
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => handleCopyContent(readingCapsule.message_content)}
+                    className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium text-xs transition flex items-center gap-1.5 active:scale-95"
+                    title="Sao chép nội dung thư vào bộ nhớ tạm"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Sao chép</span>
+                  </button>
 
-              <button
-                onClick={() => setReadingCapsule(null)}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-500/20"
-              >
-                Đã đọc & Cảm ơn quá khứ ✨
-              </button>
+                  <button
+                    onClick={() => handleDownloadTxt(readingCapsule)}
+                    className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium text-xs transition flex items-center gap-1.5 active:scale-95"
+                    title="Tải bản sao lá thư (.txt) về máy tính cá nhân"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>Tải về (.txt)</span>
+                  </button>
+
+                  <button
+                    onClick={handlePrintLetter}
+                    className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium text-xs transition flex items-center gap-1.5 active:scale-95"
+                    title="In bức thư ra giấy hoặc lưu thành file PDF làm kỷ niệm"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-cyan-300" />
+                    <span>In / PDF</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleReseal(readingCapsule, 30)}
+                    disabled={isResealingId === readingCapsule.id}
+                    className="px-3 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 font-medium text-xs transition flex items-center gap-1.5 disabled:opacity-50 active:scale-95"
+                    title="Khóa lại lá thư thêm 30 ngày để dành cho tương lai"
+                  >
+                    <RotateCcw className={`w-3.5 h-3.5 ${isResealingId === readingCapsule.id ? 'animate-spin' : ''}`} />
+                    <span>{isResealingId === readingCapsule.id ? 'Đang khóa...' : 'Niêm phong lại 30d'}</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setReadingCapsule(null)}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-500/20 flex items-center gap-1.5 active:scale-95"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Lưu Trong Kho & Đóng</span>
+                </button>
+              </div>
+
+              <div className="text-[11px] text-center text-slate-400 italic">
+                💡 Bạn có thể đóng cửa sổ này bất cứ lúc nào, bức thư vẫn nằm nguyên vẹn trong Kho Thư Kỷ Niệm.
+              </div>
             </div>
           </div>
         </div>
