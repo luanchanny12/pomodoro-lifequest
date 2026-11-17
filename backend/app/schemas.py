@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, confloat, field_validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 import datetime
 
 
@@ -1205,4 +1205,156 @@ class BulkImportTasksRequest(BaseModel):
 class ParseScheduleTextRequest(BaseModel):
     text: str
     target_date: Optional[str] = None
+
+
+# --- Financial Jars, Tet Earning Plan & School Schedule Schemas ---
+
+class FinancialJarCreate(BaseModel):
+    name: str
+    jar_type: Optional[str] = "CUSTOM"  # TET, LIVING, SKILL, EMERGENCY, CUSTOM
+    target_amount: Optional[float] = 0.0
+    current_balance: Optional[float] = 0.0
+    icon: Optional[str] = "🏺"
+    color: Optional[str] = "#3B82F6"
+    note: Optional[str] = None
+
+
+class FinancialJarUpdate(BaseModel):
+    name: Optional[str] = None
+    target_amount: Optional[float] = None
+    current_balance: Optional[float] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    note: Optional[str] = None
+
+
+class FinancialJarResponse(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    name: str
+    jar_type: str
+    target_amount: float
+    current_balance: float
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    note: Optional[str] = None
+    progress_percent: float = 0.0
+    created_at: Optional[datetime.datetime] = None
+    updated_at: Optional[datetime.datetime] = None
+
+
+class JarTransactionCreate(BaseModel):
+    jar_id: Optional[int] = None
+    amount: float  # Dương: nạp tiền, Âm: chi tiêu (hoặc nếu type là EXPENSE, tự động trừ)
+    transaction_type: str = "EXPENSE"  # INCOME_GIG, EXPENSE, TRANSFER, INITIAL
+    category: str = "khac"  # an_uong, xang_xe, mua_sam, hoc_tap, khac
+    description: Optional[str] = None
+    transaction_time: Optional[datetime.datetime] = None
+
+
+class JarTransactionResponse(BaseModel):
+    id: int
+    jar_id: Optional[int] = None
+    jar_name: Optional[str] = None
+    amount: float
+    transaction_type: str
+    category: str
+    description: Optional[str] = None
+    transaction_time: Optional[datetime.datetime] = None
+    created_at: Optional[datetime.datetime] = None
+
+
+class GigDepositRequest(BaseModel):
+    amount: float
+    description: Optional[str] = "Thu nhập ca chạy 10h-14h"
+    tet_percent: Optional[float] = 60.0
+    living_percent: Optional[float] = 40.0
+
+
+class GigDepositResponse(BaseModel):
+    total_amount: float
+    tet_deposited: float
+    living_deposited: float
+    message: str
+    daily_target: float
+    daily_achieved: float
+    is_target_met: bool
+
+
+class TetEarningPlanUpdate(BaseModel):
+    tet_target_amount: Optional[float] = None
+    tet_date: Optional[str] = None  # YYYY-MM-DD
+    daily_shift_start: Optional[str] = None
+    daily_shift_end: Optional[str] = None
+    home_arrival_time: Optional[str] = None
+    default_tet_split_percent: Optional[float] = None
+    default_living_split_percent: Optional[float] = None
+    is_active: Optional[bool] = None
+    note: Optional[str] = None
+
+
+class TetEarningPlanResponse(BaseModel):
+    id: int
+    tet_target_amount: float
+    current_savings: float
+    tet_date: Optional[str] = None
+    days_remaining: int
+    daily_target_needed: float
+    daily_shift_start: str
+    daily_shift_end: str
+    home_arrival_time: str
+    today_earned: float
+    is_target_met_today: bool
+    is_active: bool
+    note: Optional[str] = None
+
+
+class SchoolScheduleItemCreate(BaseModel):
+    course_code: Optional[str] = None
+    course_name: str
+    day_of_week: int  # 2..7 (Thứ 2 đến Thứ 7), 8 (Chủ nhật)
+    start_period: Optional[int] = None
+    end_period: Optional[int] = None
+    start_time: str = "07:00"
+    end_time: str = "09:15"
+    room: Optional[str] = None
+    lecturer: Optional[str] = None
+    semester: Optional[str] = None
+
+
+class SchoolScheduleItemResponse(BaseModel):
+    id: int
+    course_code: Optional[str] = None
+    course_name: str
+    day_of_week: int
+    day_name: str
+    start_time: str
+    end_time: str
+    room: Optional[str] = None
+    lecturer: Optional[str] = None
+    semester: Optional[str] = None
+    is_active: bool
+
+
+class DualCoachAdviceResponse(BaseModel):
+    financial_advice: str
+    study_skill_advice: str
+    daily_schedule_summary: List[Dict[str, Any]] = []
+    motivation_quote: str
+
+
+class SepayWebhookPayload(BaseModel):
+    id: Optional[Union[int, str]] = None
+    gateway: Optional[str] = None
+    transactionDate: Optional[str] = None
+    accountNumber: Optional[str] = None
+    subAccount: Optional[str] = None
+    code: Optional[str] = None
+    content: Optional[str] = None
+    transferType: Optional[str] = None  # "in" hoặc "out"
+    transferAmount: Optional[float] = None
+    accumulated: Optional[float] = None
+    referenceCode: Optional[str] = None
+    description: Optional[str] = None
+
 

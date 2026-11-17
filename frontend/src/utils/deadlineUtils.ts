@@ -1,11 +1,11 @@
 import type { DailyMatrixTask, StudyGoal } from '@/services/focusService'
 import { parseSafeDate } from '@/utils/dateUtils'
 
-export type DeadlineUrgency = 'overdue' | 'today' | 'urgent' | 'soon' | 'future'
+export type DeadlineUrgency = 'overdue' | 'today' | 'urgent' | 'soon' | 'future' | 'past'
 
 export interface DeadlineItem {
-  type: 'goal' | 'task'
-  id: number
+  type: 'goal' | 'task' | 'school_class' | 'gig_shift'
+  id: number | string
   title: string
   date: string
   days_left: number
@@ -18,6 +18,8 @@ export interface DeadlineItem {
   planet_type: string
   notes?: string | null
   quadrant?: number | null
+  time_range?: string
+  room?: string
 }
 
 export interface DeadlineSummary {
@@ -27,6 +29,7 @@ export interface DeadlineSummary {
   soon: number
   future: number
   total_active: number
+  school_count?: number
 }
 
 export interface DeadlinesResponse {
@@ -122,7 +125,7 @@ export function buildDeadlinesPayload(
   items.sort((a, b) => {
     if (a.days_left !== b.days_left) return a.days_left - b.days_left
     if (a.type !== b.type) return a.type === 'goal' ? -1 : 1
-    return a.id - b.id
+    return String(a.id).localeCompare(String(b.id))
   })
 
   const summary: DeadlineSummary = {

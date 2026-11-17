@@ -20,16 +20,24 @@ import {
   type DeadlineUrgency,
 } from '@/utils/deadlineUtils'
 
-export type DeadlineFilterTab = 'all' | 'urgent' | 'week' | 'future'
+export type DeadlineFilterTab = 'all' | 'urgent' | 'week' | 'future' | 'school' | 'gig'
 
 export function filterDeadlinesByTab(
   items: DeadlineItem[],
   tab: DeadlineFilterTab
 ): DeadlineItem[] {
   return items.filter((item) => {
-    if (tab === 'urgent') return item.days_left <= 3
+    if (tab === 'urgent') return item.days_left <= 3 && item.type !== 'gig_shift'
     if (tab === 'week') return item.days_left <= 7
     if (tab === 'future') return item.days_left > 7
+    if (tab === 'school')
+      return (
+        item.type === 'school_class' || item.category?.toLowerCase().includes('lịch')
+      )
+    if (tab === 'gig')
+      return (
+        item.type === 'gig_shift' || item.category?.toLowerCase().includes('ca chạy')
+      )
     return true
   })
 }
@@ -43,6 +51,14 @@ export function getUrgencyMeta(urgency: DeadlineUrgency, daysLeft: number) {
   }
 
   switch (urgency) {
+    case 'past':
+      return {
+        badgeText: 'Đã hoàn tất',
+        containerClass: 'border-slate-700/60 bg-slate-900/40 opacity-70',
+        badgeClass: 'bg-slate-700 text-slate-300 border border-slate-600',
+        accentBarClass: 'bg-slate-600',
+        isHot: false,
+      }
     case 'overdue':
       return {
         badgeText,
@@ -97,17 +113,33 @@ export function getUrgencyMeta(urgency: DeadlineUrgency, daysLeft: number) {
 }
 
 export async function completeDeadlineItem(item: DeadlineItem): Promise<void> {
+  if (item.type === 'school_class') {
+    toast.success(`📚 Đã điểm danh / hoàn tất môn học "${item.title}"!`)
+    return
+  }
+
+  if (item.type === 'gig_shift') {
+    toast.success(
+      `🛵 Đã hoàn thành ca chạy "${item.title}"! Về nhà nghỉ ngơi và tập trung học nhé!`
+    )
+    return
+  }
+
   if (item.type === 'goal') {
-    await focusService.updateGoal(item.id, { is_completed: true })
+    if (typeof item.id === 'number') {
+      await focusService.updateGoal(item.id, { is_completed: true })
+    }
     toast.success(`🎉 Đã hoàn thành deadline "${item.title}"!`)
     return
   }
 
-  if (item.days_left < 0) {
-    // Backend disallows toggling unrolled past matrix tasks directly; move to today first
-    await focusService.updateMatrixTask(item.id, { date: getLocalTodayYmd() })
+  if (typeof item.id === 'number') {
+    if (item.days_left < 0) {
+      // Backend disallows toggling unrolled past matrix tasks directly; move to today first
+      await focusService.updateMatrixTask(item.id, { date: getLocalTodayYmd() })
+    }
+    await focusService.toggleMatrixTask(item.id)
   }
-  await focusService.toggleMatrixTask(item.id)
   toast.success(`✔ Đã đánh dấu xong "${item.title}"!`)
 }
 
@@ -116,10 +148,18 @@ export async function rescheduleDeadlineItem(
   newDate: string
 ): Promise<void> {
   if (!newDate) return
+  if (item.type === 'school_class' || item.type === 'gig_shift') {
+    toast.info('Lịch trường và ca chạy được quản lý theo thời khóa biểu cố định.')
+    return
+  }
   if (item.type === 'goal') {
-    await focusService.updateGoal(item.id, { target_date: newDate })
+    if (typeof item.id === 'number') {
+      await focusService.updateGoal(item.id, { target_date: newDate })
+    }
   } else {
-    await focusService.updateMatrixTask(item.id, { date: newDate })
+    if (typeof item.id === 'number') {
+      await focusService.updateMatrixTask(item.id, { date: newDate })
+    }
   }
   const formatted = formatSafeDate(newDate, 'dd/MM/yyyy') || newDate
   toast.success(`📅 Đã dời lịch "${item.title}" sang ${formatted}`)
@@ -515,7 +555,7 @@ export const DeadlineItemRow: React.FC<DeadlineItemRowProps> = ({
             <button
               type="button"
               disabled={isBusy}
-              onClick={() => onStartPomodoro(item.id)}
+              onClick={() => onStartPomodoro(item.id as number)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white text-xs font-bold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
             >
               <Play className="w-3.5 h-3.5 fill-current" />

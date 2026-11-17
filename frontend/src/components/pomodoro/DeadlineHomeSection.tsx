@@ -399,6 +399,14 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
                   label: `📅 Tuần này (${data.items.filter((i) => i.days_left <= 7).length})`,
                 },
                 {
+                  id: 'school',
+                  label: `📚 Lịch trường (${data.items.filter((i) => i.type === 'school_class' || i.category?.toLowerCase().includes('lịch')).length})`,
+                },
+                {
+                  id: 'gig',
+                  label: `🛵 Ca chạy 10h-14h (${data.items.filter((i) => i.type === 'gig_shift' || i.category?.toLowerCase().includes('ca chạy')).length})`,
+                },
+                {
                   id: 'future',
                   label: `🗓️ Xa hơn (${data.items.filter((i) => i.days_left > 7).length})`,
                 },

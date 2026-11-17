@@ -153,7 +153,11 @@ export const DeadlineMonthCalendar: React.FC<DeadlineMonthCalendarProps> = ({
             (i) =>
               i.category?.toLowerCase().includes('thi') ||
               i.title?.toLowerCase().includes('thi') ||
-              i.category?.toLowerCase().includes('lịch')
+              i.category?.toLowerCase().includes('lịch') ||
+              i.type === 'school_class'
+          )
+          const hasGig = cell.items.some(
+            (i) => i.type === 'gig_shift' || i.category?.toLowerCase().includes('ca chạy')
           )
           const hasTask = cell.items.some((i) => i.type === 'task')
           const hasUrgent = cell.items.some((i) => i.urgency === 'urgent' || i.urgency === 'overdue')
@@ -187,30 +191,30 @@ export const DeadlineMonthCalendar: React.FC<DeadlineMonthCalendarProps> = ({
               {/* Event indicator dots */}
               {cell.items.length > 0 && (
                 <div className="flex items-center gap-0.5 mt-0.5">
-                  {hasExam ? (
+                  {hasExam && (
                     <span
-                      title="Có lịch thi / lịch học"
+                      title="Có lịch học / lịch thi Phenikaa"
                       className="w-1.5 h-1.5 rounded-full bg-sky-400"
                     />
-                  ) : hasUrgent ? (
+                  )}
+                  {hasGig && (
+                    <span
+                      title="Có ca chạy 10h-14h kiếm tiền"
+                      className="w-1.5 h-1.5 rounded-full bg-emerald-400"
+                    />
+                  )}
+                  {hasUrgent && (
                     <span
                       title="Có deadline gấp"
                       className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"
                     />
-                  ) : (
+                  )}
+                  {!hasExam && !hasGig && !hasUrgent && (
                     <span
-                      title="Có hạn chót"
+                      title="Có việc cần làm"
                       className="w-1.5 h-1.5 rounded-full bg-amber-400"
                     />
                   )}
-
-                  {hasTask && !hasExam && (
-                    <span
-                      title="Có việc Ô 1"
-                      className="w-1 h-1 rounded-full bg-emerald-400"
-                    />
-                  )}
-
                   {cell.items.length > 2 && (
                     <span className="text-[9px] font-bold text-slate-400 leading-none">
                       +{cell.items.length - 1}

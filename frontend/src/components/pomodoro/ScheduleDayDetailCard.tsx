@@ -48,14 +48,21 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
     ? ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'][parsed.getDay()]
     : 'Ngày'
 
+  const gigShifts = items.filter(
+    (i) => i.type === 'gig_shift' || i.category?.toLowerCase().includes('ca chạy')
+  )
   const exams = items.filter(
     (i) =>
-      i.category?.toLowerCase().includes('thi') ||
-      i.title?.toLowerCase().includes('thi') ||
-      i.category?.toLowerCase().includes('lịch')
+      !gigShifts.includes(i) &&
+      (i.type === 'school_class' ||
+        i.category?.toLowerCase().includes('thi') ||
+        i.title?.toLowerCase().includes('thi') ||
+        i.category?.toLowerCase().includes('lịch'))
   )
-  const otherGoals = items.filter((i) => i.type === 'goal' && !exams.includes(i))
-  const matrixTasks = items.filter((i) => i.type === 'task')
+  const otherGoals = items.filter(
+    (i) => i.type === 'goal' && !exams.includes(i) && !gigShifts.includes(i)
+  )
+  const matrixTasks = items.filter((i) => i.type === 'task' && !gigShifts.includes(i))
 
   return (
     <div className="w-full rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-md p-3.5 sm:p-4 flex flex-col justify-between">
@@ -128,6 +135,34 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
           </div>
         ) : (
           <>
+            {/* 0. Ca Chạy Kiếm Tiền 10h-14h (15h về nhà) */}
+            {gigShifts.map((item) => (
+              <div
+                key={`${item.type}-${item.id}`}
+                className="rounded-xl overflow-hidden border border-emerald-500/40 bg-slate-900 shadow-sm"
+              >
+                <div className="bg-[#065f46] text-white px-3 py-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <h5 className="font-bold text-xs sm:text-sm tracking-wide truncate flex items-center gap-1.5">
+                      {item.title}
+                    </h5>
+                    <div className="text-[11px] text-emerald-200 flex items-center gap-1 mt-0.5">
+                      <Clock className="w-3 h-3" />
+                      <span>{item.time_range || '10:00 - 14:00 (15h về nhà)'}</span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-400/40 text-emerald-300 shrink-0">
+                    Chạy 4 tiếng
+                  </span>
+                </div>
+                <div className="bg-slate-800/80 p-2.5 sm:p-3 text-slate-200 text-xs flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-slate-300">
+                    {item.notes || 'Chỉ chạy 4 tiếng (10h-14h), về nhà lúc 15h nghỉ ngơi và tập trung học!'}
+                  </p>
+                </div>
+              </div>
+            ))}
+
             {/* 1. School Exams & Classes (Phenikaa portal card style) */}
             {exams.map((item) => {
               const details = parseScheduleDetails(item.notes)
@@ -153,7 +188,7 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
                     </div>
 
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-950/70 border border-sky-400/40 text-sky-300 shrink-0">
-                      {item.category || 'Lịch thi'}
+                      {item.category || 'Lịch học'}
                     </span>
                   </div>
 
@@ -165,13 +200,13 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
                           📝 {details.format}
                         </div>
                       )}
-                      {details.room && (
+                      {(item.room || details.room) && (
                         <div className="text-slate-400 flex items-center gap-1">
                           <MapPin className="w-3 h-3 text-rose-400" />
-                          <span>{details.room}</span>
+                          <span>{item.room || details.room}</span>
                         </div>
                       )}
-                      {!details.format && !details.room && details.cleanNotes && (
+                      {!details.format && !item.room && !details.room && details.cleanNotes && (
                         <div className="text-slate-400 line-clamp-2">
                           {details.cleanNotes}
                         </div>
@@ -179,10 +214,10 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {onStartPomodoro && (
+                      {onStartPomodoro && typeof item.id === 'number' && (
                         <button
                           type="button"
-                          onClick={() => onStartPomodoro(item.id)}
+                          onClick={() => onStartPomodoro(item.id as number)}
                           className="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
                         >
                           <Play className="w-3 h-3 fill-current" />
@@ -238,10 +273,10 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {onStartPomodoro && (
+                    {onStartPomodoro && typeof item.id === 'number' && (
                       <button
                         type="button"
-                        onClick={() => onStartPomodoro(item.id)}
+                        onClick={() => onStartPomodoro(item.id as number)}
                         className="p-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors cursor-pointer"
                         title="Bắt đầu Pomodoro"
                       >

@@ -24,6 +24,9 @@ from app.routers import (
     calendar_sync,
     squads,
 )
+from app.routers.focus.finance_jars import router as finance_router
+from app.routers.focus.telegram_chat import router as telegram_chat_router
+from app.routers.focus.bank_webhook import router as bank_webhook_router
 import app.models
 import app.models_auth
 import app.models_squad
@@ -66,6 +69,11 @@ async def lifespan(app: FastAPI):
             ("reward_items", "user_id", "INTEGER"),
             ("reward_redemptions", "user_id", "INTEGER"),
             ("time_capsules", "user_id", "INTEGER"),
+            ("financial_jars", "user_id", "INTEGER"),
+            ("jar_transactions", "user_id", "INTEGER"),
+            ("tet_earning_plans", "user_id", "INTEGER"),
+            ("school_class_schedules", "user_id", "INTEGER"),
+            ("bank_webhook_logs", "user_id", "INTEGER"),
         ]
 
         for tbl, col, col_def in columns_to_add:
@@ -283,6 +291,9 @@ app.include_router(focus_hub.router)
 app.include_router(notifications.router)
 app.include_router(calendar_sync.router)
 app.include_router(squads.router)
+app.include_router(finance_router, prefix="/api/finance", tags=["Financial Jars & Tet Plan"])
+app.include_router(telegram_chat_router, prefix="/api/notifications", tags=["Telegram Interactive Bot"])
+app.include_router(bank_webhook_router, prefix="/api/finance", tags=["Bank Webhooks"])
 
 @app.get("/")
 def root():

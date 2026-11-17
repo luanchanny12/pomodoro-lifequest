@@ -103,6 +103,7 @@ const ShareableAchievementModal = lazy(() => import('@/components/pomodoro/Share
 const DeadlineCalendarModal = lazy(() => import('@/components/pomodoro/DeadlineCalendarModal').then(m => ({ default: m.DeadlineCalendarModal })))
 import { DeadlineAlertBanner } from '@/components/pomodoro/DeadlineAlertBanner'
 import { DeadlineHomeSection } from '@/components/pomodoro/DeadlineHomeSection'
+import { FinancialJarsCard } from '@/components/pomodoro/FinancialJarsCard'
 import { buildDeadlinesPayload, type DeadlinesResponse } from '@/utils/deadlineUtils'
 
 type TimerMode = 'pomodoro' | 'shortBreak' | 'longBreak'
@@ -1727,6 +1728,9 @@ export default function PomodoroApp() {
         {deadlineSummary && (deadlineSummary.overdue > 0 || deadlineSummary.today > 0) && (
             <DeadlineAlertBanner count={(deadlineSummary.overdue || 0) + (deadlineSummary.today || 0)} onOpen={handleOpenDeadlineModal} />
         )}
+
+        {/* ── FINANCIAL JARS & TET EARNING PLAN (10H-14H SHIFT & TELEGRAM BOT) ── */}
+        <FinancialJarsCard className="mt-5" />
 
         {/* ── MAIN-PAGE DEADLINE CALENDAR & QUICK ACTIONS ── */}
         <DeadlineHomeSection

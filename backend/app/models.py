@@ -494,6 +494,94 @@ class AIBreakdownLog(Base):
     reverted_at = Column(DateTime, nullable=True)
 
 
+class FinancialJar(Base):
+    """Hũ tài chính cá nhân (Hũ Tết, Hũ Sinh Hoạt, Hũ Kỹ Năng, Hũ Dự Phòng...)."""
+    __tablename__ = "financial_jars"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    name = Column(String, nullable=False)
+    jar_type = Column(String, default="CUSTOM")  # "TET", "LIVING", "SKILL", "EMERGENCY", "CUSTOM"
+    target_amount = Column(Float, default=0.0)
+    current_balance = Column(Float, default=0.0)
+    icon = Column(String, default="🏺")
+    color = Column(String, default="#3B82F6")
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    transactions = relationship("JarTransaction", back_populates="jar", cascade="all, delete-orphan")
+
+
+class JarTransaction(Base):
+    """Lịch sử giao dịch, biến động tiền vào / ra của từng hũ."""
+    __tablename__ = "jar_transactions"
+    id = Column(Integer, primary_key=True, index=True)
+    jar_id = Column(Integer, ForeignKey("financial_jars.id"), nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    amount = Column(Float, nullable=False)  # Dương: Nạp tiền; Âm: Tiêu/Chi tiền
+    transaction_type = Column(String, default="EXPENSE")  # "INCOME_GIG", "EXPENSE", "TRANSFER", "INITIAL"
+    category = Column(String, default="khac")  # "an_uong", "xang_xe", "mua_sam", "hoc_tap", "khac"
+    description = Column(String, nullable=True)
+    bank_ref = Column(String, nullable=True)
+    transaction_time = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    jar = relationship("FinancialJar", back_populates="transactions")
+
+
+class TetEarningPlan(Base):
+    """Kế hoạch kiếm tiền & chạy xe 10h-14h từ giờ đến Tết."""
+    __tablename__ = "tet_earning_plans"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    tet_target_amount = Column(Float, default=15000000.0)  # Mục tiêu tích lũy Tết (VD: 15.000.000 đ)
+    tet_date = Column(Date, nullable=True)  # Mùng 1 Tết Đinh Mùi (2027-02-06)
+    daily_shift_start = Column(String, default="10:00")  # Bắt đầu ca chạy lúc 10h
+    daily_shift_end = Column(String, default="14:00")    # Kết thúc ca chạy lúc 14h
+    home_arrival_time = Column(String, default="15:00")  # 15h về nhà nghỉ ngơi và ăn uống
+    default_tet_split_percent = Column(Float, default=60.0)     # Mặc định nạp 60% vào Hũ Tết
+    default_living_split_percent = Column(Float, default=40.0)  # Mặc định nạp 40% vào Hũ Sinh Hoạt
+    is_active = Column(Boolean, default=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SchoolClassSchedule(Base):
+    """Lịch học trường Phenikaa theo thời khóa biểu."""
+    __tablename__ = "school_class_schedules"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    course_code = Column(String, nullable=True)
+    course_name = Column(String, nullable=False)
+    day_of_week = Column(Integer, nullable=False)  # 2..7 (Thứ 2 đến Thứ 7), 8 (Chủ nhật)
+    start_period = Column(Integer, nullable=True)
+    end_period = Column(Integer, nullable=True)
+    start_time = Column(String, default="07:00")
+    end_time = Column(String, default="09:15")
+    room = Column(String, nullable=True)
+    lecturer = Column(String, nullable=True)
+    semester = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BankWebhookLog(Base):
+    """Lưu vết biến động số dư từ SePay / Casso webhook."""
+    __tablename__ = "bank_webhook_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    gateway = Column(String, default="sepay")
+    transaction_id = Column(String, nullable=True)
+    amount = Column(Float, default=0.0)
+    transfer_type = Column(String, default="out")  # "in" hoặc "out"
+    content = Column(Text, nullable=True)
+    raw_payload = Column(Text, nullable=True)
+    is_processed = Column(Boolean, default=False)
+    telegram_message_sent = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 
 
 

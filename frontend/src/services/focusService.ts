@@ -323,6 +323,76 @@ export interface AIBuddyPrompt {
   mood: 'friendly' | 'urgent' | 'celebrating' | 'cozy'
 }
 
+export interface FinancialJar {
+  id: number
+  user_id?: number
+  name: string
+  jar_type: 'TET' | 'LIVING' | 'SKILL' | 'EMERGENCY' | 'CUSTOM'
+  target_amount: number
+  current_balance: number
+  icon?: string
+  color?: string
+  note?: string
+  progress_percent: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface JarTransaction {
+  id: number
+  jar_id?: number
+  jar_name?: string
+  amount: number
+  transaction_type: string
+  category: string
+  description?: string
+  transaction_time?: string
+  created_at?: string
+}
+
+export interface TetEarningPlan {
+  id: number
+  tet_target_amount: number
+  current_savings: number
+  tet_date?: string
+  days_remaining: number
+  daily_target_needed: number
+  daily_shift_start: string
+  daily_shift_end: string
+  home_arrival_time: string
+  today_earned: number
+  is_target_met_today: boolean
+  is_active: boolean
+  note?: string
+}
+
+export interface DualCoachAdvice {
+  financial_advice: string
+  study_skill_advice: string
+  daily_schedule_summary: Array<{
+    time: string
+    title: string
+    tag: string
+    room?: string
+    color?: string
+  }>
+  motivation_quote: string
+}
+
+export interface SchoolScheduleItem {
+  id: number
+  course_code?: string
+  course_name: string
+  day_of_week: number
+  day_name: string
+  start_time: string
+  end_time: string
+  room?: string
+  lecturer?: string
+  semester?: string
+  is_active: boolean
+}
+
 const OFFLINE_SESSIONS_KEY = 'pending_pomodoro_sessions'
 const GOALS_CACHE_KEY = 'lifequest_cached_goals'
 const STATS_CACHE_KEY = 'lifequest_cached_stats'
@@ -825,6 +895,120 @@ export const focusService = {
     tasks: AIBreakdownTaskItem[]
   }): Promise<{ ok: boolean; batch_id: string; count: number; message: string }> => {
     const res = await api.post('/focus/import/tasks', data)
+    return res.data
+  },
+
+  // --- Financial Jars & Tet Earning Plan ---
+  getFinancialJars: async (): Promise<FinancialJar[]> => {
+    const res = await api.get('/finance/jars')
+    return res.data
+  },
+
+  createFinancialJar: async (data: Partial<FinancialJar>): Promise<FinancialJar> => {
+    const res = await api.post('/finance/jars', data)
+    return res.data
+  },
+
+  updateFinancialJar: async (jar_id: number, data: Partial<FinancialJar>): Promise<FinancialJar> => {
+    const res = await api.put(`/finance/jars/${jar_id}`, data)
+    return res.data
+  },
+
+  deleteFinancialJar: async (jar_id: number): Promise<{ status: string; message: string }> => {
+    const res = await api.delete(`/finance/jars/${jar_id}`)
+    return res.data
+  },
+
+  getJarTransactions: async (jar_id?: number, category?: string): Promise<JarTransaction[]> => {
+    const params: Record<string, any> = {}
+    if (jar_id) params.jar_id = jar_id
+    if (category) params.category = category
+    const res = await api.get('/finance/transactions', { params })
+    return res.data
+  },
+
+  logExpense: async (data: {
+    amount: number
+    category?: string
+    description?: string
+    jar_id?: number
+  }): Promise<{ status: string; transaction: any; jar: FinancialJar; advice: string }> => {
+    const res = await api.post('/finance/expense', data)
+    return res.data
+  },
+
+  depositGigEarnings: async (data: {
+    amount: number
+    tet_percent?: number
+    living_percent?: number
+    description?: string
+  }): Promise<{
+    total_amount: number
+    tet_deposited: number
+    living_deposited: number
+    message: string
+    daily_target: number
+    daily_achieved: number
+    is_target_met: boolean
+  }> => {
+    const res = await api.post('/finance/gig-deposit', data)
+    return res.data
+  },
+
+  getTetEarningPlan: async (): Promise<TetEarningPlan> => {
+    const res = await api.get('/finance/tet-plan')
+    return res.data
+  },
+
+  updateTetEarningPlan: async (data: Partial<TetEarningPlan>): Promise<TetEarningPlan> => {
+    const res = await api.put('/finance/tet-plan', data)
+    return res.data
+  },
+
+  getDualCoachAdvice: async (): Promise<DualCoachAdvice> => {
+    const res = await api.get('/finance/dual-coach-advice')
+    return res.data
+  },
+
+  getSchoolSchedules: async (): Promise<SchoolScheduleItem[]> => {
+    const res = await api.get('/finance/school-schedule')
+    return res.data
+  },
+
+  addSchoolScheduleItem: async (data: Partial<SchoolScheduleItem>): Promise<SchoolScheduleItem> => {
+    const res = await api.post('/finance/school-schedule', data)
+    return res.data
+  },
+
+  deleteSchoolScheduleItem: async (id: number): Promise<{ status: string; message: string }> => {
+    const res = await api.delete(`/finance/school-schedule/${id}`)
+    return res.data
+  },
+
+  batchImportSchoolSchedule: async (
+    items: Partial<SchoolScheduleItem>[]
+  ): Promise<{ status: string; imported_count: number; message: string }> => {
+    const res = await api.post('/finance/school-schedule/batch-import', items)
+    return res.data
+  },
+
+  testTriggerBankExpense: async (
+    amount: number = 50000,
+    content: string = 'Ăn trưa cơm sườn'
+  ): Promise<{ success: boolean; message: string }> => {
+    const res = await api.post(
+      `/finance/test-trigger-bank-expense?amount=${amount}&content=${encodeURIComponent(content)}`
+    )
+    return res.data
+  },
+
+  testTriggerBankIncome: async (
+    amount: number = 260000,
+    content: string = 'Thu nhập ca chạy 10h-14h'
+  ): Promise<{ success: boolean; message: string }> => {
+    const res = await api.post(
+      `/finance/test-trigger-bank-income?amount=${amount}&content=${encodeURIComponent(content)}`
+    )
     return res.data
   },
 
