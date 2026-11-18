@@ -23,44 +23,74 @@ interface Props {
 
 const PHENIKAA_SAMPLE_SCHEDULE: Partial<SchoolScheduleItem>[] = [
   {
-    course_name: 'Lập Trình Web Nâng Cao & Fullstack',
-    course_code: 'CSE301',
+    course_name: 'Lập trình phân tích dữ liệu với python (Lý thuyết)',
+    course_code: 'CSE702031',
     day_of_week: 2, // Thứ 2
-    start_time: '07:00',
-    end_time: '09:15',
-    room: 'A7-302',
-    lecturer: 'TS. Nguyễn Văn Nam',
-    semester: 'Học kỳ 1 (2026-2027)',
+    start_time: '15:35',
+    end_time: '18:15',
+    room: 'A4-203',
+    lecturer: 'Thầy Bùi Anh Tuấn',
+    semester: 'Học kỳ 2 (2026-2027)',
   },
   {
-    course_name: 'Kiến Trúc & Thiết Kế Phần Mềm',
-    course_code: 'CSE305',
-    day_of_week: 3, // Thứ 3
-    start_time: '07:00',
-    end_time: '09:15',
-    room: 'A9-405',
-    lecturer: 'ThS. Trần Thị Mai',
-    semester: 'Học kỳ 1 (2026-2027)',
+    course_name: 'Lập trình phân tích dữ liệu với python (Thực hành)',
+    course_code: 'CSE702031',
+    day_of_week: 4, // Thứ 4
+    start_time: '09:50',
+    end_time: '12:30',
+    room: 'A6-201.202 (PC)',
+    lecturer: 'Thầy Bùi Anh Tuấn',
+    semester: 'Học kỳ 2 (2026-2027)',
   },
   {
-    course_name: 'Thực Hành Mạng Máy Tính & An Toàn',
-    course_code: 'CSE208',
+    course_name: 'Trực quan hoá dữ liệu (Lý thuyết)',
+    course_code: 'CSE702060',
+    day_of_week: 4, // Thứ 4
+    start_time: '15:35',
+    end_time: '18:15',
+    room: 'A8-201',
+    lecturer: 'Thầy Đào Thiện Thành',
+    semester: 'Học kỳ 2 (2026-2027)',
+  },
+  {
+    course_name: 'Quản trị dự án công nghệ thông tin (Lý thuyết)',
+    course_code: 'CSE702049',
     day_of_week: 5, // Thứ 5
     start_time: '07:00',
-    end_time: '09:15',
-    room: 'Lab B1-201',
-    lecturer: 'ThS. Hoàng Đức Long',
-    semester: 'Học kỳ 1 (2026-2027)',
+    end_time: '09:40',
+    room: 'A4-502 (TH)',
+    lecturer: 'Thầy Nguyễn Văn Hùng',
+    semester: 'Học kỳ 2 (2026-2027)',
   },
   {
-    course_name: 'Tiếng Anh Chuyên Ngành CNTT 2',
-    course_code: 'ENG202',
+    course_name: 'Quản trị dự án CNTT (E-learning)',
+    course_code: 'CSE702049',
+    day_of_week: 5, // Thứ 5
+    start_time: '18:00',
+    end_time: '20:30',
+    room: 'ONLINE-Elearning',
+    lecturer: 'Coursera / Elearning',
+    semester: 'Học kỳ 2 (2026-2027)',
+  },
+  {
+    course_name: 'Phân tích nghiệp vụ kinh doanh (Lý thuyết)',
+    course_code: 'CSE702046',
     day_of_week: 6, // Thứ 6
-    start_time: '07:00',
-    end_time: '09:15',
-    room: 'A7-104',
-    lecturer: 'Cô Emily Smith',
-    semester: 'Học kỳ 1 (2026-2027)',
+    start_time: '12:45',
+    end_time: '15:25',
+    room: 'A2-609.610',
+    lecturer: 'Thầy Nguyễn Hoàng Anh',
+    semester: 'Học kỳ 2 (2026-2027)',
+  },
+  {
+    course_name: 'Trực quan hoá dữ liệu (Thực hành)',
+    course_code: 'CSE702060',
+    day_of_week: 6, // Thứ 6
+    start_time: '15:35',
+    end_time: '18:15',
+    room: 'A6-305 (PC)',
+    lecturer: 'Thầy Đào Thiện Thành',
+    semester: 'Học kỳ 2 (2026-2027)',
   },
 ]
 
