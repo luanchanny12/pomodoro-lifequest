@@ -174,10 +174,26 @@ export async function triggerTelegramDeadlineNudge(
 ): Promise<void> {
   try {
     const res = await notificationService.sendDeadlineReminder()
-    toast.success(res.message || '📲 Đã gửi nhắc nhở Deadline sang Telegram!')
+    toast.success(res.message || '📲 Đã gửi nhắc nhở Việc cần làm & Deadline sang Telegram!')
   } catch (err: unknown) {
     const msg =
       err instanceof Error ? err.message : 'Chưa thể gửi nhắc nhở Telegram'
+    toast.error(msg)
+    if (onOpenSettings) {
+      onOpenSettings()
+    }
+  }
+}
+
+export async function triggerTelegramSchoolScheduleNudge(
+  onOpenSettings?: () => void
+): Promise<void> {
+  try {
+    const res = await notificationService.sendSchoolScheduleReminder()
+    toast.success(res.message || '🏛️ Đã gửi thông báo Lịch học Phenikaa hôm nay sang Telegram!')
+  } catch (err: unknown) {
+    const msg =
+      err instanceof Error ? err.message : 'Chưa thể gửi thông báo Lịch học Telegram'
     toast.error(msg)
     if (onOpenSettings) {
       onOpenSettings()

@@ -75,6 +75,16 @@ export const notificationService = {
     return res.data
   },
 
+  sendSchoolScheduleReminder: async (): Promise<{
+    message: string
+    ok: boolean
+    count: number
+    preview?: string
+  }> => {
+    const res = await api.post('/notifications/send-school-schedule-reminder')
+    return res.data
+  },
+
   triggerCloudTelegramCheck: async (
     force: boolean = false
   ): Promise<{ status: string; sent_any: boolean; details: string[] }> => {

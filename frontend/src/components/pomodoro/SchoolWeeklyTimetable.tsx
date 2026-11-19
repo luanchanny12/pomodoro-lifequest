@@ -18,11 +18,13 @@ import {
   User,
 } from 'lucide-react'
 import type { DeadlineItem } from '@/utils/deadlineUtils'
+import type { SchoolScheduleItem } from '@/services/focusService'
 
 export type TimetableSession = 'morning' | 'afternoon' | 'evening' | 'allday'
 
 export interface SchoolWeeklyTimetableProps {
-  items: DeadlineItem[]
+  schedules?: SchoolScheduleItem[]
+  items?: DeadlineItem[]
   todayYmd: string
   selectedDate?: string
   onSelectDate?: (dateYmd: string) => void
@@ -49,6 +51,22 @@ export function formatWeekRange(monday: Date): string {
   return `Tuần từ ${pad(monday.getDate())}/${pad(monday.getMonth() + 1)} đến ${pad(sunday.getDate())}/${pad(sunday.getMonth() + 1)}/${sunday.getFullYear()}`
 }
 
+export function classifyTimeSession(startTime?: string): TimetableSession {
+  if (!startTime) return 'morning'
+  const match = startTime.match(/(\d{1,2}):(\d{2})/)
+  if (!match) return 'morning'
+  const hour = parseInt(match[1], 10)
+  const min = parseInt(match[2], 10)
+  const totalMin = hour * 60 + min
+  if (totalMin < 12 * 60 + 35) {
+    return 'morning'
+  }
+  if (totalMin < 18 * 60) {
+    return 'afternoon'
+  }
+  return 'evening'
+}
+
 export function classifyItemSession(item: DeadlineItem): TimetableSession {
   let timeStr = item.time_range || ''
   if (!timeStr && item.notes) {
@@ -59,26 +77,9 @@ export function classifyItemSession(item: DeadlineItem): TimetableSession {
     const match = item.title.match(/(\d{1,2}:\d{2})/i)
     if (match) timeStr = match[1]
   }
-
   if (timeStr) {
-    const match = timeStr.match(/(\d{1,2}):(\d{2})/)
-    if (match) {
-      const hour = parseInt(match[1], 10)
-      const minute = parseInt(match[2], 10)
-      const totalMin = hour * 60 + minute
-      // Sáng: Trước 12:35
-      if (totalMin < 12 * 60 + 35) {
-        return 'morning'
-      }
-      // Chiều: Từ 12:35 đến trước 18:00
-      if (totalMin < 18 * 60) {
-        return 'afternoon'
-      }
-      // Tối: Từ 18:00 trở đi
-      return 'evening'
-    }
+    return classifyTimeSession(timeStr)
   }
-
   if (item.type === 'school_class') {
     return 'morning'
   }
@@ -86,14 +87,12 @@ export function classifyItemSession(item: DeadlineItem): TimetableSession {
 }
 
 const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
-  items,
+  schedules = [],
+  items = [],
   todayYmd,
   selectedDate,
   onSelectDate,
-  onStartPomodoro,
-  onComplete,
   onOpenQuickAdd,
-  busyKey,
 }) => {
   const [currentWeekMonday, setCurrentWeekMonday] = useState<Date>(() => {
     const now = new Date()
@@ -111,6 +110,7 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
       const ymd = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
       days.push({
         dayIndex: i,
+        dayOfWeek: i + 2, // Thứ 2 = 2, Thứ 7 = 7, Chủ Nhật = 8
         label: dayLabels[i],
         date: d,
         ymd,
@@ -122,18 +122,11 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
     return days
   }, [currentWeekMonday, todayYmd, selectedDate])
 
-  // Items mapped by YMD
-  const itemsByYmd = useMemo(() => {
-    const map = new Map<string, DeadlineItem[]>()
-    items.forEach((item) => {
-      const ymd = item.date?.slice(0, 10)
-      if (ymd) {
-        const list = map.get(ymd) || []
-        list.push(item)
-        map.set(ymd, list)
-      }
-    })
-    return map
+  // Chỉ lấy Lịch học trường & Ca chạy kiếm tiền (TUYỆT ĐỐI KHÔNG LẤY MỤC TIÊU HOẶC TO-DO VÀO TKB)
+  const academicItems = useMemo(() => {
+    return items.filter(
+      (it) => it.type === 'school_class' || it.type === 'gig_shift'
+    )
   }, [items])
 
   const handlePrevWeek = () => {
@@ -162,97 +155,112 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
     })
   }
 
-  // Count items this week
-  const weekItemCount = useMemo(() => {
-    let count = 0
-    weekDays.forEach((d) => {
-      count += (itemsByYmd.get(d.ymd) || []).length
+  // Lấy các lớp học cho từng ngày theo thứ trong tuần (dayOfWeek: 2..8)
+  const getClassesForDay = (dow: number, ymd: string) => {
+    // 1. Nếu có schedules truyền vào trực tiếp: map theo day_of_week
+    if (schedules && schedules.length > 0) {
+      return schedules.filter((s) => s.day_of_week === dow && s.is_active)
+    }
+
+    // 2. Nếu lấy từ academicItems (DeadlineItem format):
+    return academicItems.filter((it) => {
+      if (it.date?.slice(0, 10) === ymd) return true
+      return false
     })
-    return count
-  }, [weekDays, itemsByYmd])
+  }
 
-  // Helper render class or gig card
-  const renderItemCard = (item: DeadlineItem) => {
-    const isSchool = item.type === 'school_class'
-    const isGig = item.type === 'gig_shift'
+  // Count classes in week
+  const weekItemCount = useMemo(() => {
+    if (schedules && schedules.length > 0) {
+      return schedules.filter((s) => s.is_active).length
+    }
+    return academicItems.length
+  }, [schedules, academicItems])
 
-    // Extract lecturer & room if notes present
-    let lecturer = ''
-    let room = item.room || ''
-    if (item.notes) {
-      const lecMatch = item.notes.match(/GV:\s*([^|]+)/i)
-      if (lecMatch) lecturer = lecMatch[1].trim()
-      if (!room) {
-        const roomMatch = item.notes.match(/Phòng:\s*([^|]+)/i)
-        if (roomMatch) room = roomMatch[1].trim()
+  // Render thẻ môn học chuẩn Phenikaa
+  const renderCourseCard = (course: SchoolScheduleItem | DeadlineItem, key: string) => {
+    const isDeadlineFormat = 'type' in course
+    const title = isDeadlineFormat
+      ? (course as DeadlineItem).title.replace(/^📚\s*/, '')
+      : (course as SchoolScheduleItem).course_name
+    const timeRange = isDeadlineFormat
+      ? (course as DeadlineItem).time_range || 'Tiết học'
+      : `${(course as SchoolScheduleItem).start_time} - ${(course as SchoolScheduleItem).end_time}`
+    const room = isDeadlineFormat
+      ? (course as DeadlineItem).room || ''
+      : (course as SchoolScheduleItem).room || ''
+    let lecturer = !isDeadlineFormat
+      ? ((course as SchoolScheduleItem).lecturer || '')
+      : ''
+    if (isDeadlineFormat && (course as DeadlineItem).notes) {
+      const lecMatch = (course as DeadlineItem).notes!.match(/GV:\s*([^|]+)/i)
+      if (lecMatch) {
+        lecturer = lecMatch[1].trim()
       }
     }
-
-    if (isSchool) {
-      return (
-        <div
-          key={`${item.type}-${item.id}`}
-          className="group relative rounded-xl border border-blue-500/40 bg-gradient-to-br from-blue-950/90 via-slate-900/90 to-indigo-950/80 p-2.5 shadow-md hover:border-blue-400 hover:shadow-blue-500/20 transition-all text-xs"
-        >
-          {/* Header Tag: Room + Time */}
-          <div className="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
-            <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded-md bg-blue-500/25 text-blue-300 border border-blue-400/35 text-[11px]">
-              <Clock className="w-3 h-3 text-blue-400 shrink-0" />
-              <span>{item.time_range || 'Tiết học'}</span>
-            </span>
-            {room && (
-              <span className="inline-flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/35 text-[10px]">
-                <MapPin className="w-2.5 h-2.5 text-amber-400 shrink-0" />
-                <span className="truncate max-w-[100px]">{room}</span>
-              </span>
-            )}
-          </div>
-
-          {/* Subject Name */}
-          <div className="font-bold text-white text-[12px] leading-snug line-clamp-2 group-hover:text-sky-300 transition-colors">
-            {item.title.replace(/^📚\s*/, '')}
-          </div>
-
-          {/* Lecturer / Campus Tag */}
-          <div className="mt-1.5 pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
-            {lecturer ? (
-              <span className="inline-flex items-center gap-1 truncate text-slate-300">
-                <User className="w-2.5 h-2.5 text-sky-400 shrink-0" />
-                <span className="truncate">{lecturer}</span>
-              </span>
-            ) : (
-              <span className="text-slate-400">Phenikaa Uni</span>
-            )}
-            <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400">Cổng ĐT</span>
-          </div>
-        </div>
-      )
-    }
+    const isGig = isDeadlineFormat && (course as DeadlineItem).type === 'gig_shift'
 
     if (isGig) {
       return (
         <div
-          key={`${item.type}-${item.id}`}
+          key={key}
           className="group relative rounded-xl border border-emerald-500/40 bg-gradient-to-br from-emerald-950/80 via-slate-900/90 to-teal-950/80 p-2.5 shadow-md hover:border-emerald-400 transition-all text-xs"
         >
           <div className="flex items-center justify-between gap-1 mb-1">
             <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-400/35 text-[10px]">
               <Clock className="w-3 h-3 text-emerald-400" />
-              <span>{item.time_range || '10:00 - 14:00'}</span>
+              <span>{timeRange}</span>
             </span>
             <span className="text-[10px] font-semibold text-emerald-400">🛵 Ca Kiếm Tiền</span>
           </div>
           <div className="font-bold text-emerald-200 text-[11px] leading-tight">
-            {item.title.replace(/^🛵\s*/, '')}
+            {title.replace(/^🛵\s*/, '')}
           </div>
           <p className="text-[10px] text-slate-400 mt-1 line-clamp-1">
-            Nạp hũ Tết • Về nhà 15:00 tập trung học
+            Nạp hũ Tết • Về nhà tập trung học
           </p>
         </div>
       )
     }
 
-    return null
+    return (
+      <div
+        key={key}
+        className="group relative rounded-xl border border-blue-500/40 bg-gradient-to-br from-blue-950/90 via-slate-900/90 to-indigo-950/80 p-2.5 shadow-md hover:border-blue-400 hover:shadow-blue-500/20 transition-all text-xs"
+      >
+        {/* Header Tag: Room + Time */}
+        <div className="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
+          <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded-md bg-blue-500/25 text-blue-300 border border-blue-400/35 text-[11px]">
+            <Clock className="w-3 h-3 text-blue-400 shrink-0" />
+            <span>{timeRange}</span>
+          </span>
+          {room && (
+            <span className="inline-flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/35 text-[10px]">
+              <MapPin className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+              <span className="truncate max-w-[100px]">{room}</span>
+            </span>
+          )}
+        </div>
+
+        {/* Subject Name */}
+        <div className="font-bold text-white text-[12px] leading-snug line-clamp-2 group-hover:text-sky-300 transition-colors">
+          {title}
+        </div>
+
+        {/* Lecturer / Campus Tag */}
+        <div className="mt-1.5 pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
+          {lecturer ? (
+            <span className="inline-flex items-center gap-1 truncate text-slate-300">
+              <User className="w-2.5 h-2.5 text-sky-400 shrink-0" />
+              <span className="truncate">{lecturer}</span>
+            </span>
+          ) : (
+            <span className="text-slate-400">ĐH Phenikaa</span>
+          )}
+          <span className="text-[9px] px-1 rounded bg-slate-800 text-slate-400">Cổng ĐT</span>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -299,17 +307,13 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
             <span className="text-slate-300 font-medium">Ca kiếm tiền</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-sm shadow-rose-500/50" />
-            <span className="text-slate-300 font-medium">Việc Ô 1 / Thi cử</span>
-          </div>
           <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[11px]">
-            {weekItemCount} sự kiện
+            {weekItemCount} môn học
           </span>
         </div>
       </div>
 
-      {/* Main Timetable Matrix: Scrollable container on mobile */}
+      {/* Main Timetable Matrix: 3 SESSIONS ONLY (Sáng / Chiều / Tối) - KHÔNG GỘP TO-DO */}
       <div className="overflow-x-auto rounded-2xl border border-slate-700/80 bg-slate-950/60 shadow-xl pb-1">
         <table className="w-full min-w-[780px] border-collapse text-left">
           {/* Header 7 Days */}
@@ -360,7 +364,7 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
           </thead>
 
           <tbody>
-            {/* ── ROW 1: BUỔI SÁNG (06:45 - 12:30) ── */}
+            {/* ── ROW 1: BUỔI SÁNG (06:45 - 12:30 | Tiết 1 - 6) ── */}
             <tr className="border-b border-slate-800/80 hover:bg-slate-900/20 transition-colors">
               <td className="p-3 align-top border-r border-slate-800/80 bg-slate-900/50">
                 <div className="flex flex-col items-center text-center space-y-1">
@@ -373,10 +377,11 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                 </div>
               </td>
               {weekDays.map((d) => {
-                const dayItems = itemsByYmd.get(d.ymd) || []
-                const morningItems = dayItems.filter(
-                  (it) => classifyItemSession(it) === 'morning'
-                )
+                const dayCourses = getClassesForDay(d.dayOfWeek, d.ymd)
+                const morningCourses = dayCourses.filter((c) => {
+                  const sTime = 'start_time' in c ? (c as SchoolScheduleItem).start_time : (c as DeadlineItem).time_range
+                  return classifyTimeSession(sTime) === 'morning'
+                })
                 return (
                   <td
                     key={`morning-${d.ymd}`}
@@ -389,8 +394,10 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                     }`}
                   >
                     <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5 custom-scrollbar">
-                      {morningItems.map(renderItemCard)}
-                      {morningItems.length === 0 && (
+                      {morningCourses.map((c, idx) =>
+                        renderCourseCard(c, `morning-${d.ymd}-${idx}`)
+                      )}
+                      {morningCourses.length === 0 && (
                         <div
                           onClick={() => onOpenQuickAdd && onOpenQuickAdd(d.ymd)}
                           className="h-24 flex flex-col items-center justify-center text-[11px] text-slate-600/70 border border-dashed border-slate-800/60 rounded-xl hover:border-slate-700 hover:text-slate-400 hover:bg-slate-900/40 transition-colors cursor-pointer"
@@ -405,7 +412,7 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
               })}
             </tr>
 
-            {/* ── ROW 2: BUỔI CHIỀU (12:45 - 18:15) ── */}
+            {/* ── ROW 2: BUỔI CHIỀU (12:45 - 18:15 | Tiết 7 - 12) ── */}
             <tr className="border-b border-slate-800/80 hover:bg-slate-900/20 transition-colors">
               <td className="p-3 align-top border-r border-slate-800/80 bg-slate-900/50">
                 <div className="flex flex-col items-center text-center space-y-1">
@@ -418,10 +425,11 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                 </div>
               </td>
               {weekDays.map((d) => {
-                const dayItems = itemsByYmd.get(d.ymd) || []
-                const afternoonItems = dayItems.filter(
-                  (it) => classifyItemSession(it) === 'afternoon'
-                )
+                const dayCourses = getClassesForDay(d.dayOfWeek, d.ymd)
+                const afternoonCourses = dayCourses.filter((c) => {
+                  const sTime = 'start_time' in c ? (c as SchoolScheduleItem).start_time : (c as DeadlineItem).time_range
+                  return classifyTimeSession(sTime) === 'afternoon'
+                })
                 return (
                   <td
                     key={`afternoon-${d.ymd}`}
@@ -434,8 +442,10 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                     }`}
                   >
                     <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5 custom-scrollbar">
-                      {afternoonItems.map(renderItemCard)}
-                      {afternoonItems.length === 0 && (
+                      {afternoonCourses.map((c, idx) =>
+                        renderCourseCard(c, `afternoon-${d.ymd}-${idx}`)
+                      )}
+                      {afternoonCourses.length === 0 && (
                         <div
                           onClick={() => onOpenQuickAdd && onOpenQuickAdd(d.ymd)}
                           className="h-24 flex flex-col items-center justify-center text-[11px] text-slate-600/70 border border-dashed border-slate-800/60 rounded-xl hover:border-slate-700 hover:text-slate-400 hover:bg-slate-900/40 transition-colors cursor-pointer"
@@ -450,8 +460,8 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
               })}
             </tr>
 
-            {/* ── ROW 3: BUỔI TỐI (18:15 - 21:00) ── */}
-            <tr className="border-b border-slate-800/80 hover:bg-slate-900/20 transition-colors">
+            {/* ── ROW 3: BUỔI TỐI (18:15 - 21:00 | Tiết 13 - 16) ── */}
+            <tr className="hover:bg-slate-900/20 transition-colors">
               <td className="p-3 align-top border-r border-slate-800/80 bg-slate-900/50">
                 <div className="flex flex-col items-center text-center space-y-1">
                   <span className="text-base">🌙</span>
@@ -463,14 +473,15 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                 </div>
               </td>
               {weekDays.map((d) => {
-                const dayItems = itemsByYmd.get(d.ymd) || []
-                const eveningItems = dayItems.filter(
-                  (it) => classifyItemSession(it) === 'evening'
-                )
+                const dayCourses = getClassesForDay(d.dayOfWeek, d.ymd)
+                const eveningCourses = dayCourses.filter((c) => {
+                  const sTime = 'start_time' in c ? (c as SchoolScheduleItem).start_time : (c as DeadlineItem).time_range
+                  return classifyTimeSession(sTime) === 'evening'
+                })
                 return (
                   <td
                     key={`evening-${d.ymd}`}
-                    className={`p-2 align-top border-r border-slate-800/80 last:border-r-0 h-24 ${
+                    className={`p-2 align-top border-r border-slate-800/80 last:border-r-0 h-28 ${
                       d.isSelected
                         ? 'bg-sky-500/[0.06]'
                         : d.isToday
@@ -479,8 +490,10 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                     }`}
                   >
                     <div className="space-y-1.5 max-h-28 overflow-y-auto pr-0.5 custom-scrollbar">
-                      {eveningItems.map(renderItemCard)}
-                      {eveningItems.length === 0 && (
+                      {eveningCourses.map((c, idx) =>
+                        renderCourseCard(c, `evening-${d.ymd}-${idx}`)
+                      )}
+                      {eveningCourses.length === 0 && (
                         <div
                           onClick={() => onOpenQuickAdd && onOpenQuickAdd(d.ymd)}
                           className="h-16 flex flex-col items-center justify-center text-[11px] text-slate-600/70 border border-dashed border-slate-800/60 rounded-xl hover:border-slate-700 hover:text-slate-400 hover:bg-slate-900/40 transition-colors cursor-pointer"
@@ -490,62 +503,6 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                         </div>
                       )}
                     </div>
-                  </td>
-                )
-              })}
-            </tr>
-
-            {/* ── ROW 4: DÒNG TÓM TẮT VIỆC Ô 1 & DEADLINE (CỐ ĐỊNH CHIỀU CAO - KHÔNG LÀM VỠ BẢNG) ── */}
-            <tr className="hover:bg-slate-900/30 transition-colors bg-slate-950/40">
-              <td className="p-2.5 align-middle border-r border-slate-800/80 bg-slate-900/60">
-                <div className="flex flex-col items-center text-center space-y-0.5">
-                  <span className="text-base">🎯</span>
-                  <span className="text-[11px] font-extrabold text-rose-300">Việc Cần Làm</span>
-                  <span className="text-[9px] text-slate-400">Ma trận Ô 1</span>
-                </div>
-              </td>
-              {weekDays.map((d) => {
-                const dayItems = itemsByYmd.get(d.ymd) || []
-                const allDayItems = dayItems.filter(
-                  (it) => classifyItemSession(it) === 'allday'
-                )
-                const count = allDayItems.length
-                return (
-                  <td
-                    key={`allday-${d.ymd}`}
-                    className={`p-1.5 align-middle border-r border-slate-800/80 last:border-r-0 ${
-                      d.isSelected
-                        ? 'bg-sky-500/[0.06]'
-                        : d.isToday
-                        ? 'bg-orange-500/[0.04]'
-                        : ''
-                    }`}
-                  >
-                    {count > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => onSelectDate && onSelectDate(d.ymd)}
-                        className={`w-full group flex items-center justify-between p-1.5 rounded-xl border transition-all cursor-pointer text-left ${
-                          d.isSelected
-                            ? 'bg-gradient-to-r from-rose-900/60 to-amber-950/50 border-rose-400 shadow-sm shadow-rose-500/20'
-                            : 'bg-gradient-to-r from-rose-950/40 to-slate-900 border-rose-500/35 hover:border-rose-400 hover:from-rose-900/50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1 min-w-0">
-                          <Flame className="w-3 h-3 text-rose-400 shrink-0 animate-pulse" />
-                          <span className="text-[10px] sm:text-[11px] font-bold text-rose-200 truncate">
-                            {count} Việc Ô 1
-                          </span>
-                        </div>
-                        <span className="text-[9px] text-rose-400/90 group-hover:text-rose-200 shrink-0 ml-1 font-semibold">
-                          Xem →
-                        </span>
-                      </button>
-                    ) : (
-                      <div className="h-7 flex items-center justify-center text-[10px] text-slate-600">
-                        -
-                      </div>
-                    )}
                   </td>
                 )
               })}

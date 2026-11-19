@@ -1,17 +1,27 @@
 import React, { useState, useEffect, useMemo, startTransition } from 'react'
 import {
+  Bell,
+  BookOpen,
+  Calendar,
   CalendarDays,
+  CheckCircle2,
+  Clock,
   Coins,
   GraduationCap,
   LayoutGrid,
+  MapPin,
+  Play,
   Plus,
   Send,
   Sparkles,
+  Trash2,
+  User,
   Wallet,
   X,
 } from 'lucide-react'
 import type { DeadlineItem, DeadlinesResponse } from '@/utils/deadlineUtils'
 import { getLocalTodayYmd } from '@/utils/deadlineUtils'
+import { focusService, type SchoolScheduleItem } from '@/services/focusService'
 import { FinancialJarsCard } from './FinancialJarsCard'
 import { SchoolWeeklyTimetable } from './SchoolWeeklyTimetable'
 import { ScheduleDayDetailCard } from './ScheduleDayDetailCard'
@@ -22,7 +32,9 @@ import {
   DeadlineQuickAddForm,
   rescheduleDeadlineItem,
   triggerTelegramDeadlineNudge,
+  triggerTelegramSchoolScheduleNudge,
 } from './DeadlineShared'
+import { toast } from 'sonner'
 
 export type HubTab = 'finance' | 'schedule' | 'calendar'
 
@@ -60,13 +72,31 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
   const [showAIBreakdownModal, setShowAIBreakdownModal] = useState(false)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [sendingTelegram, setSendingTelegram] = useState(false)
+  const [sendingSchoolTelegram, setSendingSchoolTelegram] = useState(false)
+
+  // Pure School Schedules (Lịch học trường Phenikaa)
+  const [schoolSchedules, setSchoolSchedules] = useState<SchoolScheduleItem[]>([])
+  const [loadingSchedules, setLoadingSchedules] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
       setActiveTab(initialTab)
       setSelectedDate(todayYmd)
+      loadSchoolSchedules()
     }
   }, [isOpen, initialTab, todayYmd])
+
+  const loadSchoolSchedules = async () => {
+    try {
+      setLoadingSchedules(true)
+      const data = await focusService.getSchoolSchedules()
+      setSchoolSchedules(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.warn('Could not load school schedules:', e)
+    } finally {
+      setLoadingSchedules(false)
+    }
+  }
 
   // Escape key handler
   useEffect(() => {
@@ -79,11 +109,27 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose])
 
-  // Filter items for selected date
-  const selectedDayItems = useMemo(
-    () => deadlinesData.items.filter((item) => item.date?.slice(0, 10) === selectedDate),
-    [deadlinesData.items, selectedDate]
+  // Pure Tasks & Deadlines (CHỈ CÔNG VIỆC VÀ MỤC TIÊU - TÁCH RỜI KHỎI LỊCH HỌC)
+  const tasksAndDeadlines = useMemo(() => {
+    return deadlinesData.items.filter((item) => item.type !== 'school_class')
+  }, [deadlinesData.items])
+
+  // Tasks for selected date
+  const selectedDayTasks = useMemo(
+    () => tasksAndDeadlines.filter((item) => item.date?.slice(0, 10) === selectedDate),
+    [tasksAndDeadlines, selectedDate]
   )
+
+  // Classes for selected date (based on day of week 2..8)
+  const selectedDayClasses = useMemo(() => {
+    const parts = selectedDate.split('-').map(Number)
+    if (parts.length === 3) {
+      const d = new Date(parts[0], parts[1] - 1, parts[2])
+      const dow = d.getDay() === 0 ? 8 : d.getDay() + 1
+      return schoolSchedules.filter((s) => s.day_of_week === dow && s.is_active)
+    }
+    return []
+  }, [selectedDate, schoolSchedules])
 
   const handleComplete = async (item: DeadlineItem) => {
     const key = `${item.type}-${item.id}`
@@ -107,12 +153,35 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
     }
   }
 
-  const handleTelegramNudge = async () => {
+  // Nhắc việc cần làm & deadline qua Telegram
+  const handleTaskTelegramNudge = async () => {
     try {
       setSendingTelegram(true)
       await triggerTelegramDeadlineNudge(onOpenNotificationSettings)
     } finally {
       setSendingTelegram(false)
+    }
+  }
+
+  // Nhắc Lịch Học Phenikaa hôm nay qua Telegram (TÁCH RIÊNG HOÀN TOÀN)
+  const handleSchoolScheduleTelegramNudge = async () => {
+    try {
+      setSendingSchoolTelegram(true)
+      await triggerTelegramSchoolScheduleNudge(onOpenNotificationSettings)
+    } finally {
+      setSendingSchoolTelegram(false)
+    }
+  }
+
+  const handleDeleteCourse = async (courseId: number, courseName: string) => {
+    if (!confirm(`Bạn có chắc muốn xóa môn "${courseName}" khỏi thời khóa biểu?`)) return
+    try {
+      await focusService.deleteSchoolScheduleItem(courseId)
+      toast.success(`Đã xóa môn "${courseName}"!`)
+      await loadSchoolSchedules()
+      await onRefreshDeadlines()
+    } catch {
+      toast.error('Chưa thể xóa môn học!')
     }
   }
 
@@ -143,7 +212,7 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Cân bằng mượt mà giữa thời khóa biểu Phenikaa, ca kiếm tiền và hũ tài chính
+                Tách biệt hoàn hảo: Lịch học Phenikaa (PKA) • Việc cần làm & Deadline • Hũ tài chính
               </p>
             </div>
           </div>
@@ -161,9 +230,9 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
           </div>
         </div>
 
-        {/* Tab Navigation Strip */}
+        {/* Tab Navigation Strip (3 TAB TÁCH BIỆT RÕ RÀNG) */}
         <div className="flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-slate-950/70 border-b border-slate-800/80 shrink-0 overflow-x-auto">
-          {/* Tab 1: Thời khóa biểu tuần */}
+          {/* Tab 1: Thời khóa biểu & Lịch học Phenikaa */}
           <button
             type="button"
             onClick={() => startTransition(() => setActiveTab('schedule'))}
@@ -174,26 +243,31 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
             }`}
           >
             <GraduationCap className="w-4 h-4 text-sky-300" />
-            <span>Thời Khóa Biểu & Lịch Thi</span>
-            {deadlinesData.items.length > 0 && (
-              <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-slate-900 text-sky-200 font-semibold">
-                {deadlinesData.items.length}
+            <span>Thời Khóa Biểu & Lịch Thi (Phenikaa PKA)</span>
+            {schoolSchedules.length > 0 && (
+              <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-900 text-sky-200 font-bold border border-sky-500/30">
+                {schoolSchedules.length} môn
               </span>
             )}
           </button>
 
-          {/* Tab 2: Lịch tháng & Deadline */}
+          {/* Tab 2: Việc cần làm & Deadline */}
           <button
             type="button"
             onClick={() => startTransition(() => setActiveTab('calendar'))}
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'calendar'
-                ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-md shadow-sky-500/25 border border-sky-400/50'
+                ? 'bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-md shadow-rose-500/25 border border-rose-400/50'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
-            <LayoutGrid className="w-4 h-4 text-sky-300" />
-            <span>Lịch Tháng & Deadline</span>
+            <LayoutGrid className="w-4 h-4 text-rose-300" />
+            <span>Danh Sách Việc Cần Làm & Deadline</span>
+            {tasksAndDeadlines.length > 0 && (
+              <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-900 text-rose-200 font-bold border border-rose-500/30">
+                {tasksAndDeadlines.length} việc
+              </span>
+            )}
           </button>
 
           {/* Tab 3: Hũ tài chính */}
@@ -214,35 +288,199 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
         {/* Modal Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-5">
           {activeTab === 'schedule' ? (
+            /* ═══════════ TAB 1: LỊCH HỌC PHENIKAA CHUYÊN BIỆT (KHÔNG CHỨA TO-DO) ═══════════ */
             <div className="space-y-4">
-              {/* Quick Actions Toolbar */}
+              {/* Quick Actions Toolbar cho Lịch Học Phenikaa */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/80 border border-slate-800">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-bold text-sky-300 px-2.5 py-1 rounded-xl bg-sky-500/15 border border-sky-500/30">
-                    🏛️ TKB Trường Đại Học & Ca Kiếm Tiền
+                    🏛️ Lịch Học Trường ĐH Phenikaa ({schoolSchedules.length} môn học)
                   </span>
                   <span className="text-xs text-slate-400 hidden sm:inline">
-                    Bấm ngày trên bảng để xem và xử lý việc Ô 1 bên phải
+                    Lịch học chuẩn tiết học (Sáng / Chiều / Tối) theo Thứ 2 đến Chủ Nhật
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* Nút gửi nhắc Lịch Học Phenikaa riêng */}
+                  <button
+                    type="button"
+                    disabled={sendingSchoolTelegram}
+                    onClick={handleSchoolScheduleTelegramNudge}
+                    title="Gửi ngay danh sách lịch học hôm nay tới Telegram điện thoại"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-sky-300 border border-blue-500/40 font-semibold text-xs transition-all disabled:opacity-60 cursor-pointer shadow-sm"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{sendingSchoolTelegram ? 'Đang gửi...' : '📲 Nhắc Lịch Học PKA'}</span>
+                  </button>
+
+                  {onOpenNotificationSettings && (
+                    <button
+                      type="button"
+                      onClick={onOpenNotificationSettings}
+                      title="Cài đặt thông báo Telegram"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition cursor-pointer"
+                    >
+                      <Bell className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Cài đặt nhắc</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => {
-                      setAddFormDate(selectedDate || todayYmd)
+                      setAddFormDate(todayYmd)
                       setShowAddForm((prev) => !prev)
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-sm transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs shadow-sm transition-all cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>{showAddForm ? 'Đóng form' : '+ Thêm Việc/Lịch'}</span>
+                    <span>{showAddForm ? 'Đóng' : '+ Thêm Môn Học'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Add Form Modal/Inline */}
+              {showAddForm && (
+                <DeadlineQuickAddForm
+                  compact
+                  initialDate={addFormDate}
+                  onCreated={() => {
+                    loadSchoolSchedules()
+                    onRefreshDeadlines()
+                  }}
+                  onCancel={() => setShowAddForm(false)}
+                />
+              )}
+
+              {/* 🌟 BỐ CỤC 2 CỘT CHO LỊCH HỌC PHENIKAA */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                {/* Cột trái (8/12 ~ 67%): Bảng Thời Khóa Biểu Tuần Phenikaa (CHỈ CHỨA MÔN HỌC) */}
+                <div className="lg:col-span-8">
+                  <SchoolWeeklyTimetable
+                    schedules={schoolSchedules}
+                    todayYmd={todayYmd}
+                    selectedDate={selectedDate}
+                    onSelectDate={setSelectedDate}
+                    onOpenQuickAdd={(d) => {
+                      setAddFormDate(d)
+                      setShowAddForm(true)
+                    }}
+                  />
+                </div>
+
+                {/* Cột phải (4/12 ~ 33%): Chi tiết môn học của ngày được chọn */}
+                <div className="lg:col-span-4 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-md p-3.5 sm:p-4 space-y-3">
+                  <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                        <Calendar className="w-4 h-4 text-sky-400" />
+                        <span>Môn Học Ngày: {selectedDate}</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {selectedDayClasses.length === 0
+                          ? 'Ngày này không có lịch học trường'
+                          : `Có ${selectedDayClasses.length} môn học/tiết học`}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={sendingSchoolTelegram || selectedDayClasses.length === 0}
+                      onClick={handleSchoolScheduleTelegramNudge}
+                      className="p-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-semibold disabled:opacity-50 cursor-pointer"
+                      title="Gửi môn học ngày này sang Telegram"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-[460px] overflow-y-auto pr-0.5 custom-scrollbar">
+                    {selectedDayClasses.length === 0 ? (
+                      <div className="py-8 text-center text-slate-500 text-xs flex flex-col items-center justify-center space-y-1.5">
+                        <BookOpen className="w-6 h-6 text-slate-600" />
+                        <p className="text-slate-400">Không có tiết học Phenikaa trong ngày này.</p>
+                        <span className="text-[10px] text-slate-500">
+                          Bấm vào các ngày Thứ 2, 4, 5, 6 trên bảng để xem môn học!
+                        </span>
+                      </div>
+                    ) : (
+                      selectedDayClasses.map((c) => (
+                        <div
+                          key={`class-detail-${c.id}`}
+                          className="rounded-xl border border-blue-500/40 bg-gradient-to-br from-blue-950/70 to-slate-900 p-3 space-y-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-bold text-white text-xs sm:text-sm leading-snug">
+                              {c.course_name}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCourse(c.id, c.course_name)}
+                              className="p-1 text-slate-500 hover:text-rose-400 transition"
+                              title="Xóa môn này"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                            <span className="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                              <Clock className="w-3 h-3 text-blue-400" />
+                              <span>{c.start_time} - {c.end_time}</span>
+                            </span>
+                            {c.room && (
+                              <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                <MapPin className="w-2.5 h-2.5 text-amber-400" />
+                                <span>Phòng: {c.room}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {c.lecturer && (
+                            <div className="text-[11px] text-slate-300 flex items-center gap-1 pt-1 border-t border-slate-800">
+                              <User className="w-3 h-3 text-sky-400" />
+                              <span>Giảng viên: {c.lecturer}</span>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'calendar' ? (
+            /* ═══════════ TAB 2: VIỆC CẦN LÀM & DEADLINE CHUYÊN BIỆT ═══════════ */
+            <div className="space-y-4">
+              {/* Quick Actions Toolbar cho Việc Cần Làm */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/80 border border-slate-800">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-rose-300 px-2.5 py-1 rounded-xl bg-rose-500/15 border border-rose-500/30">
+                    🎯 Danh Sách Việc Cần Làm & Hạn Chót ({tasksAndDeadlines.length} việc)
+                  </span>
+                  <span className="text-xs text-slate-400 hidden sm:inline">
+                    Ma trận Ô 1 (Làm ngay) & Hạn chót mục tiêu cá nhân
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Nút gửi nhắc Việc cần làm riêng */}
+                  <button
+                    type="button"
+                    disabled={sendingTelegram}
+                    onClick={handleTaskTelegramNudge}
+                    title="Gửi ngay danh sách việc cần làm tới Telegram điện thoại"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-semibold text-xs transition-all disabled:opacity-60 cursor-pointer shadow-sm"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{sendingTelegram ? 'Đang gửi...' : '📲 Nhắc Việc Cần Làm'}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setShowAIBreakdownModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500/25 via-purple-500/25 to-pink-500/25 hover:from-indigo-500/35 hover:to-pink-500/35 text-indigo-300 border border-indigo-500/40 font-semibold text-xs shadow-sm transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500/25 to-pink-500/25 text-indigo-300 border border-indigo-500/40 font-semibold text-xs shadow-sm transition-all cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
                     <span>✨ AI Chia Nhỏ</span>
@@ -250,13 +488,14 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
 
                   <button
                     type="button"
-                    disabled={sendingTelegram}
-                    onClick={handleTelegramNudge}
-                    title="Gửi ngay danh sách việc ngày này tới Telegram điện thoại"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 font-semibold text-xs transition-all disabled:opacity-60 cursor-pointer"
+                    onClick={() => {
+                      setAddFormDate(todayYmd)
+                      setShowAddForm((prev) => !prev)
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-sm transition-all cursor-pointer"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{sendingTelegram ? 'Đang gửi...' : '📲 Nhắc Telegram'}</span>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{showAddForm ? 'Đóng' : '+ Thêm Việc Mới'}</span>
                   </button>
                 </div>
               </div>
@@ -271,32 +510,23 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
                 />
               )}
 
-              {/* 🌟 2-COLUMN MASTER-DETAIL LAYOUT (Chống vỡ bảng và cân đối 100%) */}
+              {/* Lịch Tháng & Danh Sách Việc Chi Tiết */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-                {/* Cột trái (8/12 ~ 67%): Bảng Thời Khóa Biểu Tuần Phenikaa */}
-                <div className="lg:col-span-8">
-                  <SchoolWeeklyTimetable
-                    items={deadlinesData.items}
-                    todayYmd={todayYmd}
+                <div className="lg:col-span-6">
+                  <DeadlineMonthCalendar
+                    currentDate={calendarMonthDate}
                     selectedDate={selectedDate}
+                    items={tasksAndDeadlines}
+                    todayYmd={todayYmd}
                     onSelectDate={setSelectedDate}
-                    onStartPomodoro={onStartPomodoro}
-                    onComplete={handleComplete}
-                    onReschedule={handleReschedule}
-                    onOpenQuickAdd={(d) => {
-                      setAddFormDate(d)
-                      setShowAddForm(true)
-                    }}
-                    busyKey={busyKey}
+                    onMonthChange={setCalendarMonthDate}
                   />
                 </div>
-
-                {/* Cột phải (4/12 ~ 33%): Panel Nhiệm Vụ Khẩn Cấp Ô 1 & Chi Tiết Ngày */}
-                <div className="lg:col-span-4">
+                <div className="lg:col-span-6">
                   <ScheduleDayDetailCard
                     selectedDate={selectedDate}
                     todayYmd={todayYmd}
-                    items={selectedDayItems}
+                    items={selectedDayTasks}
                     busyKey={busyKey}
                     onComplete={handleComplete}
                     onReschedule={handleReschedule}
@@ -305,47 +535,15 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
                       setAddFormDate(d)
                       setShowAddForm(true)
                     }}
-                    onTriggerTelegram={handleTelegramNudge}
+                    onTriggerTelegram={handleTaskTelegramNudge}
                     sendingTelegram={sendingTelegram}
-                    maxHeightClass="max-h-[500px]"
+                    maxHeightClass="max-h-[480px]"
                   />
                 </div>
               </div>
             </div>
-          ) : activeTab === 'calendar' ? (
-            /* Tab 2: Lịch tháng 30 ngày kiểu Phenikaa */
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-              <div className="lg:col-span-6">
-                <DeadlineMonthCalendar
-                  currentDate={calendarMonthDate}
-                  selectedDate={selectedDate}
-                  items={deadlinesData.items}
-                  todayYmd={todayYmd}
-                  onSelectDate={setSelectedDate}
-                  onMonthChange={setCalendarMonthDate}
-                />
-              </div>
-              <div className="lg:col-span-6">
-                <ScheduleDayDetailCard
-                  selectedDate={selectedDate}
-                  todayYmd={todayYmd}
-                  items={selectedDayItems}
-                  busyKey={busyKey}
-                  onComplete={handleComplete}
-                  onReschedule={handleReschedule}
-                  onStartPomodoro={onStartPomodoro}
-                  onOpenQuickAdd={(d) => {
-                    setAddFormDate(d)
-                    setShowAddForm(true)
-                  }}
-                  onTriggerTelegram={handleTelegramNudge}
-                  sendingTelegram={sendingTelegram}
-                  maxHeightClass="max-h-[460px]"
-                />
-              </div>
-            </div>
           ) : (
-            /* Tab 3: Hũ tài chính & Mục tiêu Tết */
+            /* ═══════════ TAB 3: HŨ TÀI CHÍNH & MỤC TIÊU TẾT ═══════════ */
             <div className="space-y-4">
               <FinancialJarsCard />
             </div>
@@ -359,7 +557,7 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
           isOpen={showAIBreakdownModal}
           onClose={() => setShowAIBreakdownModal(false)}
           onSuccess={onRefreshDeadlines}
-          deadlines={deadlinesData.items}
+          deadlines={tasksAndDeadlines}
         />
       )}
     </div>

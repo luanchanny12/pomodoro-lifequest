@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import NotificationSetting, DailyMatrixTask, StudySessionLog, StudyGoal
+from app.models import NotificationSetting, DailyMatrixTask, StudySessionLog, StudyGoal, SchoolClassSchedule, TetEarningPlan
 from app.models_auth import User
 from app.routers.auth import get_current_user_optional, get_current_user
 from app.schemas import (
@@ -914,5 +914,79 @@ def send_deadline_reminder_now(
         "message": f"Đã gửi nhắc nhở {len(deadlines)} deadline tới Telegram!",
         "ok": True,
         "count": len(deadlines),
+        "preview": msg[:150] + "...",
+    }
+
+
+@router.post("/send-school-schedule-reminder")
+def send_school_schedule_reminder_now(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Gửi ngay thông báo nhắc nhở Lịch Học Trường Phenikaa (PKA) hôm nay qua Telegram.
+    Tách biệt hoàn toàn với danh sách việc cần làm (to-do) và mục tiêu cá nhân.
+    """
+    setting = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
+    if not setting or not setting.telegram_bot_token or not setting.telegram_chat_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Bạn chưa lưu cấu hình Telegram Bot Token hoặc Chat ID. Vui lòng mở Cài đặt Thông báo → Bot Telegram để liên kết trước!",
+        )
+
+    bot_token = setting.telegram_bot_token.strip()
+    chat_id = setting.telegram_chat_id.strip()
+
+    now_vn = _vn_now()
+    today_vn = now_vn.date()
+    weekday_vn = today_vn.weekday() + 2  # Thứ 2 = 2 ... Chủ nhật = 8
+    day_names = {2: "Thứ Hai", 3: "Thứ Ba", 4: "Thứ Tư", 5: "Thứ Năm", 6: "Thứ Sáu", 7: "Thứ Bảy", 8: "Chủ Nhật"}
+    day_name_str = day_names.get(weekday_vn, "Hôm nay")
+    date_display_str = today_vn.strftime("%d/%m/%Y")
+    display_name = user.display_name or "Bạn"
+
+    classes = db.query(SchoolClassSchedule).filter(
+        SchoolClassSchedule.user_id == user.id,
+        SchoolClassSchedule.day_of_week == weekday_vn,
+        SchoolClassSchedule.is_active == True,
+    ).order_by(SchoolClassSchedule.start_time.asc()).all()
+
+    plan = db.query(TetEarningPlan).filter(
+        TetEarningPlan.user_id == user.id,
+        TetEarningPlan.is_active == True,
+    ).first()
+
+    lines = [
+        f"🏛️ <b>LỊCH HỌC TRƯỜNG PHENIKAA HÔM NAY</b>",
+        f"📅 <i>{day_name_str}, ngày {date_display_str}</i>\n",
+        f"Chào <b>{display_name}</b>!",
+    ]
+
+    if classes:
+        lines.append(f"Hôm nay bạn có <b>{len(classes)} môn học/tiết học</b> trên trường:")
+        for idx, c in enumerate(classes, 1):
+            room_str = f" | 📍 Phòng: <code>{c.room}</code>" if c.room else ""
+            lecturer_str = f" | GV: {c.lecturer}" if c.lecturer else ""
+            lines.append(
+                f"<b>{idx}. {c.course_name}</b>\n"
+                f"   ⏰ <b>{c.start_time} - {c.end_time}</b>{room_str}{lecturer_str}"
+            )
+    else:
+        lines.append("🎉 Hôm nay bạn <b>không có tiết học nào</b> trên trường Đại học Phenikaa!")
+
+    if plan and getattr(plan, "shift_enabled", False):
+        s_name = getattr(plan, "shift_name", "Ca làm việc") or "Ca làm việc"
+        s_start = getattr(plan, "daily_shift_start", "10:00")
+        s_end = getattr(plan, "daily_shift_end", "14:00")
+        lines.append(f"\n🛵 <b>Ca kiếm tiền hôm nay:</b> {s_start} - {s_end} ({s_name})")
+
+    lines.append("\n💡 <i>Chúc bạn đến lớp đúng giờ, học tập tập trung và hoàn thành tốt ngày hôm nay! 🚀</i>")
+
+    msg = "\n".join(lines)
+    _send_telegram_with_friendly_errors(bot_token, chat_id, msg)
+    return {
+        "message": f"Đã gửi nhắc nhở {len(classes)} môn học Phenikaa hôm nay tới Telegram!",
+        "ok": True,
+        "count": len(classes),
         "preview": msg[:150] + "...",
     }

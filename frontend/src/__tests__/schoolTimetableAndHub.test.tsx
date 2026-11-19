@@ -182,11 +182,10 @@ describe('SchoolWeeklyTimetable Component', () => {
       />
     )
 
-    // Check headings
+    // Check headings for 3 academic sessions
     expect(screen.getByText(/Buổi Sáng/i)).toBeInTheDocument()
     expect(screen.getByText(/Buổi Chiều/i)).toBeInTheDocument()
     expect(screen.getByText(/Buổi Tối/i)).toBeInTheDocument()
-    expect(screen.getByText(/Việc Cần Làm/i)).toBeInTheDocument()
 
     // Check course details rendered
     expect(screen.getByText(/Quản trị dự án CNTT/i)).toBeInTheDocument()
