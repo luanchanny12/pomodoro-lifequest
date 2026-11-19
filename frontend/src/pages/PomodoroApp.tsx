@@ -104,6 +104,8 @@ const DeadlineCalendarModal = lazy(() => import('@/components/pomodoro/DeadlineC
 import { DeadlineAlertBanner } from '@/components/pomodoro/DeadlineAlertBanner'
 import { DeadlineHomeSection } from '@/components/pomodoro/DeadlineHomeSection'
 import { FinancialJarsCard } from '@/components/pomodoro/FinancialJarsCard'
+import { FinanceScheduleHubCard } from '@/components/pomodoro/FinanceScheduleHubCard'
+import { FinanceScheduleHubModal, type HubTab } from '@/components/pomodoro/FinanceScheduleHubModal'
 import { buildDeadlinesPayload, type DeadlinesResponse } from '@/utils/deadlineUtils'
 
 type TimerMode = 'pomodoro' | 'shortBreak' | 'longBreak'
@@ -653,6 +655,8 @@ export default function PomodoroApp() {
   const [isCheerHistoryModalOpen, setIsCheerHistoryModalOpen] = useState<boolean>(false)
   const [isSquadsModalOpen, setIsSquadsModalOpen] = useState<boolean>(false)
   const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState<boolean>(false)
+  const [isHubModalOpen, setIsHubModalOpen] = useState<boolean>(false)
+  const [hubInitialTab, setHubInitialTab] = useState<HubTab>('schedule')
   const [isTimerToggling, setIsTimerToggling] = useState<boolean>(false)
   const [isSavingEarly, setIsSavingEarly] = useState<boolean>(false)
   const isSavingEarlyRef = useRef<boolean>(false)
@@ -1081,6 +1085,10 @@ export default function PomodoroApp() {
   const handleOpenFeedback = useCallback(() => setIsFeedbackModalOpen(true), [])
   const handleOpenRace = useCallback(() => setIsRaceModalOpen(true), [])
   const handleOpenDeadlineModal = useCallback(() => setIsDeadlineModalOpen(true), [])
+  const handleOpenHubModal = useCallback((tab: HubTab = 'schedule') => {
+    setHubInitialTab(tab)
+    setIsHubModalOpen(true)
+  }, [])
   const handleOpenNotificationModal = useCallback(() => setIsNotificationModalOpen(true), [])
   const handleStartPomodoroFromDeadline = useCallback((goalId: number) => {
     setSelectedGoalId(goalId)
@@ -1502,12 +1510,12 @@ export default function PomodoroApp() {
               <span className="hidden sm:inline">Nhóm Học F1</span>
             </button>
             
-            {/* Deadline Button */}
+            {/* Deadline & Finance Hub Button */}
             <button
               type="button"
-              onClick={handleOpenDeadlineModal}
-              className={`relative p-2 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/30 text-amber-300 transition active:scale-95 flex items-center justify-center min-w-[36px] min-h-[36px]`}
-              title="Lịch Deadline"
+              onClick={() => handleOpenHubModal('schedule')}
+              className={`relative p-2 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/30 text-amber-300 transition active:scale-95 flex items-center justify-center min-w-[36px] min-h-[36px] cursor-pointer`}
+              title="Thời Khóa Biểu & Hũ Tài Chính"
             >
               <Calendar className="w-4 h-4" />
               {deadlineSummary && (deadlineSummary.overdue + deadlineSummary.today > 0) && (
@@ -1729,18 +1737,14 @@ export default function PomodoroApp() {
             <DeadlineAlertBanner count={(deadlineSummary.overdue || 0) + (deadlineSummary.today || 0)} onOpen={handleOpenDeadlineModal} />
         )}
 
-        {/* ── FINANCIAL JARS & TET EARNING PLAN (10H-14H SHIFT & TELEGRAM BOT) ── */}
-        <FinancialJarsCard className="mt-5" />
-
-        {/* ── MAIN-PAGE DEADLINE CALENDAR & QUICK ACTIONS ── */}
-        <DeadlineHomeSection
-          id="deadline-home-section"
+        {/* ── UNIFIED FINANCE & SCHEDULE HUB CARD (COMPACT WIDGET) ── */}
+        <FinanceScheduleHubCard
           isAuthenticated={!!currentUser}
-          data={deadlinesData}
-          loading={!!currentUser && (goalsQuery.isLoading || matrixQuery.isLoading)}
-          onRefresh={loadData}
+          deadlinesData={deadlinesData}
+          deadlinesLoading={!!currentUser && (goalsQuery.isLoading || matrixQuery.isLoading)}
+          onRefreshDeadlines={loadData}
           onStartPomodoro={handleStartPomodoroFromDeadline}
-          onOpenCalendarModal={handleOpenDeadlineModal}
+          onOpenHubModal={handleOpenHubModal}
           onOpenNotificationSettings={handleOpenNotificationModal}
           onOpenAuthModal={handleOpenAuthModal}
         />
@@ -2154,6 +2158,20 @@ export default function PomodoroApp() {
             onDataChanged={loadData}
             onOpenNotificationSettings={handleOpenNotificationModal}
             initialData={deadlinesData}
+          />
+        )}
+        {isHubModalOpen && (
+          <FinanceScheduleHubModal
+            isOpen={isHubModalOpen}
+            onClose={() => setIsHubModalOpen(false)}
+            initialTab={hubInitialTab}
+            isAuthenticated={!!currentUser}
+            deadlinesData={deadlinesData}
+            deadlinesLoading={!!currentUser && (goalsQuery.isLoading || matrixQuery.isLoading)}
+            onRefreshDeadlines={loadData}
+            onStartPomodoro={handleStartPomodoroFromDeadline}
+            onOpenNotificationSettings={handleOpenNotificationModal}
+            onOpenAuthModal={handleOpenAuthModal}
           />
         )}
       </Suspense>

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays,
+  GraduationCap,
   LayoutGrid,
   List,
   Plus,
@@ -30,6 +31,7 @@ import {
 import { DeadlineMonthCalendar } from './DeadlineMonthCalendar'
 import { ScheduleDayDetailCard } from './ScheduleDayDetailCard'
 import { AIBreakdownModal } from './AIBreakdownModal'
+import { SchoolWeeklyTimetable } from './SchoolWeeklyTimetable'
 
 export type { DeadlineItem, DeadlineSummary }
 
@@ -40,6 +42,7 @@ interface DeadlineCalendarModalProps {
   onDataChanged?: () => Promise<void> | void
   onOpenNotificationSettings?: () => void
   initialData?: DeadlinesResponse
+  defaultViewMode?: 'timetable' | 'calendar' | 'list'
 }
 
 export const DeadlineCalendarModal: React.FC<DeadlineCalendarModalProps> = ({
@@ -49,10 +52,11 @@ export const DeadlineCalendarModal: React.FC<DeadlineCalendarModalProps> = ({
   onDataChanged,
   onOpenNotificationSettings,
   initialData,
+  defaultViewMode = 'calendar',
 }) => {
   const [data, setData] = useState<DeadlinesResponse | null>(initialData ?? null)
   const [loading, setLoading] = useState<boolean>(!initialData)
-  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar')
+  const [viewMode, setViewMode] = useState<'timetable' | 'calendar' | 'list'>(defaultViewMode)
 
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date())
   const todayYmd = useMemo(() => getLocalTodayYmd(), [])
@@ -243,6 +247,18 @@ export const DeadlineCalendarModal: React.FC<DeadlineCalendarModalProps> = ({
               <div className="flex items-center rounded-xl bg-slate-800 p-0.5 border border-slate-700">
                 <button
                   type="button"
+                  onClick={() => setViewMode('timetable')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    viewMode === 'timetable'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  <span>TKB Phenikaa</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setViewMode('calendar')}
                   className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     viewMode === 'calendar'
@@ -354,8 +370,23 @@ export const DeadlineCalendarModal: React.FC<DeadlineCalendarModalProps> = ({
           </div>
         )}
 
-        {/* Modal Main View: Calendar (2-columns) or List */}
-        {viewMode === 'calendar' ? (
+        {/* Modal Main View: Timetable (Phenikaa), Calendar (2-columns) or List */}
+        {viewMode === 'timetable' ? (
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+            <SchoolWeeklyTimetable
+              items={items}
+              todayYmd={todayYmd}
+              onStartPomodoro={onStartPomodoro}
+              onComplete={handleComplete}
+              onReschedule={handleReschedule}
+              onOpenQuickAdd={(d) => {
+                setAddFormDate(d)
+                setShowAddForm(true)
+              }}
+              busyKey={busyKey}
+            />
+          </div>
+        ) : viewMode === 'calendar' ? (
           <div className="flex-1 overflow-y-auto p-3 sm:p-4">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
               <div className="md:col-span-6">

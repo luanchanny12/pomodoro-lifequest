@@ -50,6 +50,7 @@ frontend/dist-ssr/
 # Vercel / build caches
 .vercel/
 frontend/.vercel/
+.vite/
 *.tsbuildinfo
 
 # Logs & temp

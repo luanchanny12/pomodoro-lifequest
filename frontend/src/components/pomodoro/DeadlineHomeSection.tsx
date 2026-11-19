@@ -7,6 +7,7 @@ import {
   ChevronUp,
   ExternalLink,
   Flame,
+  GraduationCap,
   LayoutGrid,
   List,
   LogIn,
@@ -32,6 +33,7 @@ import {
 import { DeadlineMonthCalendar } from './DeadlineMonthCalendar'
 import { ScheduleDayDetailCard } from './ScheduleDayDetailCard'
 import { AIBreakdownModal } from './AIBreakdownModal'
+import { SchoolWeeklyTimetable } from './SchoolWeeklyTimetable'
 
 interface DeadlineHomeSectionProps {
   id?: string
@@ -43,6 +45,7 @@ interface DeadlineHomeSectionProps {
   onOpenCalendarModal: () => void
   onOpenNotificationSettings?: () => void
   onOpenAuthModal?: () => void
+  defaultViewMode?: 'timetable' | 'calendar' | 'list'
 }
 
 export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
@@ -55,8 +58,9 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
   onOpenCalendarModal,
   onOpenNotificationSettings,
   onOpenAuthModal,
+  defaultViewMode = 'timetable',
 }) => {
-  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar')
+  const [viewMode, setViewMode] = useState<'timetable' | 'calendar' | 'list'>(defaultViewMode)
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date())
   const todayYmd = useMemo(() => getLocalTodayYmd(), [])
   const [selectedDate, setSelectedDate] = useState<string>(todayYmd)
@@ -228,6 +232,18 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
           <div className="flex items-center rounded-xl bg-slate-800 p-0.5 border border-slate-700">
             <button
               type="button"
+              onClick={() => setViewMode('timetable')}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === 'timetable'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <GraduationCap className="w-3.5 h-3.5" />
+              <span>TKB Phenikaa</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setViewMode('calendar')}
               className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 viewMode === 'calendar'
@@ -348,8 +364,21 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
         />
       )}
 
-      {/* Main Body: Either Month Calendar View or List View */}
-      {viewMode === 'calendar' ? (
+      {/* Main Body: Timetable View, Month Calendar View, or List View */}
+      {viewMode === 'timetable' ? (
+        <SchoolWeeklyTimetable
+          items={data.items}
+          todayYmd={todayYmd}
+          onStartPomodoro={onStartPomodoro}
+          onComplete={handleComplete}
+          onReschedule={handleReschedule}
+          onOpenQuickAdd={(d) => {
+            setAddFormDate(d)
+            setShowAddForm(true)
+          }}
+          busyKey={busyKey}
+        />
+      ) : viewMode === 'calendar' ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
           {/* Left Column: Month Calendar Grid */}
           <div className="lg:col-span-6">
