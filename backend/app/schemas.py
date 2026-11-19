@@ -1358,3 +1358,30 @@ class SepayWebhookPayload(BaseModel):
     description: Optional[str] = None
 
 
+class PhenikaaSyncStatusResponse(BaseModel):
+    auto_sync_enabled: bool
+    sync_interval_days: int
+    last_synced_at: Optional[datetime.datetime] = None
+    next_sync_date: Optional[datetime.date] = None
+    days_until_next_sync: int
+    is_due: bool
+    last_sync_status: str
+    last_changes_summary: Optional[str] = None
+    student_id: str
+
+
+class PhenikaaSyncConfigRequest(BaseModel):
+    auto_sync_enabled: Optional[bool] = None
+    sync_interval_days: Optional[int] = None
+    student_id: Optional[str] = None
+
+
+class PhenikaaSyncTriggerResponse(BaseModel):
+    success: bool
+    message: str
+    synced_count: int
+    changes_detected: List[str] = []
+    next_sync_date: Optional[datetime.date] = None
+
+
+

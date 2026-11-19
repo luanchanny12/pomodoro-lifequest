@@ -582,6 +582,24 @@ class BankWebhookLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class PhenikaaSyncSetting(Base):
+    """Cấu hình và trạng thái tự động đồng bộ thời khóa biểu Phenikaa định kỳ 2 tuần/lần."""
+    __tablename__ = "phenikaa_sync_settings"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    student_id = Column(String, default="23010720")
+    auto_sync_enabled = Column(Boolean, default=True)
+    sync_interval_days = Column(Integer, default=14)  # 14 ngày (2 tuần)
+    last_synced_at = Column(DateTime, default=datetime.utcnow)
+    next_sync_date = Column(Date, nullable=True)
+    session_data = Column(Text, nullable=True)
+    last_sync_status = Column(String, default="SUCCESS")  # SUCCESS, PENDING, NEEDS_REAUTH
+    last_changes_summary = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+
 
 
 

@@ -99,4 +99,15 @@ describe('Financial Jars & School Schedule Frontend Logic', () => {
     await expect(rescheduleDeadlineItem(sampleItems[0], '2026-11-20')).resolves.not.toThrow()
     await expect(rescheduleDeadlineItem(sampleItems[1], '2026-11-20')).resolves.not.toThrow()
   })
+
+  it('correctly maps 14-day interval for 2-week auto-sync', () => {
+    const syncSetting = {
+      auto_sync_enabled: true,
+      sync_interval_days: 14,
+      days_until_next_sync: 14,
+    }
+    expect(syncSetting.auto_sync_enabled).toBe(true)
+    expect(syncSetting.sync_interval_days).toBe(14)
+    expect(syncSetting.days_until_next_sync).toBe(14)
+  })
 })

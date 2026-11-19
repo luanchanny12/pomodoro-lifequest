@@ -393,6 +393,33 @@ export interface SchoolScheduleItem {
   is_active: boolean
 }
 
+export interface PhenikaaSyncStatus {
+  user_id: number
+  auto_sync_enabled: boolean
+  sync_interval_days: number
+  last_synced_at?: string | null
+  next_sync_date?: string | null
+  last_sync_status: string
+  last_error_message?: string | null
+  last_changes_summary?: string | null
+  days_until_next_sync: number
+  is_due: boolean
+}
+
+export interface PhenikaaSyncTriggerResponse {
+  success: boolean
+  status: string
+  message: string
+  total_in_db: number
+  changes: {
+    added: number
+    updated: number
+    unchanged: number
+    sample_changes?: string[]
+  }
+  next_sync_date?: string | null
+}
+
 const OFFLINE_SESSIONS_KEY = 'pending_pomodoro_sessions'
 const GOALS_CACHE_KEY = 'lifequest_cached_goals'
 const STATS_CACHE_KEY = 'lifequest_cached_stats'
@@ -1009,6 +1036,24 @@ export const focusService = {
     const res = await api.post(
       `/finance/test-trigger-bank-income?amount=${amount}&content=${encodeURIComponent(content)}`
     )
+    return res.data
+  },
+
+  getPhenikaaSyncStatus: async (): Promise<PhenikaaSyncStatus> => {
+    const res = await api.get('/finance/phenikaa/sync-status')
+    return res.data
+  },
+
+  triggerPhenikaaSync: async (): Promise<PhenikaaSyncTriggerResponse> => {
+    const res = await api.post('/finance/phenikaa/trigger-sync')
+    return res.data
+  },
+
+  updatePhenikaaSyncConfig: async (data: {
+    auto_sync_enabled?: boolean
+    sync_interval_days?: number
+  }): Promise<PhenikaaSyncStatus> => {
+    const res = await api.put('/finance/phenikaa/configure-sync', data)
     return res.data
   },
 

@@ -244,6 +244,12 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
             >
               <BookOpen className="w-3.5 h-3.5 text-blue-500" /> TKB Phenikaa (
               {schoolSchedules.length})
+              <span
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                title="Tự động đồng bộ 2 tuần / lần"
+              >
+                🔄 2w
+              </span>
             </button>
             <button
               onClick={handleRefresh}

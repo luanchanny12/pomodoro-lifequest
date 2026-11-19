@@ -74,6 +74,7 @@ async def lifespan(app: FastAPI):
             ("tet_earning_plans", "user_id", "INTEGER"),
             ("school_class_schedules", "user_id", "INTEGER"),
             ("bank_webhook_logs", "user_id", "INTEGER"),
+            ("phenikaa_sync_settings", "user_id", "INTEGER"),
         ]
 
         for tbl, col, col_def in columns_to_add:
@@ -160,10 +161,12 @@ async def lifespan(app: FastAPI):
     def _run_scheduled_telegram_check():
         from app.database import SessionLocal
         from app.routers.notifications import check_and_send_scheduled_reminders
+        from app.services.phenikaa_sync import check_and_run_all_due_phenikaa_syncs
 
         worker_db = SessionLocal()
         try:
             check_and_send_scheduled_reminders(worker_db, force=False)
+            check_and_run_all_due_phenikaa_syncs(worker_db)
         finally:
             worker_db.close()
 

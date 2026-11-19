@@ -24,6 +24,9 @@ from app.schemas import (
     SchoolScheduleItemCreate,
     SchoolScheduleItemResponse,
     DualCoachAdviceResponse,
+    PhenikaaSyncStatusResponse,
+    PhenikaaSyncConfigRequest,
+    PhenikaaSyncTriggerResponse,
 )
 from app.models_auth import User
 from app.routers.auth import get_current_user_optional
@@ -835,3 +838,91 @@ def batch_import_school_schedule(
 
     db.commit()
     return {"status": "success", "imported_count": created_count, "message": f"Đã import thành công {created_count} môn học."}
+
+
+# --- 6. PHENIKAA 2-WEEK AUTO SYNC ENDPOINTS ---
+
+@router.get("/phenikaa/sync-status", response_model=PhenikaaSyncStatusResponse)
+def get_phenikaa_sync_status(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Lấy trạng thái và tiến độ đếm ngược chu kỳ đồng bộ thời khóa biểu 2 tuần/lần."""
+    from app.services.phenikaa_sync import get_or_create_sync_setting, check_if_sync_due
+
+    real_user = _get_real_user(user)
+    user_id = real_user.id if real_user else None
+    setting = get_or_create_sync_setting(db, user_id)
+
+    today = vn_today()
+    next_date = setting.next_sync_date or (today + datetime.timedelta(days=setting.sync_interval_days))
+    days_left = max(0, (next_date - today).days)
+    is_due = check_if_sync_due(setting)
+
+    return PhenikaaSyncStatusResponse(
+        auto_sync_enabled=bool(setting.auto_sync_enabled),
+        sync_interval_days=setting.sync_interval_days or 14,
+        last_synced_at=setting.last_synced_at,
+        next_sync_date=next_date,
+        days_until_next_sync=days_left,
+        is_due=is_due,
+        last_sync_status=setting.last_sync_status or "SUCCESS",
+        last_changes_summary=setting.last_changes_summary,
+        student_id=setting.student_id or "23010720",
+    )
+
+
+@router.post("/phenikaa/trigger-sync", response_model=PhenikaaSyncTriggerResponse)
+def trigger_manual_phenikaa_sync(
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Kích hoạt đồng bộ thời khóa biểu Phenikaa ngay lập tức (ép cập nhật)."""
+    from app.services.phenikaa_sync import trigger_phenikaa_sync
+
+    real_user = _get_real_user(user)
+    user_id = real_user.id if real_user else None
+
+    result = trigger_phenikaa_sync(db, user_id, force=True)
+    return PhenikaaSyncTriggerResponse(
+        success=result["success"],
+        message=result["message"],
+        synced_count=result["synced_count"],
+        changes_detected=result["changes_detected"],
+        next_sync_date=result["next_sync_date"],
+    )
+
+
+@router.put("/phenikaa/configure-sync")
+def configure_phenikaa_sync(
+    payload: PhenikaaSyncConfigRequest,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Cấu hình chu kỳ tự động đồng bộ thời khóa biểu (bật/tắt, số ngày chu kỳ)."""
+    from app.services.phenikaa_sync import get_or_create_sync_setting
+
+    real_user = _get_real_user(user)
+    user_id = real_user.id if real_user else None
+    setting = get_or_create_sync_setting(db, user_id)
+
+    if payload.auto_sync_enabled is not None:
+        setting.auto_sync_enabled = payload.auto_sync_enabled
+    if payload.sync_interval_days is not None:
+        setting.sync_interval_days = max(1, min(60, payload.sync_interval_days))
+        setting.next_sync_date = vn_today() + datetime.timedelta(days=setting.sync_interval_days)
+    if payload.student_id is not None:
+        setting.student_id = payload.student_id.strip()
+
+    setting.updated_at = vn_now()
+    db.commit()
+    db.refresh(setting)
+
+    return {
+        "status": "success",
+        "message": f"Đã cập nhật cấu hình tự động đồng bộ (Chu kỳ: {setting.sync_interval_days} ngày).",
+        "auto_sync_enabled": setting.auto_sync_enabled,
+        "sync_interval_days": setting.sync_interval_days,
+        "next_sync_date": setting.next_sync_date.isoformat() if setting.next_sync_date else None,
+    }
+

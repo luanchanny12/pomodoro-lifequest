@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   BookOpen,
   Calendar,
@@ -10,9 +10,17 @@ import {
   User,
   X,
   Sparkles,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+  ShieldCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { focusService, type SchoolScheduleItem } from '@/services/focusService'
+import {
+  focusService,
+  type SchoolScheduleItem,
+  type PhenikaaSyncStatus,
+} from '@/services/focusService'
 
 interface Props {
   isOpen: boolean
@@ -115,6 +123,66 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
   // Form paste từ web Phenikaa
   const [pasteText, setPasteText] = useState('')
   const [isImporting, setIsImporting] = useState(false)
+
+  // Phenikaa 2-Tuần Auto-Sync state
+  const [syncStatus, setSyncStatus] = useState<PhenikaaSyncStatus | null>(null)
+  const [isSyncingNow, setIsSyncingNow] = useState(false)
+  const [isTogglingAutoSync, setIsTogglingAutoSync] = useState(false)
+
+  const loadSyncStatus = async () => {
+    try {
+      const res = await focusService.getPhenikaaSyncStatus()
+      setSyncStatus(res)
+    } catch (err) {
+      console.warn('Lỗi tải trạng thái đồng bộ Phenikaa:', err)
+    }
+  }
+
+  useEffect(() => {
+    if (isOpen) {
+      loadSyncStatus()
+    }
+  }, [isOpen])
+
+  const handleManualSyncNow = async () => {
+    setIsSyncingNow(true)
+    try {
+      const res = await focusService.triggerPhenikaaSync()
+      if (res.success) {
+        toast.success(res.message || 'Đồng bộ lịch Phenikaa thành công!')
+      } else {
+        toast.info(res.message)
+      }
+      await loadSyncStatus()
+      onRefresh()
+    } catch {
+      toast.error('Lỗi khi kích hoạt đồng bộ!')
+    } finally {
+      setIsSyncingNow(false)
+    }
+  }
+
+  const handleToggleAutoSync = async () => {
+    if (!syncStatus) return
+    setIsTogglingAutoSync(true)
+    const newEnabled = !syncStatus.auto_sync_enabled
+    try {
+      const updated = await focusService.updatePhenikaaSyncConfig({
+        auto_sync_enabled: newEnabled,
+        sync_interval_days: 14,
+      })
+      setSyncStatus(updated)
+      toast.success(
+        newEnabled
+          ? 'Đã BẬT tự động đồng bộ lịch Phenikaa định kỳ 2 tuần (14 ngày)!'
+          : 'Đã TẮT tự động đồng bộ định kỳ.'
+      )
+    } catch {
+      toast.error('Không thể cập nhật cấu hình đồng bộ.')
+    } finally {
+      setIsTogglingAutoSync(false)
+    }
+  }
 
   if (!isOpen) return null
 
@@ -267,6 +335,82 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Banner Tự Động Đồng Bộ 2 Tuần / Lần */}
+        <div className="px-6 py-3.5 bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-sky-50/90 dark:from-blue-950/40 dark:via-indigo-950/30 dark:to-slate-900 border-b border-blue-100 dark:border-blue-900/40">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="flex h-2.5 w-2.5 relative">
+                  <span
+                    className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                      syncStatus?.auto_sync_enabled ? 'bg-emerald-400' : 'bg-slate-400'
+                    }`}
+                  />
+                  <span
+                    className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                      syncStatus?.auto_sync_enabled ? 'bg-emerald-500' : 'bg-slate-500'
+                    }`}
+                  />
+                </span>
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ${
+                      isSyncingNow ? 'animate-spin' : ''
+                    }`}
+                  />
+                  Tự động đồng bộ 2 tuần / lần (Cổng Phenikaa)
+                </span>
+                <span
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                    syncStatus?.auto_sync_enabled
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                      : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                  }`}
+                >
+                  {syncStatus?.auto_sync_enabled
+                    ? `Đang BẬT (${syncStatus.sync_interval_days} ngày/lần)`
+                    : 'Đã tắt'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                {syncStatus?.next_sync_date ? (
+                  <span>
+                    Lần quét kế tiếp: <strong className="text-blue-600 dark:text-blue-400">{syncStatus.next_sync_date}</strong> (sau {syncStatus.days_until_next_sync} ngày)
+                    {syncStatus.last_changes_summary && (
+                      <span className="ml-1 text-slate-500 dark:text-slate-400">
+                        • {syncStatus.last_changes_summary}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span>Tự động rà soát thay đổi môn học, lịch thi và thông báo qua Telegram Bot</span>
+                )}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <button
+                type="button"
+                onClick={handleToggleAutoSync}
+                disabled={isTogglingAutoSync}
+                className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-colors text-slate-700 dark:text-slate-300 disabled:opacity-50"
+                title="Bật/Tắt chế độ tự động đồng bộ định kỳ"
+              >
+                {syncStatus?.auto_sync_enabled ? 'Tắt tự động' : 'Bật 14 ngày'}
+              </button>
+              <button
+                type="button"
+                onClick={handleManualSyncNow}
+                disabled={isSyncingNow}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNow ? 'animate-spin' : ''}`} />
+                {isSyncingNow ? 'Đang quét...' : 'Đồng bộ ngay'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Tab Controls */}
