@@ -350,11 +350,18 @@ async def telegram_webhook(
             db.commit()
             answer_telegram_callback(token, cq_id, "Nạp hũ thành công!")
 
+            plan = db.query(TetEarningPlan).filter(
+                TetEarningPlan.user_id == user_id if user_id else TetEarningPlan.user_id.is_(None)
+            ).first()
+            home_t = getattr(plan, "home_arrival_time", "15:00") if plan else "15:00"
+            skill_t = getattr(plan, "primary_skill_focus", None) if plan else None
+            skill_text = f"rèn luyện {skill_t}" if skill_t else "học tập và phát triển bản thân"
+
             success_text = (
                 f"🎉 <b>Đã nạp thành công {amt:,.0f}đ vào các Hũ!</b>\n\n"
                 + "\n".join(detail_lines) +
-                f"\n\n⏰ <b>Kỷ luật vàng:</b> Đúng 15h về đến nhà ăn trưa và nghỉ ngơi.\n"
-                f"Buổi chiều & tối hãy dành trọn vẹn để học môn trường & phát triển kỹ năng Fullstack / Tiếng Anh nhé bạn!"
+                f"\n\n⏰ <b>Kỷ luật:</b> Đúng {home_t} về đến nhà nghỉ ngơi.\n"
+                f"Buổi chiều & tối hãy dành trọn vẹn để {skill_text} nhé bạn!"
             )
             edit_telegram_msg(token, chat_id, message_id, success_text)
             return {"ok": True}
@@ -430,18 +437,30 @@ async def telegram_webhook(
                 SchoolClassSchedule.is_active == True,
             ).order_by(SchoolClassSchedule.start_time.asc()).all()
 
+            plan = db.query(TetEarningPlan).filter(
+                TetEarningPlan.user_id == user_id if user_id else TetEarningPlan.user_id.is_(None)
+            ).first()
+            s_name = getattr(plan, "shift_name", "Ca làm việc") if plan else "Ca làm việc"
+            s_start = getattr(plan, "daily_shift_start", "10:00") if plan else "10:00"
+            s_end = getattr(plan, "daily_shift_end", "14:00") if plan else "14:00"
+            s_home = getattr(plan, "home_arrival_time", "15:00") if plan else "15:00"
+            s_skill = getattr(plan, "primary_skill_focus", "Phát triển bản thân") if plan else "Phát triển bản thân"
+            s_enabled = getattr(plan, "shift_enabled", False) if plan else False
+
             lines = [f"📅 <b>LỊCH TRÌNH HÔM NAY ({day_names.get(weekday_vn, '')} - {today.strftime('%d/%m')}):</b>\n"]
             if classes:
-                lines.append("🎓 <b>Lịch trường Phenikaa:</b>")
+                sc_name = getattr(classes[0], "school_name", None) or "Trường học"
+                lines.append(f"🎓 <b>Lịch học ({sc_name}):</b>")
                 for c in classes:
                     lines.append(f"  • {c.start_time} - {c.end_time}: {c.course_name} (Phòng: {c.room or 'N/A'})")
             else:
-                lines.append("🎓 Hôm nay không có lịch học trường Phenikaa.")
+                lines.append("🎓 Hôm nay không có lịch học trường.")
 
-            lines.append("\n🛵 <b>10:00 - 14:00:</b> Ca chạy xe kiếm tiền Tết (Chỉ tiêu ~250k)")
-            lines.append("🏠 <b>14:00 - 15:00:</b> Về nhà ăn trưa, tắm rửa & nghỉ ngơi")
-            lines.append("💻 <b>15:00 - 18:00:</b> Học Fullstack & Tiếng Anh")
-            lines.append("📚 <b>19:30 - 22:30:</b> Ôn tập kiến thức trường & làm Deadline")
+            if s_enabled:
+                lines.append(f"\n🛵 <b>{s_start} - {s_end}:</b> {s_name}")
+                lines.append(f"🏠 <b>{s_end} - {s_home}:</b> Về nhà, ăn uống & nghỉ ngơi")
+            lines.append(f"💻 <b>Khung học tập trung:</b> {s_skill}")
+            lines.append("📚 <b>19:30 - 22:30:</b> Ôn tập kiến thức & làm Deadline")
 
             send_telegram_interactive_msg(token, chat_id, "\n".join(lines))
             return {"ok": True}

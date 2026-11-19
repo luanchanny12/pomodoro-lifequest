@@ -177,6 +177,9 @@ def test_school_schedule_and_calendar_deadlines(auth_headers):
     courses = [c["course_name"] for c in list_res.json()]
     assert "Lập Trình Web Nâng Cao" in courses
 
+    # Kích hoạt ca làm việc để kiểm tra chiếu lên lịch
+    client.put("/api/finance/tet-plan", headers=auth_headers, json={"shift_enabled": True})
+
     # Kiểm tra deadlines feed (chiếu lên lịch tháng và thẻ ngày)
     deadlines_res = client.get("/api/focus/deadlines", headers=auth_headers)
     assert deadlines_res.status_code == 200

@@ -1281,12 +1281,20 @@ class GigDepositResponse(BaseModel):
     is_target_met: bool
 
 
+class JarTemplateApplyRequest(BaseModel):
+    template_type: str = "tet_gig"  # "tet_gig", "six_jars", "simple_three", "empty"
+
+
 class TetEarningPlanUpdate(BaseModel):
+    plan_name: Optional[str] = None
     tet_target_amount: Optional[float] = None
     tet_date: Optional[str] = None  # YYYY-MM-DD
+    shift_enabled: Optional[bool] = None
+    shift_name: Optional[str] = None
     daily_shift_start: Optional[str] = None
     daily_shift_end: Optional[str] = None
     home_arrival_time: Optional[str] = None
+    primary_skill_focus: Optional[str] = None
     default_tet_split_percent: Optional[float] = None
     default_living_split_percent: Optional[float] = None
     is_active: Optional[bool] = None
@@ -1295,14 +1303,18 @@ class TetEarningPlanUpdate(BaseModel):
 
 class TetEarningPlanResponse(BaseModel):
     id: int
+    plan_name: str = "Kế Hoạch Tài Chính"
     tet_target_amount: float
     current_savings: float
     tet_date: Optional[str] = None
     days_remaining: int
     daily_target_needed: float
+    shift_enabled: bool = False
+    shift_name: str = "Ca kiếm tiền"
     daily_shift_start: str
     daily_shift_end: str
     home_arrival_time: str
+    primary_skill_focus: Optional[str] = None
     today_earned: float
     is_target_met_today: bool
     is_active: bool
@@ -1310,6 +1322,7 @@ class TetEarningPlanResponse(BaseModel):
 
 
 class SchoolScheduleItemCreate(BaseModel):
+    school_name: Optional[str] = "Trường Đại Học"
     course_code: Optional[str] = None
     course_name: str
     day_of_week: int  # 2..7 (Thứ 2 đến Thứ 7), 8 (Chủ nhật)
@@ -1324,6 +1337,7 @@ class SchoolScheduleItemCreate(BaseModel):
 
 class SchoolScheduleItemResponse(BaseModel):
     id: int
+    school_name: Optional[str] = "Trường Đại Học"
     course_code: Optional[str] = None
     course_name: str
     day_of_week: int

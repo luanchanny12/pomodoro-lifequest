@@ -54,25 +54,21 @@ def get_deadlines(
         tasks_query = tasks_query.filter(DailyMatrixTask.user_id.is_(None))
     tasks = tasks_query.all()
 
-    # 3. Query School Class Schedules (Thời khóa biểu trường)
-    school_query = db.query(SchoolClassSchedule).filter(
-        SchoolClassSchedule.is_active == True
-    )
+    # 3. Query School Class Schedules (Thời khóa biểu trường của người dùng)
+    school_classes = []
     if real_user:
-        school_query = school_query.filter(SchoolClassSchedule.user_id == real_user.id)
-    else:
-        school_query = school_query.filter(SchoolClassSchedule.user_id.is_(None))
-    school_classes = school_query.all()
+        school_classes = db.query(SchoolClassSchedule).filter(
+            SchoolClassSchedule.is_active == True,
+            SchoolClassSchedule.user_id == real_user.id
+        ).all()
 
-    # 4. Query Tet Earning Plan (Ca chạy 10h-14h)
-    plan_query = db.query(TetEarningPlan).filter(
-        TetEarningPlan.is_active == True
-    )
+    # 4. Query Tet Earning Plan (Mục tiêu tài chính & Ca kiếm tiền cá nhân)
+    tet_plan = None
     if real_user:
-        plan_query = plan_query.filter(TetEarningPlan.user_id == real_user.id)
-    else:
-        plan_query = plan_query.filter(TetEarningPlan.user_id.is_(None))
-    tet_plan = plan_query.first()
+        tet_plan = db.query(TetEarningPlan).filter(
+            TetEarningPlan.is_active == True,
+            TetEarningPlan.user_id == real_user.id
+        ).first()
 
     today = vn_today()
     deadlines = []
@@ -129,7 +125,7 @@ def get_deadlines(
     date_window_start = today - timedelta(days=7)
     date_window_end = today + timedelta(days=45)
 
-    # 5. Chiếu Lịch học trường Phenikaa lên các ngày trong tháng
+    # 5. Chiếu Lịch học trường lên các ngày trong tháng
     if school_classes:
         curr_d = date_window_start
         while curr_d <= date_window_end:
@@ -137,6 +133,7 @@ def get_deadlines(
             matched_classes = [c for c in school_classes if c.day_of_week == curr_dow]
             days_left = (curr_d - today).days
             for sc in matched_classes:
+                s_name = getattr(sc, "school_name", None) or "Trường"
                 deadlines.append({
                     "type": "school_class",
                     "id": f"school_{sc.id}_{curr_d.isoformat()}",
@@ -147,7 +144,7 @@ def get_deadlines(
                     "current_hours": 0.0,
                     "target_hours": 2.5,
                     "progress_percent": 100.0 if days_left < 0 else 0.0,
-                    "category": "Lịch Học Phenikaa",
+                    "category": f"Lịch Học - {s_name}",
                     "color": "#3B82F6",
                     "planet_type": "school",
                     "notes": f"Phòng: {sc.room or 'N/A'} | Giờ học: {sc.start_time} - {sc.end_time} | GV: {sc.lecturer or 'Chưa rõ'}",
@@ -157,28 +154,32 @@ def get_deadlines(
                 })
             curr_d += timedelta(days=1)
 
-    # 6. Chiếu Ca chạy 10h - 14h lên các ngày
-    if tet_plan and tet_plan.is_active:
-        tet_limit = tet_plan.tet_date or date(2027, 2, 6)
+    # 6. Chiếu Ca làm việc / Ca kiếm tiền lên các ngày (chỉ khi user BẬT shift_enabled)
+    if tet_plan and tet_plan.is_active and getattr(tet_plan, "shift_enabled", False):
+        limit_date = tet_plan.tet_date or date(2027, 2, 6)
+        shift_title = getattr(tet_plan, "shift_name", None) or "Ca kiếm tiền"
+        start_t = getattr(tet_plan, "daily_shift_start", "10:00") or "10:00"
+        end_t = getattr(tet_plan, "daily_shift_end", "14:00") or "14:00"
+        home_t = getattr(tet_plan, "home_arrival_time", "15:00") or "15:00"
         curr_d = max(today - timedelta(days=3), date_window_start)
-        while curr_d <= min(date_window_end, tet_limit):
+        while curr_d <= min(date_window_end, limit_date):
             days_left = (curr_d - today).days
             deadlines.append({
                 "type": "gig_shift",
                 "id": f"gig_{curr_d.isoformat()}",
-                "title": f"🛵 Ca chạy xe ({tet_plan.daily_shift_start} - {tet_plan.daily_shift_end})",
+                "title": f"🛵 {shift_title} ({start_t} - {end_t})",
                 "date": curr_d.isoformat(),
                 "days_left": days_left,
                 "urgency": "today" if days_left == 0 else ("past" if days_left < 0 else "soon" if days_left <= 7 else "future"),
                 "current_hours": 0.0,
                 "target_hours": 4.0,
                 "progress_percent": 100.0 if days_left < 0 else 0.0,
-                "category": "Ca Chạy Kiếm Tiền Tết",
+                "category": f"{shift_title}",
                 "color": "#10B981",
                 "planet_type": "gig",
-                "notes": f"Chỉ chạy 4 tiếng ({tet_plan.daily_shift_start} - {tet_plan.daily_shift_end}), đúng {tet_plan.home_arrival_time} về nhà nghỉ ngơi và tập trung học!",
+                "notes": f"{shift_title} ({start_t} - {end_t}), đúng {home_t} về nhà nghỉ ngơi và tập trung học tập!",
                 "quadrant": None,
-                "time_range": f"{tet_plan.daily_shift_start} - {tet_plan.daily_shift_end}",
+                "time_range": f"{start_t} - {end_t}",
             })
             curr_d += timedelta(days=1)
 

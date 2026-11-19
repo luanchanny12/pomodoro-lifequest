@@ -530,16 +530,20 @@ class JarTransaction(Base):
 
 
 class TetEarningPlan(Base):
-    """Kế hoạch kiếm tiền & chạy xe 10h-14h từ giờ đến Tết."""
+    """Kế hoạch kiếm tiền & mục tiêu tài chính cá nhân (có thể bật/tắt ca làm việc)."""
     __tablename__ = "tet_earning_plans"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
-    tet_target_amount = Column(Float, default=15000000.0)  # Mục tiêu tích lũy Tết (VD: 15.000.000 đ)
-    tet_date = Column(Date, nullable=True)  # Mùng 1 Tết Đinh Mùi (2027-02-06)
-    daily_shift_start = Column(String, default="10:00")  # Bắt đầu ca chạy lúc 10h
-    daily_shift_end = Column(String, default="14:00")    # Kết thúc ca chạy lúc 14h
-    home_arrival_time = Column(String, default="15:00")  # 15h về nhà nghỉ ngơi và ăn uống
-    default_tet_split_percent = Column(Float, default=60.0)     # Mặc định nạp 60% vào Hũ Tết
+    plan_name = Column(String, default="Kế Hoạch Đón Tết")  # Tên kế hoạch (VD: Kế Hoạch Đón Tết, Quỹ Mua Laptop...)
+    tet_target_amount = Column(Float, default=15000000.0)  # Mục tiêu tích lũy (VD: 15.000.000 đ)
+    tet_date = Column(Date, nullable=True)  # Ngày hạn chót mục tiêu (VD: Mùng 1 Tết Đinh Mùi 2027-02-06)
+    shift_enabled = Column(Boolean, default=False)  # Bật/Tắt ca làm việc (người không đi làm thêm sẽ tắt)
+    shift_name = Column(String, default="Ca chạy xe")  # Tên ca (Ca chạy xe, Ca part-time, Ca gia sư...)
+    daily_shift_start = Column(String, default="10:00")  # Bắt đầu ca
+    daily_shift_end = Column(String, default="14:00")    # Kết thúc ca
+    home_arrival_time = Column(String, default="15:00")  # Giờ về nhà nghỉ ngơi và ăn uống
+    primary_skill_focus = Column(String, nullable=True)  # Kỹ năng trọng tâm (VD: Fullstack, Tiếng Anh...)
+    default_tet_split_percent = Column(Float, default=60.0)     # Mặc định nạp 60% vào Hũ Mục Tiêu
     default_living_split_percent = Column(Float, default=40.0)  # Mặc định nạp 40% vào Hũ Sinh Hoạt
     is_active = Column(Boolean, default=True)
     note = Column(Text, nullable=True)
@@ -548,10 +552,11 @@ class TetEarningPlan(Base):
 
 
 class SchoolClassSchedule(Base):
-    """Lịch học trường Phenikaa theo thời khóa biểu."""
+    """Lịch học trường theo thời khóa biểu cá nhân của từng sinh viên."""
     __tablename__ = "school_class_schedules"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
+    school_name = Column(String, nullable=True, default="Trường Đại Học")  # Tên trường của sinh viên
     course_code = Column(String, nullable=True)
     course_name = Column(String, nullable=False)
     day_of_week = Column(Integer, nullable=False)  # 2..7 (Thứ 2 đến Thứ 7), 8 (Chủ nhật)
@@ -587,13 +592,13 @@ class PhenikaaSyncSetting(Base):
     __tablename__ = "phenikaa_sync_settings"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
-    student_id = Column(String, default="23010720")
-    auto_sync_enabled = Column(Boolean, default=True)
+    student_id = Column(String, nullable=True, default=None)
+    auto_sync_enabled = Column(Boolean, default=False)
     sync_interval_days = Column(Integer, default=14)  # 14 ngày (2 tuần)
     last_synced_at = Column(DateTime, default=datetime.utcnow)
     next_sync_date = Column(Date, nullable=True)
     session_data = Column(Text, nullable=True)
-    last_sync_status = Column(String, default="SUCCESS")  # SUCCESS, PENDING, NEEDS_REAUTH
+    last_sync_status = Column(String, default="PENDING")  # SUCCESS, PENDING, NEEDS_REAUTH
     last_changes_summary = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

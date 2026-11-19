@@ -157,7 +157,12 @@ export const DeadlineMonthCalendar: React.FC<DeadlineMonthCalendarProps> = ({
               i.type === 'school_class'
           )
           const hasGig = cell.items.some(
-            (i) => i.type === 'gig_shift' || i.category?.toLowerCase().includes('ca chạy')
+            (i) =>
+              i.type === 'gig_shift' ||
+              i.category?.toLowerCase().includes('ca chạy') ||
+              i.category?.toLowerCase().includes('ca làm việc') ||
+              i.category?.toLowerCase().includes('ca kiếm tiền') ||
+              i.category?.toLowerCase().includes('ca làm')
           )
           const hasTask = cell.items.some((i) => i.type === 'task')
           const hasUrgent = cell.items.some((i) => i.urgency === 'urgent' || i.urgency === 'overdue')
@@ -193,13 +198,13 @@ export const DeadlineMonthCalendar: React.FC<DeadlineMonthCalendarProps> = ({
                 <div className="flex items-center gap-0.5 mt-0.5">
                   {hasExam && (
                     <span
-                      title="Có lịch học / lịch thi Phenikaa"
+                      title="Có lịch học / lịch thi"
                       className="w-1.5 h-1.5 rounded-full bg-sky-400"
                     />
                   )}
                   {hasGig && (
                     <span
-                      title="Có ca chạy 10h-14h kiếm tiền"
+                      title="Có ca làm việc / kiếm tiền"
                       className="w-1.5 h-1.5 rounded-full bg-emerald-400"
                     />
                   )}

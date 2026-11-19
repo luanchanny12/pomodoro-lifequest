@@ -36,7 +36,11 @@ export function filterDeadlinesByTab(
       )
     if (tab === 'gig')
       return (
-        item.type === 'gig_shift' || item.category?.toLowerCase().includes('ca chạy')
+        item.type === 'gig_shift' ||
+        item.category?.toLowerCase().includes('ca chạy') ||
+        item.category?.toLowerCase().includes('ca làm việc') ||
+        item.category?.toLowerCase().includes('ca kiếm tiền') ||
+        item.category?.toLowerCase().includes('ca làm')
       )
     return true
   })
@@ -120,7 +124,7 @@ export async function completeDeadlineItem(item: DeadlineItem): Promise<void> {
 
   if (item.type === 'gig_shift') {
     toast.success(
-      `🛵 Đã hoàn thành ca chạy "${item.title}"! Về nhà nghỉ ngơi và tập trung học nhé!`
+      `🛵 Đã hoàn thành ca làm việc "${item.title}"! Về nhà nghỉ ngơi và tập trung học nhé!`
     )
     return
   }

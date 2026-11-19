@@ -19,6 +19,7 @@ from app.schemas import (
     JarTransactionResponse,
     GigDepositRequest,
     GigDepositResponse,
+    JarTemplateApplyRequest,
     TetEarningPlanUpdate,
     TetEarningPlanResponse,
     SchoolScheduleItemCreate,
@@ -39,44 +40,133 @@ from app.routers.focus.common import (
 
 router = APIRouter()
 
-DEFAULT_JARS_SEED = [
-    {
-        "name": "Hũ Tiêu Tết",
-        "jar_type": "TET",
-        "target_amount": 15000000.0,
-        "current_balance": 0.0,
-        "icon": "🧧",
-        "color": "#EF4444",
-        "note": "Quỹ mua sắm, mừng tuổi & đón Tết Nguyên Đán sung túc.",
-    },
-    {
-        "name": "Hũ Sinh Hoạt Hàng Ngày",
-        "jar_type": "LIVING",
-        "target_amount": 5000000.0,
-        "current_balance": 0.0,
-        "icon": "🍲",
-        "color": "#F59E0B",
-        "note": "Tiền đổ xăng, ăn trưa, cà phê và chi tiêu sinh hoạt hàng ngày.",
-    },
-    {
-        "name": "Hũ Phát Triển Kỹ Năng",
-        "jar_type": "SKILL",
-        "target_amount": 3000000.0,
-        "current_balance": 0.0,
-        "icon": "💻",
-        "color": "#8B5CF6",
-        "note": "Quỹ học Fullstack, Tiếng Anh, sách chuyên ngành và chứng chỉ.",
-    },
-    {
-        "name": "Hũ Dự Phòng Khẩn Cấp",
-        "jar_type": "EMERGENCY",
-        "target_amount": 5000000.0,
-        "current_balance": 0.0,
-        "icon": "🛡️",
-        "color": "#10B981",
-        "note": "Quỹ phòng thân an toàn cho xe cộ, sức khỏe và việc đột xuất.",
-    },
-]
+JAR_TEMPLATES = {
+    "tet_gig": [
+        {
+            "name": "Hũ Tiêu Tết",
+            "jar_type": "TET",
+            "target_amount": 15000000.0,
+            "current_balance": 0.0,
+            "icon": "🧧",
+            "color": "#EF4444",
+            "note": "Quỹ mua sắm, mừng tuổi & đón Tết Nguyên Đán sung túc.",
+        },
+        {
+            "name": "Hũ Sinh Hoạt Hàng Ngày",
+            "jar_type": "LIVING",
+            "target_amount": 5000000.0,
+            "current_balance": 0.0,
+            "icon": "🍲",
+            "color": "#F59E0B",
+            "note": "Tiền đổ xăng, ăn trưa, cà phê và chi tiêu sinh hoạt hàng ngày.",
+        },
+        {
+            "name": "Hũ Phát Triển Kỹ Năng",
+            "jar_type": "SKILL",
+            "target_amount": 3000000.0,
+            "current_balance": 0.0,
+            "icon": "💻",
+            "color": "#8B5CF6",
+            "note": "Quỹ học tập, sách chuyên ngành và nâng cao kỹ năng.",
+        },
+        {
+            "name": "Hũ Dự Phòng Khẩn Cấp",
+            "jar_type": "EMERGENCY",
+            "target_amount": 5000000.0,
+            "current_balance": 0.0,
+            "icon": "🛡️",
+            "color": "#10B981",
+            "note": "Quỹ phòng thân an toàn cho xe cộ, sức khỏe và việc đột xuất.",
+        },
+    ],
+    "six_jars": [
+        {
+            "name": "Chi Tiêu Thiết Yếu (NEC - 55%)",
+            "jar_type": "LIVING",
+            "target_amount": 5000000.0,
+            "current_balance": 0.0,
+            "icon": "🏠",
+            "color": "#3B82F6",
+            "note": "Ăn uống, thuê nhà, điện nước, xăng xe và sinh hoạt cơ bản.",
+        },
+        {
+            "name": "Tiết Kiệm Dài Hạn (LTSS - 10%)",
+            "jar_type": "TET",
+            "target_amount": 10000000.0,
+            "current_balance": 0.0,
+            "icon": "💎",
+            "color": "#10B981",
+            "note": "Mua sắm mục tiêu lớn, xe mới, máy tính, quỹ lớn tương lai.",
+        },
+        {
+            "name": "Giáo Dục & Kỹ Năng (EDU - 10%)",
+            "jar_type": "SKILL",
+            "target_amount": 3000000.0,
+            "current_balance": 0.0,
+            "icon": "📚",
+            "color": "#8B5CF6",
+            "note": "Khóa học, sách vở, chứng chỉ, phát triển bản thân.",
+        },
+        {
+            "name": "Hưởng Thụ Bản Thân (PLAY - 10%)",
+            "jar_type": "CUSTOM",
+            "target_amount": 2000000.0,
+            "current_balance": 0.0,
+            "icon": "🎉",
+            "color": "#EC4899",
+            "note": "Tự thưởng, xem phim, du lịch, trải nghiệm cuộc sống.",
+        },
+        {
+            "name": "Tự Do Tài Chính (FFA - 10%)",
+            "jar_type": "EMERGENCY",
+            "target_amount": 10000000.0,
+            "current_balance": 0.0,
+            "icon": "📈",
+            "color": "#F59E0B",
+            "note": "Đầu tư, sinh lời, tạo dòng tiền thụ động.",
+        },
+        {
+            "name": "Cho Đi & Giúp Đỡ (GIVE - 5%)",
+            "jar_type": "CUSTOM",
+            "target_amount": 1000000.0,
+            "current_balance": 0.0,
+            "icon": "❤️",
+            "color": "#EF4444",
+            "note": "Quà tặng gia đình, người thân, từ thiện và giúp đỡ người khó khăn.",
+        },
+    ],
+    "simple_three": [
+        {
+            "name": "Hũ Sinh Hoạt Thiết Yếu",
+            "jar_type": "LIVING",
+            "target_amount": 4000000.0,
+            "current_balance": 0.0,
+            "icon": "🍲",
+            "color": "#F59E0B",
+            "note": "Chi tiêu ăn uống, xăng xe, nhà trọ.",
+        },
+        {
+            "name": "Hũ Mục Tiêu Lớn",
+            "jar_type": "TET",
+            "target_amount": 10000000.0,
+            "current_balance": 0.0,
+            "icon": "🎯",
+            "color": "#3B82F6",
+            "note": "Tích lũy mua sắm, đón Tết hoặc mục tiêu riêng.",
+        },
+        {
+            "name": "Hũ Dự Phòng Khẩn Cấp",
+            "jar_type": "EMERGENCY",
+            "target_amount": 3000000.0,
+            "current_balance": 0.0,
+            "icon": "🛡️",
+            "color": "#10B981",
+            "note": "Quỹ phòng ngừa ốm đau, sự cố xe cộ.",
+        },
+    ],
+}
+
+DEFAULT_JARS_SEED = JAR_TEMPLATES["tet_gig"]
 
 DAY_NAME_MAP = {
     2: "Thứ 2",
@@ -128,17 +218,22 @@ def _get_or_create_tet_plan(db: Session, user_id: Optional[int]) -> TetEarningPl
     plan = query.first()
 
     if not plan:
+        is_luan = (user_id == 10)
         plan = TetEarningPlan(
             user_id=user_id,
-            tet_target_amount=15000000.0,
+            plan_name="Kế Hoạch Đón Tết" if is_luan else "Kế Hoạch Tài Chính",
+            tet_target_amount=15000000.0 if is_luan else 10000000.0,
             tet_date=datetime.date(2027, 2, 6),  # Mùng 1 Tết Đinh Mùi
+            shift_enabled=True if is_luan else False,
+            shift_name="Ca chạy xe" if is_luan else "Ca kiếm tiền",
             daily_shift_start="10:00",
             daily_shift_end="14:00",
             home_arrival_time="15:00",
+            primary_skill_focus="Lập trình Web Fullstack & Tiếng Anh" if is_luan else None,
             default_tet_split_percent=60.0,
             default_living_split_percent=40.0,
             is_active=True,
-            note="Chạy xe kiếm tiền đúng 4 tiếng (10h - 14h), về lúc 15h để nghỉ và học tập.",
+            note="Kỷ luật giờ giấc và quản lý tài chính cá nhân.",
         )
         db.add(plan)
         db.commit()
@@ -176,7 +271,8 @@ def _format_plan_response(plan: TetEarningPlan, db: Session, user_id: Optional[i
     today = vn_today()
     tet_date = plan.tet_date or datetime.date(2027, 2, 6)
     days_left = max(1, (tet_date - today).days)
-    needed = max(0.0, float(plan.tet_target_amount or 15000000) - current_savings)
+    target = float(plan.tet_target_amount or 15000000.0)
+    needed = max(0.0, target - current_savings)
     daily_target_needed = round(needed / float(days_left), 0)
 
     # Tính thu nhập kiếm được hôm nay
@@ -190,14 +286,18 @@ def _format_plan_response(plan: TetEarningPlan, db: Session, user_id: Optional[i
 
     return TetEarningPlanResponse(
         id=plan.id,
-        tet_target_amount=round(float(plan.tet_target_amount or 0), 0),
+        plan_name=getattr(plan, "plan_name", None) or "Kế Hoạch Tài Chính",
+        tet_target_amount=round(target, 0),
         current_savings=current_savings,
         tet_date=tet_date.isoformat() if tet_date else None,
         days_remaining=days_left,
         daily_target_needed=daily_target_needed,
+        shift_enabled=bool(getattr(plan, "shift_enabled", False)),
+        shift_name=getattr(plan, "shift_name", None) or "Ca kiếm tiền",
         daily_shift_start=plan.daily_shift_start or "10:00",
         daily_shift_end=plan.daily_shift_end or "14:00",
         home_arrival_time=plan.home_arrival_time or "15:00",
+        primary_skill_focus=getattr(plan, "primary_skill_focus", None),
         today_earned=today_earned,
         is_target_met_today=is_target_met_today,
         is_active=bool(plan.is_active),
@@ -212,11 +312,62 @@ def get_user_jars(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Lấy danh sách các hũ tài chính của người dùng. Nếu chưa có, tự tạo 4 hũ tiêu chuẩn."""
+    """Lấy danh sách các hũ tài chính của người dùng. Nếu chưa có, trả về danh sách rỗng để chọn mẫu."""
     real_user = _get_real_user(user)
     user_id = real_user.id if real_user else None
     jars = _get_or_create_default_jars(db, user_id)
     return [_format_jar_response(j) for j in jars]
+
+
+@router.post("/jars/apply-template", response_model=List[FinancialJarResponse])
+def apply_jar_template(
+    payload: JarTemplateApplyRequest,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Áp dụng bộ mẫu hũ tài chính (tet_gig, six_jars, simple_three, empty)."""
+    real_user = _get_real_user(user)
+    user_id = real_user.id if real_user else None
+    template_key = payload.template_type or "simple_three"
+
+    if template_key not in JAR_TEMPLATES and template_key != "empty":
+        template_key = "simple_three"
+
+    # Xóa các hũ hiện có của người dùng
+    existing_jars = db.query(FinancialJar).filter(
+        FinancialJar.user_id == user_id if user_id else FinancialJar.user_id.is_(None)
+    ).all()
+    for ej in existing_jars:
+        db.delete(ej)
+    db.commit()
+
+    created_jars = []
+    if template_key in JAR_TEMPLATES:
+        for seed in JAR_TEMPLATES[template_key]:
+            j = FinancialJar(
+                user_id=user_id,
+                name=seed["name"],
+                jar_type=seed["jar_type"],
+                target_amount=seed["target_amount"],
+                current_balance=0.0,
+                icon=seed["icon"],
+                color=seed["color"],
+                note=seed["note"],
+            )
+            db.add(j)
+            created_jars.append(j)
+        db.commit()
+        for cj in created_jars:
+            db.refresh(cj)
+
+    # Nếu chọn mẫu tet_gig, tự động bật ca kiếm tiền
+    if template_key == "tet_gig":
+        plan = _get_or_create_tet_plan(db, user_id)
+        plan.shift_enabled = True
+        plan.shift_name = "Ca chạy xe"
+        db.commit()
+
+    return [_format_jar_response(j) for j in created_jars]
 
 
 @router.post("/jars", response_model=FinancialJarResponse)
@@ -544,6 +695,8 @@ def update_tet_plan(
     user_id = real_user.id if real_user else None
     plan = _get_or_create_tet_plan(db, user_id)
 
+    if payload.plan_name is not None:
+        plan.plan_name = payload.plan_name.strip()
     if payload.tet_target_amount is not None:
         plan.tet_target_amount = max(0.0, payload.tet_target_amount)
     if payload.tet_date is not None:
@@ -551,12 +704,18 @@ def update_tet_plan(
             plan.tet_date = datetime.date.fromisoformat(payload.tet_date)
         except Exception:
             pass
+    if payload.shift_enabled is not None:
+        plan.shift_enabled = bool(payload.shift_enabled)
+    if payload.shift_name is not None:
+        plan.shift_name = payload.shift_name.strip()
     if payload.daily_shift_start is not None:
         plan.daily_shift_start = payload.daily_shift_start.strip()
     if payload.daily_shift_end is not None:
         plan.daily_shift_end = payload.daily_shift_end.strip()
     if payload.home_arrival_time is not None:
         plan.home_arrival_time = payload.home_arrival_time.strip()
+    if payload.primary_skill_focus is not None:
+        plan.primary_skill_focus = payload.primary_skill_focus.strip()
     if payload.default_tet_split_percent is not None:
         plan.default_tet_split_percent = max(0.0, min(100.0, payload.default_tet_split_percent))
     if payload.default_living_split_percent is not None:
@@ -594,67 +753,102 @@ def get_dual_coach_advice(
 
     # Lấy lịch học hôm nay của người dùng
     weekday_vn = today.weekday() + 2  # Thứ 2 = 2, Thứ 7 = 7, CN = 8
-    today_classes = db.query(SchoolClassSchedule).filter(
-        SchoolClassSchedule.user_id == user_id if user_id else SchoolClassSchedule.user_id.is_(None),
-        SchoolClassSchedule.day_of_week == weekday_vn,
-        SchoolClassSchedule.is_active == True,
-    ).order_by(SchoolClassSchedule.start_time.asc()).all()
+    today_classes = []
+    if user_id:
+        today_classes = db.query(SchoolClassSchedule).filter(
+            SchoolClassSchedule.user_id == user_id,
+            SchoolClassSchedule.day_of_week == weekday_vn,
+            SchoolClassSchedule.is_active == True,
+        ).order_by(SchoolClassSchedule.start_time.asc()).all()
+
+    school_label = (
+        today_classes[0].school_name
+        if today_classes and getattr(today_classes[0], "school_name", None)
+        else "Trường học"
+    )
 
     # Xây dựng bảng thời gian biểu mẫu trong ngày
     schedule_blocks = []
 
     # 1. Lớp học buổi sáng (nếu có)
     for c in today_classes:
-        if c.start_time < "10:00":
+        if c.start_time < "12:00":
             schedule_blocks.append({
                 "time": f"{c.start_time} - {c.end_time}",
                 "title": f"Lớp học: {c.course_name}",
-                "tag": "Trường Phenikaa",
+                "tag": c.school_name or "Giảng đường",
                 "room": c.room or "Giảng đường",
                 "color": "#3B82F6",
             })
 
-    # 2. Ca chạy xe cố định 10h - 14h
-    schedule_blocks.append({
-        "time": f"{plan.daily_shift_start} - {plan.daily_shift_end}",
-        "title": "🛵 Ca chạy xe kiếm tiền Tết (Cố định 4 tiếng)",
-        "tag": "Kiếm tiền",
-        "room": "Trên đường chạy",
-        "color": "#10B981",
-    })
+    # 2. Ca kiếm tiền / Ca làm việc (chỉ hiển thị nếu user BẬT shift_enabled)
+    if plan.shift_enabled:
+        s_name = plan.shift_name or "Ca kiếm tiền"
+        schedule_blocks.append({
+            "time": f"{plan.daily_shift_start} - {plan.daily_shift_end}",
+            "title": f"🛵 {s_name} ({plan.daily_shift_start} - {plan.daily_shift_end})",
+            "tag": "Kiếm tiền",
+            "room": "Nơi làm việc",
+            "color": "#10B981",
+        })
+        schedule_blocks.append({
+            "time": f"{plan.daily_shift_end} - {plan.home_arrival_time}",
+            "title": "🏠 Về nhà, ăn uống & nghỉ ngơi hồi phục",
+            "tag": "Nghỉ ngơi",
+            "room": "Tại nhà",
+            "color": "#F59E0B",
+        })
+    else:
+        morning_class = next((c for c in today_classes if c.start_time < "12:00"), None)
+        if not morning_class:
+            schedule_blocks.append({
+                "time": "08:30 - 11:30",
+                "title": "🎯 Khung tập trung buổi sáng: Hoàn thành việc quan trọng (Deep Work)",
+                "tag": "Tập trung",
+                "room": "Bàn làm việc",
+                "color": "#10B981",
+            })
+        schedule_blocks.append({
+            "time": "11:30 - 13:30",
+            "title": "🥗 Ăn trưa, thư giãn & nghỉ ngơi hồi phục năng lượng",
+            "tag": "Nghỉ ngơi",
+            "room": "Tại nhà",
+            "color": "#F59E0B",
+        })
 
-    # 3. Giờ về và ăn trưa
-    schedule_blocks.append({
-        "time": f"{plan.daily_shift_end} - {plan.home_arrival_time}",
-        "title": "🏠 Về nhà, tắm rửa, ăn trưa & nghỉ ngơi hồi phục",
-        "tag": "Nghỉ ngơi",
-        "room": "Tại nhà",
-        "color": "#F59E0B",
-    })
-
-    # 4. Lớp học buổi chiều / Khung học kỹ năng
-    afternoon_class = next((c for c in today_classes if c.start_time >= "15:00"), None)
+    # 3. Lớp học buổi chiều (nếu có)
+    afternoon_class = next((c for c in today_classes if c.start_time >= "12:00"), None)
     if afternoon_class:
         schedule_blocks.append({
             "time": f"{afternoon_class.start_time} - {afternoon_class.end_time}",
             "title": f"Lớp học: {afternoon_class.course_name}",
-            "tag": "Trường Phenikaa",
+            "tag": afternoon_class.school_name or "Giảng đường",
             "room": afternoon_class.room or "Giảng đường",
             "color": "#3B82F6",
         })
-    else:
-        schedule_blocks.append({
-            "time": "15:00 - 18:00",
-            "title": "💻 Khung học tập trung: Luyện Fullstack & Tiếng Anh",
-            "tag": "Phát triển kỹ năng",
-            "room": "Góc học tập",
-            "color": "#8B5CF6",
-        })
+
+    # 4. Kỹ năng trọng tâm / Khung tự học
+    skill_title = getattr(plan, "primary_skill_focus", None)
+    if not skill_title and user_id:
+        from app.models import StudyGoal
+        g = db.query(StudyGoal).filter(StudyGoal.user_id == user_id, StudyGoal.is_completed == False).first()
+        if g:
+            skill_title = g.title
+    if not skill_title:
+        skill_title = "Phát triển kỹ năng & Tự học tập trung"
+
+    schedule_blocks.append({
+        "time": "15:00 - 18:00" if plan.shift_enabled else "14:00 - 17:30",
+        "title": f"💻 Khung học tập trung: {skill_title}",
+        "tag": "Phát triển bản thân",
+        "room": "Góc học tập",
+        "color": "#8B5CF6",
+    })
 
     # 5. Buổi tối ôn bài & làm bài tập
     schedule_blocks.append({
         "time": "19:30 - 22:30",
-        "title": "📚 Ôn tập môn trường, làm bài tập lớn & Pomodoro hoàn thành Deadline",
+        "title": "📚 Ôn tập kiến thức, làm bài tập & Pomodoro hoàn thành Deadline",
         "tag": "Học tập",
         "room": "Bàn học",
         "color": "#6366F1",
@@ -664,38 +858,55 @@ def get_dual_coach_advice(
     target_k = plan_info.daily_target_needed / 1000.0
     earned_k = plan_info.today_earned / 1000.0
     days_left = plan_info.days_remaining
+    plan_title = plan_info.plan_name or "Mục tiêu tài chính"
 
-    if plan_info.is_target_met_today:
-        fin_advice = (
-            f"🎉 Hôm nay bạn đã kiếm được {earned_k:,.0f}k, hoàn thành xuất sắc chỉ tiêu ngày ({target_k:,.0f}k)! "
-            f"Hũ Tết hiện tích lũy được {plan_info.current_savings:,.0f}đ. Hãy khóa sổ ca chạy, không ham chạy quá 14h để bảo toàn sức khỏe!"
-        )
-    elif earned_k > 0:
-        con_thieu_k = max(0.0, target_k - earned_k)
-        fin_advice = (
-            f"Hôm nay bạn đã kiếm được {earned_k:,.0f}k / {target_k:,.0f}k mục tiêu. Còn {days_left} ngày đến Tết. "
-            f"Chỉ cần duy trì đều đặn mỗi ca 10h-14h kiếm khoảng {target_k:,.0f}k là bạn sẽ cầm chắc {plan_info.tet_target_amount:,.0f}đ đón Tết ấm no!"
-        )
+    if plan.shift_enabled:
+        s_title = plan.shift_name or "ca làm việc"
+        if plan_info.is_target_met_today:
+            fin_advice = (
+                f"🎉 Hôm nay bạn đã kiếm được {earned_k:,.0f}k, hoàn thành xuất sắc chỉ tiêu ngày ({target_k:,.0f}k)! "
+                f"Hãy nghỉ ngơi đúng giờ ({plan.daily_shift_end}), không làm quá sức để giữ gìn sức khỏe nhé!"
+            )
+        elif earned_k > 0:
+            fin_advice = (
+                f"Hôm nay bạn đã kiếm được {earned_k:,.0f}k / {target_k:,.0f}k chỉ tiêu cho {plan_title}. "
+                f"Chỉ cần duy trì đều đặn mỗi ngày là bạn sẽ sớm đạt mục tiêu {plan_info.tet_target_amount:,.0f}đ!"
+            )
+        else:
+            fin_advice = (
+                f"Chỉ tiêu hôm nay cho {plan_title}: {s_title} ({plan.daily_shift_start} - {plan.daily_shift_end}) cần tích lũy khoảng {target_k:,.0f}k. "
+                f"Hãy chuẩn bị sẵn sàng và giữ an toàn trên đường nhé!"
+            )
     else:
         fin_advice = (
-            f"Mục tiêu hôm nay: ca chạy 10:00 - 14:00 cần kiếm khoảng {target_k:,.0f}k. "
-            f"Còn {days_left} ngày đến Tết. Hãy đổ đầy bình xăng trước 10h và giữ an toàn giao thông trên đường nhé!"
+            f"Kế hoạch '{plan_title}': Mục tiêu tích lũy {plan_info.tet_target_amount:,.0f}đ (còn {days_left} ngày). "
+            f"Chỉ tiêu phân bổ mỗi ngày khoảng {target_k:,.0f}k. Hãy duy trì chi tiêu trong hạn mức các Hũ sinh hoạt để đảm bảo số tiền tiết kiệm!"
         )
 
     # Lời khuyên học tập & phát triển kỹ năng
-    class_note = f" Hôm nay bạn có {len(today_classes)} tiết học trường Phenikaa." if today_classes else " Hôm nay không có lịch học trường, rất thuận lợi để bạn cày đồ án Fullstack."
-    study_advice = (
-        f"Kỷ luật vàng: Đúng 14h kết thúc ca chạy và 15h có mặt tại nhà.{class_note} "
-        f"Đừng quên: Chạy xe là giải pháp tài chính ngắn hạn trước Tết, còn kỹ năng Lập trình và Bằng cấp Đại học mới là đòn bẩy thay đổi cuộc đời dài hạn. "
-        f"Dành trọn vẹn khung giờ 15:00 - 22:30 cho tri thức nhé bạn!"
+    class_note = (
+        f" Hôm nay bạn có {len(today_classes)} tiết học tại {school_label}."
+        if today_classes
+        else " Hôm nay không có lịch học trường, rất thích hợp để tập trung cao độ vào các dự án cá nhân."
     )
+    if plan.shift_enabled:
+        study_advice = (
+            f"Kỷ luật vàng: Kết thúc {plan.shift_name} lúc {plan.daily_shift_end} và có mặt tại nhà lúc {plan.home_arrival_time}.{class_note} "
+            f"Dành trọn vẹn buổi chiều tối để rèn luyện: {skill_title}!"
+        )
+    else:
+        study_advice = (
+            f"Kỷ luật bản thân:{class_note} Dành các phiên Pomodoro chất lượng để tập trung phát triển: {skill_title}. "
+            f"Kiên trì mỗi ngày là chìa khóa tạo nên sự bứt phá dài hạn!"
+        )
 
     quotes = [
-        "Kiếm tiền nuôi hiện tại, mài giũa kiến thức làm chủ tương lai. 4 tiếng chạy xe, trọn vẹn buổi chiều học tập!",
+        "Kiếm tiền nuôi hiện tại, mài giũa kiến thức làm chủ tương lai.",
         "Chỉ tiêu hôm nay bạn làm chủ, tương lai ngày mai bạn kiến tạo!",
-        "Đúng giờ dừng bánh lúc 14h, đúng 15h ngồi vào bàn học. Kỷ luật là cây cầu nối giữa mục tiêu và thành tựu.",
-        "Mỗi giọt mồ hôi trên đường chạy xe đều xứng đáng, và mỗi trang sách bạn đọc sau 15h đều sinh lời vô hạn.",
+        "Kỷ luật là cây cầu nối giữa mục tiêu và thành tựu.",
+        "Mỗi giờ tập trung hôm nay đều tích lũy thành tự do của ngày mai.",
     ]
+    selected_quote = quotes[today.timetuple().tm_yday % len(quotes)]
     # Lựa chọn quote theo ngày trong năm
     selected_quote = quotes[today.timetuple().tm_yday % len(quotes)]
 
@@ -714,17 +925,16 @@ def get_school_schedules(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Lấy danh sách thời khóa biểu các môn học tại trường Phenikaa."""
+    """Lấy danh sách thời khóa biểu các môn học tại trường của người dùng."""
     real_user = _get_real_user(user)
     user_id = real_user.id if real_user else None
+    if not user_id:
+        return []
 
-    query = db.query(SchoolClassSchedule)
-    if user_id:
-        query = query.filter(SchoolClassSchedule.user_id == user_id)
-    else:
-        query = query.filter(SchoolClassSchedule.user_id.is_(None))
-
-    classes = query.order_by(
+    classes = db.query(SchoolClassSchedule).filter(
+        SchoolClassSchedule.user_id == user_id,
+        SchoolClassSchedule.is_active == True,
+    ).order_by(
         SchoolClassSchedule.day_of_week.asc(),
         SchoolClassSchedule.start_time.asc()
     ).all()
@@ -732,6 +942,7 @@ def get_school_schedules(
     return [
         SchoolScheduleItemResponse(
             id=c.id,
+            school_name=getattr(c, "school_name", None) or "Trường Đại Học",
             course_code=c.course_code,
             course_name=c.course_name,
             day_of_week=c.day_of_week,
@@ -759,6 +970,7 @@ def add_school_schedule_item(
 
     c = SchoolClassSchedule(
         user_id=user_id,
+        school_name=payload.school_name or "Trường Đại Học",
         course_code=payload.course_code,
         course_name=payload.course_name.strip(),
         day_of_week=payload.day_of_week,
@@ -777,6 +989,7 @@ def add_school_schedule_item(
 
     return SchoolScheduleItemResponse(
         id=c.id,
+        school_name=c.school_name or "Trường Đại Học",
         course_code=c.course_code,
         course_name=c.course_name,
         day_of_week=c.day_of_week,
@@ -813,7 +1026,7 @@ def batch_import_school_schedule(
     db: Session = Depends(get_db),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Import hàng loạt môn học từ thời khóa biểu Phenikaa."""
+    """Import hàng loạt môn học từ thời khóa biểu."""
     real_user = _get_real_user(user)
     user_id = real_user.id if real_user else None
 
@@ -821,6 +1034,7 @@ def batch_import_school_schedule(
     for it in items:
         c = SchoolClassSchedule(
             user_id=user_id,
+            school_name=it.school_name or "Trường Đại Học",
             course_code=it.course_code,
             course_name=it.course_name.strip(),
             day_of_week=it.day_of_week,

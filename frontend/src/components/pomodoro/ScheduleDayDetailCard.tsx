@@ -49,7 +49,12 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
     : 'Ngày'
 
   const gigShifts = items.filter(
-    (i) => i.type === 'gig_shift' || i.category?.toLowerCase().includes('ca chạy')
+    (i) =>
+      i.type === 'gig_shift' ||
+      i.category?.toLowerCase().includes('ca chạy') ||
+      i.category?.toLowerCase().includes('ca kiếm tiền') ||
+      i.category?.toLowerCase().includes('ca làm việc') ||
+      i.category?.toLowerCase().includes('ca làm')
   )
   const exams = items.filter(
     (i) =>
@@ -135,7 +140,7 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
           </div>
         ) : (
           <>
-            {/* 0. Ca Chạy Kiếm Tiền 10h-14h (15h về nhà) */}
+            {/* 0. Ca Kiếm Tiền / Ca Làm Việc Cá Nhân */}
             {gigShifts.map((item) => (
               <div
                 key={`${item.type}-${item.id}`}
@@ -148,16 +153,16 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
                     </h5>
                     <div className="text-[11px] text-emerald-200 flex items-center gap-1 mt-0.5">
                       <Clock className="w-3 h-3" />
-                      <span>{item.time_range || '10:00 - 14:00 (15h về nhà)'}</span>
+                      <span>{item.time_range || 'Ca làm việc'}</span>
                     </div>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-400/40 text-emerald-300 shrink-0">
-                    Chạy 4 tiếng
+                    {item.category || 'Ca làm'}
                   </span>
                 </div>
                 <div className="bg-slate-800/80 p-2.5 sm:p-3 text-slate-200 text-xs flex items-center justify-between gap-2">
                   <p className="text-[11px] text-slate-300">
-                    {item.notes || 'Chỉ chạy 4 tiếng (10h-14h), về nhà lúc 15h nghỉ ngơi và tập trung học!'}
+                    {item.notes || 'Ca làm việc kiếm thêm thu nhập, cân bằng thời gian học tập & nghỉ ngơi!'}
                   </p>
                 </div>
               </div>

@@ -110,4 +110,42 @@ describe('Financial Jars & School Schedule Frontend Logic', () => {
     expect(syncSetting.sync_interval_days).toBe(14)
     expect(syncSetting.days_until_next_sync).toBe(14)
   })
+
+  it('supports personalized work shift categories in gig tab filter', () => {
+    const personalizedShifts: DeadlineItem[] = [
+      {
+        type: 'gig_shift',
+        id: 'shift_cafe',
+        title: 'Ca làm thêm quán cafe The Coffee House',
+        date: '2026-11-20',
+        days_left: 0,
+        urgency: 'today',
+        current_hours: 0,
+        target_hours: 4.0,
+        progress_percent: 0,
+        category: 'Ca làm việc',
+        color: '#10B981',
+        planet_type: 'gig',
+      },
+      {
+        type: 'gig_shift',
+        id: 'shift_tutor',
+        title: 'Ca gia sư Toán lớp 12',
+        date: '2026-11-20',
+        days_left: 0,
+        urgency: 'today',
+        current_hours: 0,
+        target_hours: 2.0,
+        progress_percent: 0,
+        category: 'Ca kiếm tiền',
+        color: '#10B981',
+        planet_type: 'gig',
+      },
+    ]
+
+    const matched = filterDeadlinesByTab(personalizedShifts, 'gig')
+    expect(matched).toHaveLength(2)
+    expect(matched[0].title).toContain('The Coffee House')
+    expect(matched[1].title).toContain('gia sư')
+  })
 })

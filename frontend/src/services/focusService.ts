@@ -352,14 +352,18 @@ export interface JarTransaction {
 
 export interface TetEarningPlan {
   id: number
+  plan_name?: string
   tet_target_amount: number
   current_savings: number
   tet_date?: string
   days_remaining: number
   daily_target_needed: number
+  shift_enabled?: boolean
+  shift_name?: string
   daily_shift_start: string
   daily_shift_end: string
   home_arrival_time: string
+  primary_skill_focus?: string | null
   today_earned: number
   is_target_met_today: boolean
   is_active: boolean
@@ -381,6 +385,7 @@ export interface DualCoachAdvice {
 
 export interface SchoolScheduleItem {
   id: number
+  school_name?: string
   course_code?: string
   course_name: string
   day_of_week: number
@@ -928,6 +933,13 @@ export const focusService = {
   // --- Financial Jars & Tet Earning Plan ---
   getFinancialJars: async (): Promise<FinancialJar[]> => {
     const res = await api.get('/finance/jars')
+    return res.data
+  },
+
+  applyJarTemplate: async (
+    templateType: 'tet_gig' | 'six_jars' | 'simple_three' | 'empty'
+  ): Promise<FinancialJar[]> => {
+    const res = await api.post('/finance/jars/apply-template', { template_type: templateType })
     return res.data
   },
 

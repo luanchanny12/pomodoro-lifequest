@@ -88,7 +88,7 @@ DEFAULT_PHENIKAA_COURSES = [
 
 
 def get_or_create_sync_setting(db: Session, user_id: Optional[int]) -> PhenikaaSyncSetting:
-    """Lấy cấu hình tự động đồng bộ thời khóa biểu, nếu chưa có thì khởi tạo mặc định 14 ngày."""
+    """Lấy cấu hình tự động đồng bộ thời khóa biểu, cá nhân hóa theo từng người dùng."""
     query = db.query(PhenikaaSyncSetting)
     if user_id:
         query = query.filter(PhenikaaSyncSetting.user_id == user_id)
@@ -99,15 +99,20 @@ def get_or_create_sync_setting(db: Session, user_id: Optional[int]) -> PhenikaaS
     if not setting:
         now = vn_now()
         today = vn_today()
+        is_luan = (user_id == 10)
         setting = PhenikaaSyncSetting(
             user_id=user_id,
-            student_id="23010720",
-            auto_sync_enabled=True,
+            student_id="23010720" if is_luan else None,
+            auto_sync_enabled=True if is_luan else False,
             sync_interval_days=14,  # Chu kỳ 2 tuần (14 ngày)
-            last_synced_at=now,
-            next_sync_date=today + timedelta(days=14),
-            last_sync_status="SUCCESS",
-            last_changes_summary="Đã khởi tạo tự động đồng bộ thời khóa biểu Phenikaa chu kỳ 2 tuần/lần.",
+            last_synced_at=now if is_luan else None,
+            next_sync_date=today + timedelta(days=14) if is_luan else None,
+            last_sync_status="SUCCESS" if is_luan else "NOT_CONFIGURED",
+            last_changes_summary=(
+                "Đã khởi tạo tự động đồng bộ thời khóa biểu Phenikaa chu kỳ 2 tuần/lần."
+                if is_luan
+                else "Chưa cấu hình đồng bộ cổng trường."
+            ),
         )
         db.add(setting)
         db.commit()
@@ -173,6 +178,7 @@ def diff_and_update_schedule(
             # Thêm môn mới
             new_item = SchoolClassSchedule(
                 user_id=user_id,
+                school_name="Đại học Phenikaa",
                 course_name=name,
                 course_code=code,
                 day_of_week=dow,

@@ -43,12 +43,21 @@ def auth_headers():
 def test_get_or_create_sync_setting():
     db = SessionLocal()
     try:
-        setting = get_or_create_sync_setting(db, user_id=9999)
-        assert setting.student_id == "23010720"
-        assert setting.auto_sync_enabled is True
-        assert setting.sync_interval_days == 14
-        assert setting.next_sync_date is not None
-        assert setting.last_sync_status == "SUCCESS"
+        # Xóa cấu hình cũ trong test db để test hàm khởi tạo mặc định get_or_create
+        db.query(PhenikaaSyncSetting).filter(PhenikaaSyncSetting.user_id.in_([10, 9999])).delete(synchronize_session=False)
+        db.commit()
+
+        # Tài khoản Luân (user_id = 10) luôn được khởi tạo với MSSV 23010720 và bật đồng bộ
+        setting_luan = get_or_create_sync_setting(db, user_id=10)
+        assert setting_luan.student_id == "23010720"
+        assert setting_luan.auto_sync_enabled is True
+        assert setting_luan.sync_interval_days == 14
+        assert setting_luan.next_sync_date is not None
+        assert setting_luan.last_sync_status == "SUCCESS"
+
+        # Người dùng khác mặc định chưa bật đồng bộ cổng trường
+        setting_other = get_or_create_sync_setting(db, user_id=9999)
+        assert setting_other.auto_sync_enabled is False
     finally:
         db.close()
 
@@ -56,7 +65,9 @@ def test_get_or_create_sync_setting():
 def test_check_if_sync_due():
     db = SessionLocal()
     try:
-        setting = get_or_create_sync_setting(db, user_id=9998)
+        db.query(PhenikaaSyncSetting).filter(PhenikaaSyncSetting.user_id == 10).delete(synchronize_session=False)
+        db.commit()
+        setting = get_or_create_sync_setting(db, user_id=10)
         # Khi vừa tạo, next_sync_date là +14 ngày -> chưa đến hạn
         assert check_if_sync_due(setting) is False
 
@@ -123,22 +134,21 @@ def test_diff_and_update_schedule():
 
 
 def test_phenikaa_sync_api_endpoints(auth_headers):
-    # 1. GET /api/finance/phenikaa/sync-status
+    # 1. GET /api/finance/phenikaa/sync-status (Ban đầu chưa kích hoạt với user mới)
     res = client.get("/api/finance/phenikaa/sync-status", headers=auth_headers)
     assert res.status_code == 200
     data = res.json()
-    assert data["auto_sync_enabled"] is True
     assert data["sync_interval_days"] == 14
-    assert data["student_id"] == "23010720"
     assert "days_until_next_sync" in data
 
-    # 2. PUT /api/finance/phenikaa/configure-sync
+    # 2. PUT /api/finance/phenikaa/configure-sync (Người dùng chủ động kích hoạt)
     put_res = client.put(
         "/api/finance/phenikaa/configure-sync",
         headers=auth_headers,
         json={"sync_interval_days": 14, "auto_sync_enabled": True},
     )
     assert put_res.status_code == 200
+    assert put_res.json()["auto_sync_enabled"] is True
     assert put_res.json()["sync_interval_days"] == 14
 
     # 3. POST /api/finance/phenikaa/trigger-sync

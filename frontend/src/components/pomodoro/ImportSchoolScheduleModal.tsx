@@ -111,6 +111,7 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<'list' | 'manual' | 'paste'>('list')
 
   // Form thêm môn học thủ công
+  const [schoolNameInput, setSchoolNameInput] = useState('Trường Đại Học')
   const [courseName, setCourseName] = useState('')
   const [courseCode, setCourseCode] = useState('')
   const [dayOfWeek, setDayOfWeek] = useState<number>(2)
@@ -120,7 +121,7 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
   const [lecturer, setLecturer] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Form paste từ web Phenikaa
+  // Form paste từ web
   const [pasteText, setPasteText] = useState('')
   const [isImporting, setIsImporting] = useState(false)
 
@@ -141,8 +142,11 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
   useEffect(() => {
     if (isOpen) {
       loadSyncStatus()
+      if (schedules.length > 0 && schedules[0].school_name) {
+        setSchoolNameInput(schedules[0].school_name)
+      }
     }
-  }, [isOpen])
+  }, [isOpen, schedules])
 
   const handleManualSyncNow = async () => {
     setIsSyncingNow(true)
@@ -196,6 +200,7 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
     try {
       await focusService.addSchoolScheduleItem({
         course_name: courseName.trim(),
+        school_name: schoolNameInput.trim() || undefined,
         course_code: courseCode.trim() || undefined,
         day_of_week: dayOfWeek,
         start_time: startTime,
@@ -279,6 +284,7 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
         if (cleanName.length > 3) {
           parsedItems.push({
             course_name: cleanName.slice(0, 80),
+            school_name: schoolNameInput.trim() || undefined,
             day_of_week: dow,
             start_time: start,
             end_time: end,
@@ -291,6 +297,7 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
       if (parsedItems.length === 0) {
         parsedItems.push({
           course_name: pasteText.slice(0, 100),
+          school_name: schoolNameInput.trim() || undefined,
           day_of_week: 2,
           start_time: '07:00',
           end_time: '09:15',
@@ -322,10 +329,12 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                Thời Khóa Biểu Trường Phenikaa
+                {schedules[0]?.school_name
+                  ? `Thời Khóa Biểu: ${schedules[0].school_name}`
+                  : 'Thời Khóa Biểu Học Tập / Giảng Đường'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Tự động đồng bộ vào Lịch Tháng để cân đối giữa giờ học & ca chạy 10h-14h
+                Tự động đồng bộ vào Lịch Tháng để cân đối giữa giờ học và kế hoạch cá nhân
               </p>
             </div>
           </div>
@@ -360,7 +369,7 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
                       isSyncingNow ? 'animate-spin' : ''
                     }`}
                   />
-                  Tự động đồng bộ 2 tuần / lần (Cổng Phenikaa)
+                  Tự động đồng bộ 2 tuần / lần (Cổng Đào Tạo Phenikaa)
                 </span>
                 <span
                   className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
@@ -385,7 +394,7 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
                     )}
                   </span>
                 ) : (
-                  <span>Tự động rà soát thay đổi môn học, lịch thi và thông báo qua Telegram Bot</span>
+                  <span>Tính năng tùy chọn cho sinh viên Phenikaa: tự động quét thời khóa biểu và lịch thi qua bot</span>
                 )}
               </p>
             </div>
@@ -443,7 +452,7 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
                 : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
-            <Upload className="w-4 h-4" /> Dán từ Cổng Phenikaa
+            <Upload className="w-4 h-4" /> Dán thời khóa biểu (Text)
           </button>
         </div>
 
@@ -458,8 +467,8 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
                     Chưa có môn học nào trong thời khóa biểu
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-4">
-                    Bạn có thể nạp nhanh lịch học chuẩn của trường Phenikaa hoặc thêm từng môn để
-                    hệ thống tự sắp xếp giờ chạy xe phù hợp.
+                    Bạn có thể thêm từng môn học hoặc import nhanh thời khóa biểu để
+                    hệ thống tự sắp xếp lịch học cân đối với công việc.
                   </p>
                   <button
                     onClick={handleImportSampleData}
@@ -534,18 +543,32 @@ export const ImportSchoolScheduleModal: React.FC<Props> = ({
 
           {activeTab === 'manual' && (
             <form onSubmit={handleCreateManual} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Tên môn học <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={courseName}
-                  onChange={(e) => setCourseName(e.target.value)}
-                  placeholder="Ví dụ: Lập trình Web Nâng Cao"
-                  required
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Tên trường / Đơn vị đào tạo
+                  </label>
+                  <input
+                    type="text"
+                    value={schoolNameInput}
+                    onChange={(e) => setSchoolNameInput(e.target.value)}
+                    placeholder="Ví dụ: Đại học Phenikaa, Bách Khoa..."
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Tên môn học <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={courseName}
+                    onChange={(e) => setCourseName(e.target.value)}
+                    placeholder="Ví dụ: Lập trình Web Nâng Cao"
+                    required
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

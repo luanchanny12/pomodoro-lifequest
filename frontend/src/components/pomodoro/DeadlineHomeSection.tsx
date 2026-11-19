@@ -404,7 +404,7 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
                 },
                 {
                   id: 'gig',
-                  label: `🛵 Ca chạy 10h-14h (${data.items.filter((i) => i.type === 'gig_shift' || i.category?.toLowerCase().includes('ca chạy')).length})`,
+                  label: `🛵 Ca làm việc (${data.items.filter((i) => i.type === 'gig_shift' || i.category?.toLowerCase().includes('ca ')).length})`,
                 },
                 {
                   id: 'future',

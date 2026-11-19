@@ -72,7 +72,12 @@ async def lifespan(app: FastAPI):
             ("financial_jars", "user_id", "INTEGER"),
             ("jar_transactions", "user_id", "INTEGER"),
             ("tet_earning_plans", "user_id", "INTEGER"),
+            ("tet_earning_plans", "plan_name", "VARCHAR DEFAULT 'Kế Hoạch Tài Chính'"),
+            ("tet_earning_plans", "shift_enabled", "BOOLEAN DEFAULT FALSE"),
+            ("tet_earning_plans", "shift_name", "VARCHAR DEFAULT 'Ca kiếm tiền'"),
+            ("tet_earning_plans", "primary_skill_focus", "VARCHAR"),
             ("school_class_schedules", "user_id", "INTEGER"),
+            ("school_class_schedules", "school_name", "VARCHAR DEFAULT 'Trường Đại Học'"),
             ("bank_webhook_logs", "user_id", "INTEGER"),
             ("phenikaa_sync_settings", "user_id", "INTEGER"),
         ]
