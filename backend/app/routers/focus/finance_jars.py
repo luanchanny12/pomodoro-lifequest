@@ -526,24 +526,40 @@ def log_fast_expense(
     real_user = _get_real_user(user)
     user_id = real_user.id if real_user else None
 
+    expense_amount = abs(float(payload.amount or 0))
+    if expense_amount <= 0:
+        raise HTTPException(status_code=400, detail="Số tiền chi tiêu phải lớn hơn 0đ!")
+
     # Tìm jar mục tiêu
     target_jar = None
     if payload.jar_id:
         target_jar = db.query(FinancialJar).filter(FinancialJar.id == payload.jar_id).first()
-        _verify_resource_ownership(target_jar, user)
-    else:
-        # Mặc định lấy Hũ Sinh Hoạt (LIVING)
+        if target_jar:
+            _verify_resource_ownership(target_jar, user)
+        else:
+            raise HTTPException(status_code=404, detail="Không tìm thấy hũ tài chính đã chọn!")
+
+    if not target_jar:
+        # 1. Tìm Hũ Sinh Hoạt (LIVING) của user
         target_jar = db.query(FinancialJar).filter(
             FinancialJar.user_id == user_id if user_id else FinancialJar.user_id.is_(None),
             FinancialJar.jar_type == "LIVING"
         ).first()
 
     if not target_jar:
-        # Nếu chưa có hũ sinh hoạt, tạo bộ hũ chuẩn
-        jars = _get_or_create_default_jars(db, user_id)
-        target_jar = next((j for j in jars if j.jar_type == "LIVING"), jars[0])
+        # 2. Tìm bất kỳ hũ nào thuộc sở hữu của user
+        target_jar = db.query(FinancialJar).filter(
+            FinancialJar.user_id == user_id if user_id else FinancialJar.user_id.is_(None)
+        ).first()
 
-    expense_amount = abs(payload.amount)
+    if not target_jar:
+        # 3. Khởi tạo bộ hũ chuẩn nếu chưa có
+        jars = _get_or_create_default_jars(db, user_id)
+        target_jar = next((j for j in jars if j.jar_type == "LIVING"), jars[0] if jars else None)
+
+    if not target_jar:
+        raise HTTPException(status_code=400, detail="Chưa có hũ tài chính nào để trừ chi tiêu. Vui lòng tạo hũ trước!")
+
     # Trừ số dư
     target_jar.current_balance = round(float(target_jar.current_balance or 0) - expense_amount, 0)
     target_jar.updated_at = vn_now()
@@ -567,7 +583,7 @@ def log_fast_expense(
     advice = (
         f"Đã ghi nhận chi {expense_amount:,.0f}đ cho '{tx.description}'. "
         f"Số dư còn lại trong {target_jar.name}: {target_jar.current_balance:,.0f}đ. "
-        f"Hãy giữ chi tiêu trong định mức để bảo toàn tiền cho Hũ Tết nhé!"
+        f"Hãy giữ chi tiêu trong định mức để bảo toàn tiền cho mục tiêu nhé!"
     )
 
     return {
@@ -577,7 +593,7 @@ def log_fast_expense(
             "amount": tx.amount,
             "category": tx.category,
             "description": tx.description,
-            "time": tx.transaction_time.isoformat(),
+            "time": tx.transaction_time.isoformat() if tx.transaction_time else vn_now().isoformat(),
         },
         "jar": _format_jar_response(target_jar),
         "advice": advice,

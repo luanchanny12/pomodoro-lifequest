@@ -112,6 +112,33 @@ def test_fast_expense_deduction(auth_headers):
     assert "advice" in data
 
 
+def test_expense_with_custom_description_and_selected_jar(auth_headers):
+    # Lấy danh sách hũ hiện tại
+    jars_res = client.get("/api/finance/jars", headers=auth_headers)
+    assert jars_res.status_code == 200
+    jars = jars_res.json()
+    assert len(jars) > 0
+    chosen_jar = jars[0]
+
+    # Ghi nhận chi tiêu cụ thể cho hũ đã chọn (VD: 110.000đ cho lợn vay)
+    res = client.post(
+        "/api/finance/expense",
+        headers=auth_headers,
+        json={
+            "jar_id": chosen_jar["id"],
+            "amount": 110000.0,
+            "category": "khac",
+            "description": "cho lợn vay",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+    assert data["transaction"]["amount"] == -110000.0
+    assert "cho lợn vay" in data["transaction"]["description"]
+    assert data["jar"]["id"] == chosen_jar["id"]
+
+
 def test_gig_deposit_and_auto_allocation(auth_headers):
     # Nạp thu nhập ca chạy 10h-14h (260.000đ)
     res = client.post(

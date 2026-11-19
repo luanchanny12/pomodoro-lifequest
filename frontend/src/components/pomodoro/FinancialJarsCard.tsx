@@ -60,6 +60,7 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
   const [expenseAmount, setExpenseAmount] = useState<string>('50000')
   const [expenseCat, setExpenseCat] = useState<string>('an_uong')
   const [expenseDesc, setExpenseDesc] = useState<string>('')
+  const [expenseJarId, setExpenseJarId] = useState<number | undefined>(undefined)
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false)
 
   const [isSchoolModalOpen, setIsSchoolModalOpen] = useState(false)
@@ -96,6 +97,11 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
       setAdvice(adviceData)
       setTransactions(txsData.slice(0, 10))
       setSchoolSchedules(schedData)
+
+      if (jarsData.length > 0) {
+        const defaultJar = jarsData.find((j) => j.jar_type === 'LIVING') || jarsData[0]
+        setExpenseJarId((prev) => prev || defaultJar.id)
+      }
 
       if (planData) {
         setFormPlanName(planData.plan_name || 'Kế Hoạch Tài Chính')
@@ -144,8 +150,9 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
       toast.success(res.message)
       setIsGigModalOpen(false)
       loadData()
-    } catch {
-      toast.error('Lỗi khi nạp tiền ca chạy!')
+    } catch (err: any) {
+      console.error('Error depositing earnings:', err)
+      toast.error(err?.response?.data?.detail || err?.message || 'Lỗi khi nạp tiền ca chạy!')
     } finally {
       setIsSubmittingGig(false)
     }
@@ -164,14 +171,17 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
       const res = await focusService.logExpense({
         amount: amt,
         category: expenseCat,
-        description: expenseDesc || 'Chi tiêu sinh hoạt',
+        description: expenseDesc.trim() || 'Chi tiêu sinh hoạt',
+        jar_id: expenseJarId,
       })
-      toast.success(res.advice)
+      toast.success(res.advice || 'Đã ghi nhận chi tiêu thành công!')
       setIsExpenseModalOpen(false)
       setExpenseDesc('')
       loadData()
-    } catch {
-      toast.error('Lỗi khi ghi nhận chi tiêu!')
+    } catch (err: any) {
+      console.error('Error logging expense:', err)
+      const detail = err?.response?.data?.detail || err?.message || 'Lỗi khi ghi nhận chi tiêu!'
+      toast.error(detail)
     } finally {
       setIsSubmittingExpense(false)
     }
@@ -187,8 +197,8 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
       } else {
         toast.error(res.message)
       }
-    } catch {
-      toast.error('Không thể kích hoạt test Telegram. Hãy kiểm tra Bot Token trong Cài đặt!')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || err?.message || 'Không thể kích hoạt test Telegram.')
     } finally {
       setIsTestingTelegram(false)
     }
@@ -204,8 +214,8 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
       } else {
         toast.error(res.message)
       }
-    } catch {
-      toast.error('Không thể kích hoạt test Telegram!')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || err?.message || 'Không thể kích hoạt test Telegram!')
     } finally {
       setIsTestingTelegram(false)
     }
@@ -230,8 +240,9 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
       setIsPlanConfigModalOpen(false)
       toast.success('Đã lưu cấu hình mục tiêu & ca làm việc cá nhân!')
       loadData()
-    } catch {
-      toast.error('Lỗi khi lưu cấu hình.')
+    } catch (err: any) {
+      console.error('Error saving plan:', err)
+      toast.error(err?.response?.data?.detail || err?.message || 'Lỗi khi lưu cấu hình.')
     } finally {
       setIsSavingPlan(false)
     }
@@ -247,8 +258,9 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
       setIsTemplatePickerOpen(false)
       toast.success('Đã áp dụng mẫu hũ tài chính thành công!')
       loadData()
-    } catch {
-      toast.error('Lỗi khi áp dụng mẫu hũ.')
+    } catch (err: any) {
+      console.error('Error applying template:', err)
+      toast.error(err?.response?.data?.detail || err?.message || 'Lỗi khi áp dụng mẫu hũ.')
     } finally {
       setIsApplyingTemplate(false)
     }
@@ -797,6 +809,23 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
             <form onSubmit={handleLogExpense} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Trừ từ Hũ Tài Chính
+                </label>
+                <select
+                  value={expenseJarId || ''}
+                  onChange={(e) => setExpenseJarId(Number(e.target.value) || undefined)}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium"
+                >
+                  {jars.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.icon} {j.name} (Số dư: {j.current_balance.toLocaleString('vi-VN')}đ)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Số tiền chi tiêu (VNĐ)
                 </label>
                 <input
@@ -835,13 +864,16 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
                   type="text"
                   value={expenseDesc}
                   onChange={(e) => setExpenseDesc(e.target.value)}
-                  placeholder="Ví dụ: Ăn trưa cơm sườn"
+                  placeholder="Ví dụ: Ăn trưa cơm sườn, cho lợn vay..."
                   className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
                 />
               </div>
 
               <p className="text-[11px] text-slate-500">
-                Khoản chi này sẽ được tự động trừ từ <b>Hũ Sinh Hoạt Hàng Ngày</b>.
+                Khoản chi này sẽ được tự động trừ từ{' '}
+                <b>
+                  {jars.find((j) => j.id === expenseJarId)?.name || 'Hũ Sinh Hoạt Hàng Ngày'}
+                </b>.
               </p>
 
               <div className="pt-2 flex justify-end gap-2">
