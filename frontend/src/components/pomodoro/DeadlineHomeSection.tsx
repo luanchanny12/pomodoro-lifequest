@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, startTransition } from 'react'
 import {
   Bell,
   Calendar,
@@ -232,7 +232,7 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
           <div className="flex items-center rounded-xl bg-slate-800 p-0.5 border border-slate-700">
             <button
               type="button"
-              onClick={() => setViewMode('timetable')}
+              onClick={() => startTransition(() => setViewMode('timetable'))}
               className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 viewMode === 'timetable'
                   ? 'bg-blue-600 text-white shadow-sm'
@@ -244,7 +244,7 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('calendar')}
+              onClick={() => startTransition(() => setViewMode('calendar'))}
               className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 viewMode === 'calendar'
                   ? 'bg-sky-500 text-white shadow-sm'
@@ -256,7 +256,7 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('list')}
+              onClick={() => startTransition(() => setViewMode('list'))}
               className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 viewMode === 'list'
                   ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'

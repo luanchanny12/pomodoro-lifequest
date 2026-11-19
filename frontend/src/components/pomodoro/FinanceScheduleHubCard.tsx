@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, startTransition } from 'react'
 import {
   CalendarDays,
   ChevronDown,
@@ -36,7 +36,7 @@ interface FinanceScheduleHubCardProps {
   onOpenAuthModal?: () => void
 }
 
-export const FinanceScheduleHubCard: React.FC<FinanceScheduleHubCardProps> = ({
+const FinanceScheduleHubCardComponent: React.FC<FinanceScheduleHubCardProps> = ({
   isAuthenticated,
   deadlinesData,
   deadlinesLoading = false,
@@ -279,3 +279,5 @@ export const FinanceScheduleHubCard: React.FC<FinanceScheduleHubCardProps> = ({
     </div>
   )
 }
+
+export const FinanceScheduleHubCard = React.memo(FinanceScheduleHubCardComponent)

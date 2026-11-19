@@ -425,11 +425,20 @@ def update_jar(
     _verify_resource_ownership(jar, user)
 
     if payload.name is not None:
-        jar.name = payload.name.strip()
+        clean_name = payload.name.strip()
+        if not clean_name:
+            raise HTTPException(status_code=400, detail="Tên hũ tài chính không được để trống!")
+        if len(clean_name) > 100:
+            raise HTTPException(status_code=400, detail="Tên hũ tài chính không được vượt quá 100 ký tự!")
+        jar.name = clean_name
     if payload.target_amount is not None:
-        jar.target_amount = max(0.0, payload.target_amount)
+        if payload.target_amount < 0:
+            raise HTTPException(status_code=400, detail="Mục tiêu tích lũy không được là số âm!")
+        jar.target_amount = float(payload.target_amount)
     if payload.current_balance is not None:
-        jar.current_balance = max(0.0, payload.current_balance)
+        if payload.current_balance < 0:
+            raise HTTPException(status_code=400, detail="Số dư hũ không được là số âm!")
+        jar.current_balance = float(payload.current_balance)
     if payload.icon is not None:
         jar.icon = payload.icon
     if payload.color is not None:
@@ -529,6 +538,11 @@ def log_fast_expense(
     expense_amount = abs(float(payload.amount or 0))
     if expense_amount <= 0:
         raise HTTPException(status_code=400, detail="Số tiền chi tiêu phải lớn hơn 0đ!")
+    if expense_amount > 500_000_000:
+        raise HTTPException(status_code=400, detail="Số tiền chi tiêu một lần không được vượt quá 500.000.000đ!")
+
+    if payload.description and len(payload.description.strip()) > 255:
+        raise HTTPException(status_code=400, detail="Nội dung chi tiêu không được vượt quá 255 ký tự!")
 
     # Tìm jar mục tiêu
     target_jar = None
@@ -560,8 +574,22 @@ def log_fast_expense(
     if not target_jar:
         raise HTTPException(status_code=400, detail="Chưa có hũ tài chính nào để trừ chi tiêu. Vui lòng tạo hũ trước!")
 
-    # Trừ số dư
-    target_jar.current_balance = round(float(target_jar.current_balance or 0) - expense_amount, 0)
+    # Chặn chi tiêu khi hũ không có tiền hoặc số dư không đủ
+    current_bal = round(float(target_jar.current_balance or 0), 0)
+    if current_bal <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Hũ '{target_jar.name}' hiện đang có 0đ (hết tiền), bạn không thể ghi nhận chi tiêu từ hũ này! Vui lòng nạp thêm tiền hoặc chọn hũ khác có số dư khả dụng."
+        )
+
+    if current_bal < expense_amount:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Số dư trong hũ '{target_jar.name}' chỉ còn {current_bal:,.0f}đ, không đủ để chi khoản {expense_amount:,.0f}đ! Bạn chỉ có thể chi tối đa {current_bal:,.0f}đ."
+        )
+
+    # Trừ số dư hợp lệ
+    target_jar.current_balance = round(current_bal - expense_amount, 0)
     target_jar.updated_at = vn_now()
 
     tx_time = payload.transaction_time or vn_now()
@@ -613,16 +641,27 @@ def deposit_gig_earnings(
     real_user = _get_real_user(user)
     user_id = real_user.id if real_user else None
 
-    amount = max(0.0, float(payload.amount))
+    amount = float(payload.amount or 0)
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="Số tiền thu nhập phải lớn hơn 0!")
+        raise HTTPException(status_code=400, detail="Số tiền thu nhập nạp vào hũ phải lớn hơn 0đ!")
+    if amount > 500_000_000:
+        raise HTTPException(status_code=400, detail="Số tiền nạp một lần không được vượt quá 500.000.000đ!")
+
+    tet_pct = payload.tet_percent if payload.tet_percent is not None else 60.0
+    living_pct = 100.0 - tet_pct if payload.living_percent is None else payload.living_percent
+
+    if tet_pct < 0 or tet_pct > 100 or living_pct < 0 or living_pct > 100:
+        raise HTTPException(status_code=400, detail="Tỷ lệ phân bổ phải nằm trong khoảng từ 0% đến 100%!")
+
+    if round(tet_pct + living_pct, 1) != 100.0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tổng tỷ lệ phân bổ của Hũ Tết ({tet_pct:.1f}%) và Hũ Sinh Hoạt ({living_pct:.1f}%) phải bằng đúng 100%!"
+        )
 
     jars = _get_or_create_default_jars(db, user_id)
     tet_jar = next((j for j in jars if j.jar_type == "TET"), None)
     living_jar = next((j for j in jars if j.jar_type == "LIVING"), None)
-
-    tet_pct = payload.tet_percent if payload.tet_percent is not None else 60.0
-    living_pct = 100.0 - tet_pct if payload.living_percent is None else payload.living_percent
 
     tet_amount = round(amount * (tet_pct / 100.0), 0)
     living_amount = amount - tet_amount
@@ -712,30 +751,57 @@ def update_tet_plan(
     plan = _get_or_create_tet_plan(db, user_id)
 
     if payload.plan_name is not None:
-        plan.plan_name = payload.plan_name.strip()
+        clean_name = payload.plan_name.strip()
+        if not clean_name:
+            raise HTTPException(status_code=400, detail="Tên kế hoạch không được để trống!")
+        plan.plan_name = clean_name
+
     if payload.tet_target_amount is not None:
-        plan.tet_target_amount = max(0.0, payload.tet_target_amount)
+        target = float(payload.tet_target_amount)
+        if target <= 0:
+            raise HTTPException(status_code=400, detail="Mục tiêu tích lũy Tết phải lớn hơn 0đ!")
+        if target > 1_000_000_000:
+            raise HTTPException(status_code=400, detail="Mục tiêu tích lũy không được vượt quá 1 tỷ đồng!")
+        plan.tet_target_amount = target
+
     if payload.tet_date is not None:
         try:
             plan.tet_date = datetime.date.fromisoformat(payload.tet_date)
         except Exception:
             pass
+
     if payload.shift_enabled is not None:
         plan.shift_enabled = bool(payload.shift_enabled)
+
     if payload.shift_name is not None:
         plan.shift_name = payload.shift_name.strip()
-    if payload.daily_shift_start is not None:
-        plan.daily_shift_start = payload.daily_shift_start.strip()
-    if payload.daily_shift_end is not None:
-        plan.daily_shift_end = payload.daily_shift_end.strip()
+
+    start_t = payload.daily_shift_start.strip() if payload.daily_shift_start else plan.daily_shift_start
+    end_t = payload.daily_shift_end.strip() if payload.daily_shift_end else plan.daily_shift_end
+    if payload.daily_shift_start is not None or payload.daily_shift_end is not None:
+        if start_t and end_t and start_t >= end_t:
+            raise HTTPException(status_code=400, detail="Giờ bắt đầu ca chạy phải sớm hơn giờ kết thúc ca (ví dụ: 10:00 đến 14:00)!")
+        plan.daily_shift_start = start_t
+        plan.daily_shift_end = end_t
+
     if payload.home_arrival_time is not None:
         plan.home_arrival_time = payload.home_arrival_time.strip()
+
     if payload.primary_skill_focus is not None:
         plan.primary_skill_focus = payload.primary_skill_focus.strip()
-    if payload.default_tet_split_percent is not None:
-        plan.default_tet_split_percent = max(0.0, min(100.0, payload.default_tet_split_percent))
-    if payload.default_living_split_percent is not None:
-        plan.default_living_split_percent = max(0.0, min(100.0, payload.default_living_split_percent))
+
+    tet_pct = payload.default_tet_split_percent if payload.default_tet_split_percent is not None else plan.default_tet_split_percent
+    living_pct = payload.default_living_split_percent if payload.default_living_split_percent is not None else plan.default_living_split_percent
+    if payload.default_tet_split_percent is not None or payload.default_living_split_percent is not None:
+        if tet_pct < 0 or tet_pct > 100 or living_pct < 0 or living_pct > 100:
+            raise HTTPException(status_code=400, detail="Tỷ lệ phân bổ phải từ 0% đến 100%!")
+        if round(tet_pct + living_pct, 1) != 100.0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tổng tỷ lệ phân bổ của Hũ Tết ({tet_pct:.1f}%) và Hũ Sinh Hoạt ({living_pct:.1f}%) phải bằng đúng 100%!"
+            )
+        plan.default_tet_split_percent = tet_pct
+        plan.default_living_split_percent = living_pct
     if payload.is_active is not None:
         plan.is_active = payload.is_active
     if payload.note is not None:
@@ -984,11 +1050,23 @@ def add_school_schedule_item(
     real_user = _get_real_user(user)
     user_id = real_user.id if real_user else None
 
+    clean_course_name = payload.course_name.strip() if payload.course_name else ""
+    if not clean_course_name:
+        raise HTTPException(status_code=400, detail="Tên môn học không được để trống!")
+    if len(clean_course_name) > 200:
+        raise HTTPException(status_code=400, detail="Tên môn học không được vượt quá 200 ký tự!")
+
+    if payload.day_of_week < 2 or payload.day_of_week > 8:
+        raise HTTPException(status_code=400, detail="Thứ trong tuần phải từ Thứ 2 (2) đến Chủ Nhật (8)!")
+
+    if payload.start_time and payload.end_time and payload.start_time >= payload.end_time:
+        raise HTTPException(status_code=400, detail="Giờ bắt đầu học phải sớm hơn giờ kết thúc học (ví dụ: 07:00 đến 09:40)!")
+
     c = SchoolClassSchedule(
         user_id=user_id,
         school_name=payload.school_name or "Trường Đại Học",
         course_code=payload.course_code,
-        course_name=payload.course_name.strip(),
+        course_name=clean_course_name,
         day_of_week=payload.day_of_week,
         start_period=payload.start_period,
         end_period=payload.end_period,

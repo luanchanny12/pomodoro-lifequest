@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, startTransition } from 'react'
 import {
   AlertCircle,
   BookOpen,
@@ -83,7 +83,7 @@ export function classifyItemSession(item: DeadlineItem): TimetableSession {
   return 'allday'
 }
 
-export const SchoolWeeklyTimetable: React.FC<SchoolWeeklyTimetableProps> = ({
+const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
   items,
   todayYmd,
   onStartPomodoro,
@@ -132,23 +132,29 @@ export const SchoolWeeklyTimetable: React.FC<SchoolWeeklyTimetableProps> = ({
   }, [items])
 
   const handlePrevWeek = () => {
-    setCurrentWeekMonday((prev) => {
-      const d = new Date(prev)
-      d.setDate(d.getDate() - 7)
-      return d
+    startTransition(() => {
+      setCurrentWeekMonday((prev) => {
+        const d = new Date(prev)
+        d.setDate(d.getDate() - 7)
+        return d
+      })
     })
   }
 
   const handleNextWeek = () => {
-    setCurrentWeekMonday((prev) => {
-      const d = new Date(prev)
-      d.setDate(d.getDate() + 7)
-      return d
+    startTransition(() => {
+      setCurrentWeekMonday((prev) => {
+        const d = new Date(prev)
+        d.setDate(d.getDate() + 7)
+        return d
+      })
     })
   }
 
   const handleCurrentWeek = () => {
-    setCurrentWeekMonday(getMondayOfWeek(new Date()))
+    startTransition(() => {
+      setCurrentWeekMonday(getMondayOfWeek(new Date()))
+    })
   }
 
   // Count items this week
@@ -571,3 +577,5 @@ export const SchoolWeeklyTimetable: React.FC<SchoolWeeklyTimetableProps> = ({
     </div>
   )
 }
+
+export const SchoolWeeklyTimetable = React.memo(SchoolWeeklyTimetableComponent)

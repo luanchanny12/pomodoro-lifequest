@@ -296,7 +296,11 @@ def create_matrix_task(
 
     task_date = data.date or datetime.date.today()
     quadrant = max(1, min(4, data.quadrant))
-    clean_title = data.title.strip()
+    clean_title = data.title.strip() if data.title else ""
+    if not clean_title:
+        raise HTTPException(status_code=400, detail="Tiêu đề công việc không được để trống!")
+    if len(clean_title) > 255:
+        raise HTTPException(status_code=400, detail="Tiêu đề công việc không được vượt quá 255 ký tự!")
 
     if data.goal_id:
         target_goal = db.query(StudyGoal).filter(StudyGoal.id == data.goal_id).first()
@@ -384,7 +388,12 @@ def update_matrix_task(
     _verify_resource_ownership(task, user)
 
     if data.title is not None:
-        task.title = data.title
+        clean_title = data.title.strip()
+        if not clean_title:
+            raise HTTPException(status_code=400, detail="Tiêu đề công việc không được để trống!")
+        if len(clean_title) > 255:
+            raise HTTPException(status_code=400, detail="Tiêu đề công việc không được vượt quá 255 ký tự!")
+        task.title = clean_title
     if data.description is not None:
         task.description = data.description
     if data.date is not None:

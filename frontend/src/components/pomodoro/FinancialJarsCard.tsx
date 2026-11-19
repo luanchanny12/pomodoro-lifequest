@@ -92,14 +92,18 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
         focusService.getJarTransactions(),
         focusService.getSchoolSchedules(),
       ])
-      setJars(jarsData)
+      const safeJars = Array.isArray(jarsData) ? jarsData : []
+      const safeTxs = Array.isArray(txsData) ? txsData : []
+      const safeSched = Array.isArray(schedData) ? schedData : []
+
+      setJars(safeJars)
       setPlan(planData)
       setAdvice(adviceData)
-      setTransactions(txsData.slice(0, 10))
-      setSchoolSchedules(schedData)
+      setTransactions(safeTxs.slice(0, 10))
+      setSchoolSchedules(safeSched)
 
-      if (jarsData.length > 0) {
-        const defaultJar = jarsData.find((j) => j.jar_type === 'LIVING') || jarsData[0]
+      if (safeJars.length > 0) {
+        const defaultJar = safeJars.find((j) => j.jar_type === 'LIVING') || safeJars[0]
         setExpenseJarId((prev) => prev || defaultJar.id)
       }
 
@@ -134,9 +138,13 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
   // Nạp ca chạy 10h-14h
   const handleDepositGig = async (e: React.FormEvent) => {
     e.preventDefault()
-    const amt = parseFloat(gigAmount)
+    const amt = parseFloat(gigAmount.replace(/,/g, ''))
     if (isNaN(amt) || amt <= 0) {
-      toast.error('Vui lòng nhập số tiền hợp lệ!')
+      toast.error('Vui lòng nhập số tiền thu nhập hợp lệ lớn hơn 0đ!')
+      return
+    }
+    if (amt > 500_000_000) {
+      toast.error('Số tiền nạp một lần không được vượt quá 500.000.000đ!')
       return
     }
     setIsSubmittingGig(true)
@@ -161,11 +169,23 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
   // Ghi chép chi tiêu
   const handleLogExpense = async (e: React.FormEvent) => {
     e.preventDefault()
-    const amt = parseFloat(expenseAmount)
+    const amt = parseFloat(expenseAmount.replace(/,/g, ''))
     if (isNaN(amt) || amt <= 0) {
-      toast.error('Vui lòng nhập số tiền chi tiêu hợp lệ!')
+      toast.error('Vui lòng nhập số tiền chi tiêu hợp lệ lớn hơn 0đ!')
       return
     }
+
+    const targetJar = jars.find((j) => j.id === expenseJarId) || jars[0]
+    const currentBal = targetJar ? Number(targetJar.current_balance || 0) : 0
+    if (currentBal <= 0) {
+      toast.error(`Hũ '${targetJar?.name || 'đã chọn'}' hiện đang có 0đ, không thể chi tiêu! Vui lòng chọn hũ khác hoặc nạp tiền.`)
+      return
+    }
+    if (amt > currentBal) {
+      toast.error(`Số dư trong hũ chỉ còn ${currentBal.toLocaleString('vi-VN')}đ, không đủ để chi khoản ${amt.toLocaleString('vi-VN')}đ!`)
+      return
+    }
+
     setIsSubmittingExpense(true)
     try {
       const res = await focusService.logExpense({
@@ -223,11 +243,21 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
 
   const handleSavePlanConfig = async (e: React.FormEvent) => {
     e.preventDefault()
+    const targetAmt = parseFloat(formTargetAmount.replace(/,/g, ''))
+    if (isNaN(targetAmt) || targetAmt <= 0) {
+      toast.error('Mục tiêu tích lũy tài chính phải lớn hơn 0đ!')
+      return
+    }
+    if (formShiftEnabled && formShiftStart >= formShiftEnd) {
+      toast.error('Giờ bắt đầu ca làm việc phải sớm hơn giờ kết thúc ca (ví dụ: 10:00 đến 14:00)!')
+      return
+    }
+
     setIsSavingPlan(true)
     try {
       const updated = await focusService.updateTetEarningPlan({
         plan_name: formPlanName.trim() || 'Kế Hoạch Tài Chính',
-        tet_target_amount: parseFloat(formTargetAmount) || 0,
+        tet_target_amount: targetAmt,
         tet_date: formTetDate,
         shift_enabled: formShiftEnabled,
         shift_name: formShiftName.trim() || 'Ca kiếm tiền',
@@ -822,6 +852,19 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
                     </option>
                   ))}
                 </select>
+
+                {(() => {
+                  const selectedJar = jars.find((j) => j.id === expenseJarId) || jars[0]
+                  const currentBal = selectedJar ? Number(selectedJar.current_balance || 0) : 0
+                  return (
+                    <div className="mt-1.5 flex items-center justify-between text-xs px-1">
+                      <span className="text-slate-400">Số dư khả dụng:</span>
+                      <span className={`font-mono font-bold ${currentBal > 0 ? 'text-emerald-400' : 'text-rose-400 font-black'}`}>
+                        {currentBal.toLocaleString('vi-VN')}đ {currentBal <= 0 && '(Hết tiền)'}
+                      </span>
+                    </div>
+                  )
+                })()}
               </div>
 
               <div>
@@ -876,22 +919,60 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
                 </b>.
               </p>
 
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsExpenseModalOpen(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingExpense}
-                  className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm"
-                >
-                  {isSubmittingExpense ? 'Đang trừ...' : 'Ghi Chi Tiêu'}
-                </button>
-              </div>
+              {(() => {
+                const selectedJar = jars.find((j) => j.id === expenseJarId) || jars[0]
+                const currentBal = selectedJar ? Number(selectedJar.current_balance || 0) : 0
+                const parsedAmt = parseFloat(expenseAmount.replace(/,/g, '')) || 0
+                const isZeroBalance = currentBal <= 0
+                const isExceeded = !isZeroBalance && parsedAmt > currentBal
+                const isInvalidAmount = parsedAmt <= 0
+                const isBlocked = isZeroBalance || isExceeded || isInvalidAmount
+
+                return (
+                  <div className="space-y-3">
+                    {isZeroBalance && (
+                      <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-start gap-2 animate-in fade-in">
+                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="text-rose-200">Hũ này hiện đang có 0đ (hết tiền)!</strong>
+                          <p className="mt-0.5 text-[11px] text-rose-300 leading-relaxed">
+                            Bạn không thể ghi nhận chi tiêu từ hũ không có tiền. Vui lòng chọn hũ khác có số dư hoặc nạp thêm tiền.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {isExceeded && (
+                      <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs flex items-start gap-2 animate-in fade-in">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="text-amber-200">Số tiền chi vượt quá số dư trong hũ!</strong>
+                          <p className="mt-0.5 text-[11px] text-amber-300 leading-relaxed">
+                            Bạn muốn chi {parsedAmt.toLocaleString('vi-VN')}đ nhưng trong hũ chỉ còn {currentBal.toLocaleString('vi-VN')}đ (thiếu {(parsedAmt - currentBal).toLocaleString('vi-VN')}đ).
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-2 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsExpenseModalOpen(false)}
+                        className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer transition"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmittingExpense || isBlocked}
+                        className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:bg-slate-800 disabled:text-slate-500 disabled:border disabled:border-slate-700 disabled:cursor-not-allowed rounded-lg shadow-sm transition cursor-pointer"
+                      >
+                        {isSubmittingExpense ? 'Đang trừ...' : 'Ghi Chi Tiêu'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
             </form>
           </div>
         </div>

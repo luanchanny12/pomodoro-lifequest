@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, startTransition } from 'react'
 import {
   CalendarDays,
   Coins,
@@ -26,7 +26,7 @@ interface FinanceScheduleHubModalProps {
   onOpenAuthModal?: () => void
 }
 
-export const FinanceScheduleHubModal: React.FC<FinanceScheduleHubModalProps> = ({
+const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> = ({
   isOpen,
   onClose,
   initialTab = 'schedule',
@@ -106,7 +106,7 @@ export const FinanceScheduleHubModal: React.FC<FinanceScheduleHubModalProps> = (
         <div className="flex items-center gap-2 px-4 sm:px-5 py-2.5 bg-slate-950/70 border-b border-slate-800/80 shrink-0">
           <button
             type="button"
-            onClick={() => setActiveTab('schedule')}
+            onClick={() => startTransition(() => setActiveTab('schedule'))}
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
               activeTab === 'schedule'
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25 border border-blue-400/50'
@@ -124,7 +124,7 @@ export const FinanceScheduleHubModal: React.FC<FinanceScheduleHubModalProps> = (
 
           <button
             type="button"
-            onClick={() => setActiveTab('finance')}
+            onClick={() => startTransition(() => setActiveTab('finance'))}
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
               activeTab === 'finance'
                 ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md shadow-amber-500/25 border border-amber-300/60'
@@ -163,3 +163,5 @@ export const FinanceScheduleHubModal: React.FC<FinanceScheduleHubModalProps> = (
     </div>
   )
 }
+
+export const FinanceScheduleHubModal = React.memo(FinanceScheduleHubModalComponent)

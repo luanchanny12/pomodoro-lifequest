@@ -147,7 +147,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({
       onSuccess()
       onClose()
     } catch (err: any) {
-      toast.error(err.message || 'Không thể lưu mục tiêu')
+      toast.error(err?.response?.data?.detail || err.message || 'Không thể lưu mục tiêu')
     } finally {
       setIsSubmitting(false)
     }
@@ -162,7 +162,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({
       onSuccess()
       onClose()
     } catch (err: any) {
-      toast.error(err.message || 'Không thể xóa mục tiêu')
+      toast.error(err?.response?.data?.detail || err.message || 'Không thể xóa mục tiêu')
     }
   }
 

@@ -146,6 +146,12 @@ def create_goal(
         _check_rate_limit(f"guest_write:{client_ip}", 60, 60, "Bạn đang tạo dữ liệu quá nhanh. Vui lòng thử lại sau!")
         _record_failed_attempt(f"guest_write:{client_ip}")
 
+    clean_title = data.title.strip() if data.title else ""
+    if not clean_title:
+        raise HTTPException(status_code=400, detail="Tên mục tiêu học tập không được để trống!")
+    if len(clean_title) > 200:
+        raise HTTPException(status_code=400, detail="Tên mục tiêu học tập không được vượt quá 200 ký tự!")
+
     is_done = data.current_hours >= data.target_hours if data.target_hours > 0 else False
     now = datetime.datetime.utcnow()
 
@@ -161,7 +167,7 @@ def create_goal(
 
     goal = StudyGoal(
         user_id=user.id if user else None,
-        title=data.title.strip(),
+        title=clean_title,
         celestial_name=celestial,
         goal_type=data.goal_type or "hours",
         target_hours=max(0.1, round(data.target_hours, 2)),
@@ -204,6 +210,14 @@ def update_goal(
     old_current_hours = goal.current_hours
 
     update_dict = data.model_dump(exclude_unset=True)
+
+    if "title" in update_dict:
+        clean_title = update_dict["title"].strip() if update_dict["title"] else ""
+        if not clean_title:
+            raise HTTPException(status_code=400, detail="Tên mục tiêu học tập không được để trống!")
+        if len(clean_title) > 200:
+            raise HTTPException(status_code=400, detail="Tên mục tiêu học tập không được vượt quá 200 ký tự!")
+        update_dict["title"] = clean_title
 
     if "target_hours" in update_dict:
         th = update_dict["target_hours"]

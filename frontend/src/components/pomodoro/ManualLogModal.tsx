@@ -44,7 +44,11 @@ export const ManualLogModal: React.FC<ManualLogModalProps> = ({
     e.preventDefault()
     if (isSubmitting) return
     if (minutes <= 0) {
-      toast.error('Vui lòng chọn hoặc nhập thời lượng học hợp lệ')
+      toast.error('Vui lòng chọn hoặc nhập thời lượng học hợp lệ lớn hơn 0 phút')
+      return
+    }
+    if (minutes > 720) {
+      toast.error('Thời lượng học tối đa cho một lần ghi là 720 phút (12 tiếng)!')
       return
     }
     const todayStr = format(new Date(), 'yyyy-MM-dd')
@@ -85,7 +89,7 @@ export const ManualLogModal: React.FC<ManualLogModalProps> = ({
       onClose()
       setTopicNote('')
     } catch (err: any) {
-      toast.error(err.message || 'Không thể lưu bản ghi học tập')
+      toast.error(err?.response?.data?.detail || err.message || 'Không thể lưu bản ghi học tập')
     } finally {
       setIsSubmitting(false)
     }

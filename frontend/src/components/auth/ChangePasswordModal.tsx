@@ -59,7 +59,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       setConfirmPassword('')
       onClose()
     } catch (err: any) {
-      toast.error(err.message || 'Đổi mật khẩu thất bại, vui lòng thử lại!')
+      toast.error(err?.response?.data?.detail || err.message || 'Đổi mật khẩu thất bại, vui lòng thử lại!')
     } finally {
       setLoading(false)
     }
