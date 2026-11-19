@@ -260,11 +260,15 @@ const GoalCardItem = React.memo(function GoalCardItem({
             <span className="hidden sm:inline">Ghi giờ</span>
           </button>
           <button
-            onClick={() => onEditGoal(goal)}
-            className="p-2 sm:p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center text-white/60 hover:text-white active:scale-95 rounded-xl transition"
-            title="Chỉnh sửa"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onEditGoal(goal)
+            }}
+            className="p-2 sm:p-1.5 min-h-[40px] min-w-[40px] flex items-center justify-center text-white/70 hover:text-white active:scale-95 rounded-xl hover:bg-white/10 transition touch-manipulation cursor-pointer"
+            title="Chỉnh sửa mục tiêu"
           >
-            <Edit2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <Edit2 className="w-4 h-4 text-sky-300" />
           </button>
         </div>
       </div>

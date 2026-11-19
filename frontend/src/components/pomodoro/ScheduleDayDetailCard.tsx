@@ -26,6 +26,7 @@ interface ScheduleDayDetailCardProps {
   onOpenQuickAdd: (dateStr: string) => void
   onTriggerTelegram?: (dateStr: string) => void
   sendingTelegram?: boolean
+  maxHeightClass?: string
 }
 
 export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
@@ -38,6 +39,7 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
   onOpenQuickAdd,
   onTriggerTelegram,
   sendingTelegram = false,
+  maxHeightClass = 'max-h-[290px]',
 }) => {
   const isToday = selectedDate === todayYmd
   const parsed = parseSafeDate(selectedDate)
@@ -121,7 +123,7 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
       </div>
 
       {/* Scrollable Schedule List: STRICT FIXED HEIGHT to prevent lengthening page */}
-      <div className="mt-3 max-h-[290px] overflow-y-auto space-y-2.5 pr-1 custom-scrollbar">
+      <div className={`mt-3 ${maxHeightClass} overflow-y-auto space-y-2.5 pr-1 custom-scrollbar`}>
         {items.length === 0 ? (
           <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center space-y-2">
             <div className="p-3 rounded-full bg-slate-800 text-slate-400">

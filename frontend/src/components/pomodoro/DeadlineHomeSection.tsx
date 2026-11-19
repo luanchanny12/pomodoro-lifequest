@@ -369,6 +369,8 @@ export const DeadlineHomeSection: React.FC<DeadlineHomeSectionProps> = ({
         <SchoolWeeklyTimetable
           items={data.items}
           todayYmd={todayYmd}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
           onStartPomodoro={onStartPomodoro}
           onComplete={handleComplete}
           onReschedule={handleReschedule}

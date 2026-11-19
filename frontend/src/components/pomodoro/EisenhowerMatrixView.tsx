@@ -1020,11 +1020,15 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
                             <span className="text-amber-400 font-bold not-italic">📝:</span>
                             <span className="flex-1">{task.reflection_note}</span>
                             <button
-                              onClick={() => onStartEditReflection(task)}
-                              className="text-white/40 hover:text-white p-0.5 rounded"
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onStartEditReflection(task)
+                              }}
+                              className="text-white/60 hover:text-amber-300 p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-white/10 active:scale-95 touch-manipulation cursor-pointer"
                               title="Chỉnh sửa ghi chú"
                             >
-                              <Edit3 className="w-3 h-3" />
+                              <Edit3 className="w-4 h-4 text-amber-300/80" />
                             </button>
                           </div>
                         )}
@@ -1066,11 +1070,15 @@ const QuadrantCardComponent: React.FC<QuadrantCardProps> = ({
                       {/* Reflection button if not already has one */}
                       {!task.reflection_note && !isEditingRef && (
                         <button
-                          onClick={() => onStartEditReflection(task)}
-                          className="p-2 sm:p-1 min-w-[34px] min-h-[34px] flex items-center justify-center text-white/40 hover:text-amber-300 hover:bg-white/10 rounded-lg transition active:scale-90"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onStartEditReflection(task)
+                          }}
+                          className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center text-white/50 hover:text-amber-300 hover:bg-white/10 rounded-lg transition active:scale-95 touch-manipulation cursor-pointer"
                           title="Thêm ghi chú tự đánh giá cá nhân (lý do chưa xong, thiếu giờ...)"
                         >
-                          <Edit3 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                          <Edit3 className="w-4 h-4 text-amber-300/80" />
                         </button>
                       )}
 

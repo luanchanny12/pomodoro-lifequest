@@ -24,6 +24,8 @@ export type TimetableSession = 'morning' | 'afternoon' | 'evening' | 'allday'
 export interface SchoolWeeklyTimetableProps {
   items: DeadlineItem[]
   todayYmd: string
+  selectedDate?: string
+  onSelectDate?: (dateYmd: string) => void
   onStartPomodoro?: (goalId: number) => void
   onComplete?: (item: DeadlineItem) => Promise<void> | void
   onReschedule?: (item: DeadlineItem, newDate: string) => Promise<void> | void
@@ -86,6 +88,8 @@ export function classifyItemSession(item: DeadlineItem): TimetableSession {
 const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
   items,
   todayYmd,
+  selectedDate,
+  onSelectDate,
   onStartPomodoro,
   onComplete,
   onOpenQuickAdd,
@@ -112,10 +116,11 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
         ymd,
         displayDate: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`,
         isToday: ymd === todayYmd,
+        isSelected: ymd === selectedDate,
       })
     }
     return days
-  }, [currentWeekMonday, todayYmd])
+  }, [currentWeekMonday, todayYmd, selectedDate])
 
   // Items mapped by YMD
   const itemsByYmd = useMemo(() => {
@@ -166,12 +171,10 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
     return count
   }, [weekDays, itemsByYmd])
 
-  // Helper render item card
+  // Helper render class or gig card
   const renderItemCard = (item: DeadlineItem) => {
-    const isBusy = busyKey === `${item.type}-${item.id}`
     const isSchool = item.type === 'school_class'
     const isGig = item.type === 'gig_shift'
-    const isUrgent = item.urgency === 'overdue' || item.urgency === 'today'
 
     // Extract lecturer & room if notes present
     let lecturer = ''
@@ -189,16 +192,16 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
       return (
         <div
           key={`${item.type}-${item.id}`}
-          className="group relative rounded-xl border border-blue-500/40 bg-gradient-to-br from-blue-950/80 via-slate-900/90 to-indigo-950/70 p-2.5 shadow-md hover:border-blue-400 hover:shadow-blue-500/10 transition-all text-xs"
+          className="group relative rounded-xl border border-blue-500/40 bg-gradient-to-br from-blue-950/90 via-slate-900/90 to-indigo-950/80 p-2.5 shadow-md hover:border-blue-400 hover:shadow-blue-500/20 transition-all text-xs"
         >
           {/* Header Tag: Room + Time */}
           <div className="flex items-center justify-between gap-1 mb-1.5 flex-wrap">
-            <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[11px]">
+            <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded-md bg-blue-500/25 text-blue-300 border border-blue-400/35 text-[11px]">
               <Clock className="w-3 h-3 text-blue-400 shrink-0" />
               <span>{item.time_range || 'Tiết học'}</span>
             </span>
             {room && (
-              <span className="inline-flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px]">
+              <span className="inline-flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/35 text-[10px]">
                 <MapPin className="w-2.5 h-2.5 text-amber-400 shrink-0" />
                 <span className="truncate max-w-[100px]">{room}</span>
               </span>
@@ -230,10 +233,10 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
       return (
         <div
           key={`${item.type}-${item.id}`}
-          className="group relative rounded-xl border border-emerald-500/40 bg-gradient-to-br from-emerald-950/70 via-slate-900/90 to-teal-950/70 p-2.5 shadow-md hover:border-emerald-400 transition-all text-xs"
+          className="group relative rounded-xl border border-emerald-500/40 bg-gradient-to-br from-emerald-950/80 via-slate-900/90 to-teal-950/80 p-2.5 shadow-md hover:border-emerald-400 transition-all text-xs"
         >
           <div className="flex items-center justify-between gap-1 mb-1">
-            <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px]">
+            <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/25 text-emerald-300 border border-emerald-400/35 text-[10px]">
               <Clock className="w-3 h-3 text-emerald-400" />
               <span>{item.time_range || '10:00 - 14:00'}</span>
             </span>
@@ -249,61 +252,7 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
       )
     }
 
-    // Task / Goal (Ô 1 & Deadline)
-    return (
-      <div
-        key={`${item.type}-${item.id}`}
-        className={`group relative rounded-xl border p-2 shadow-sm transition-all text-xs ${
-          isUrgent
-            ? 'border-rose-500/60 bg-gradient-to-br from-rose-950/60 via-slate-900 to-amber-950/40 hover:border-rose-400'
-            : 'border-amber-500/40 bg-slate-900/90 hover:border-amber-400'
-        }`}
-      >
-        <div className="flex items-center justify-between gap-1 mb-1">
-          <span
-            className={`inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded-md text-[10px] ${
-              isUrgent
-                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/35'
-                : 'bg-amber-500/20 text-amber-300 border border-amber-500/35'
-            }`}
-          >
-            {isUrgent ? (
-              <Flame className="w-2.5 h-2.5 text-rose-400 animate-pulse" />
-            ) : (
-              <Sparkles className="w-2.5 h-2.5 text-amber-400" />
-            )}
-            <span>{isUrgent ? 'Khẩn cấp Ô 1' : 'Deadline'}</span>
-          </span>
-
-          {item.type === 'goal' && onStartPomodoro && (
-            <button
-              type="button"
-              onClick={() => onStartPomodoro(Number(item.id))}
-              title="Vào Pomodoro tập trung học mục tiêu này"
-              className="p-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors"
-            >
-              <Play className="w-2.5 h-2.5" />
-            </button>
-          )}
-
-          {item.type === 'task' && onComplete && (
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={() => onComplete(item)}
-              title="Đánh dấu hoàn thành việc này"
-              className="p-1 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition-colors disabled:opacity-50"
-            >
-              <CheckCircle2 className="w-2.5 h-2.5" />
-            </button>
-          )}
-        </div>
-
-        <div className="font-semibold text-slate-100 text-[11px] leading-tight line-clamp-2">
-          {item.title}
-        </div>
-      </div>
-    )
+    return null
   }
 
   return (
@@ -311,7 +260,7 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
       {/* Top Controller Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-md">
         {/* Navigation buttons */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button
             type="button"
             onClick={handlePrevWeek}
@@ -335,7 +284,7 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
           >
             <ChevronRight className="w-4 h-4" />
           </button>
-          <span className="ml-2 text-xs sm:text-sm font-bold text-white tracking-wide">
+          <span className="ml-1 text-xs sm:text-sm font-bold text-white tracking-wide">
             {formatWeekRange(currentWeekMonday)}
           </span>
         </div>
@@ -355,40 +304,51 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
             <span className="text-slate-300 font-medium">Việc Ô 1 / Thi cử</span>
           </div>
           <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[11px]">
-            {weekItemCount} sự kiện tuần này
+            {weekItemCount} sự kiện
           </span>
         </div>
       </div>
 
       {/* Main Timetable Matrix: Scrollable container on mobile */}
-      <div className="overflow-x-auto rounded-2xl border border-slate-700/80 bg-slate-950/60 shadow-xl pb-2">
-        <table className="w-full min-w-[850px] border-collapse text-left">
+      <div className="overflow-x-auto rounded-2xl border border-slate-700/80 bg-slate-950/60 shadow-xl pb-1">
+        <table className="w-full min-w-[780px] border-collapse text-left">
           {/* Header 7 Days */}
           <thead>
             <tr className="border-b border-slate-800 bg-slate-900/90">
-              <th className="w-28 p-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-center border-r border-slate-800/80">
+              <th className="w-24 sm:w-28 p-3 text-xs font-bold text-slate-400 uppercase tracking-wider text-center border-r border-slate-800/80">
                 Khung Giờ
               </th>
               {weekDays.map((d) => (
                 <th
                   key={d.ymd}
-                  className={`p-2.5 text-center border-r border-slate-800/80 last:border-r-0 transition-colors ${
-                    d.isToday ? 'bg-orange-500/10' : ''
+                  onClick={() => onSelectDate && onSelectDate(d.ymd)}
+                  className={`p-2 text-center border-r border-slate-800/80 last:border-r-0 transition-colors cursor-pointer group ${
+                    d.isSelected
+                      ? 'bg-sky-500/15 border-b-2 border-b-sky-400'
+                      : d.isToday
+                      ? 'bg-orange-500/10'
+                      : 'hover:bg-slate-800/50'
                   }`}
                 >
                   <div className="flex flex-col items-center">
                     <span
-                      className={`text-xs font-bold ${
-                        d.isToday ? 'text-orange-400' : 'text-slate-300'
+                      className={`text-xs font-bold transition-colors ${
+                        d.isSelected
+                          ? 'text-sky-300'
+                          : d.isToday
+                          ? 'text-orange-400'
+                          : 'text-slate-300 group-hover:text-white'
                       }`}
                     >
                       {d.label}
                     </span>
                     <span
-                      className={`text-[11px] font-semibold mt-0.5 px-2 py-0.5 rounded-full ${
+                      className={`text-[11px] font-semibold mt-0.5 px-2 py-0.5 rounded-full transition-all ${
                         d.isToday
                           ? 'bg-orange-500 text-slate-950 font-extrabold shadow-sm shadow-orange-500/30'
-                          : 'text-slate-400'
+                          : d.isSelected
+                          ? 'bg-sky-500/30 text-sky-200 border border-sky-400/40'
+                          : 'text-slate-400 group-hover:text-slate-200'
                       }`}
                     >
                       {d.displayDate}
@@ -401,7 +361,7 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
 
           <tbody>
             {/* ── ROW 1: BUỔI SÁNG (06:45 - 12:30) ── */}
-            <tr className="border-b border-slate-800/80 hover:bg-slate-900/30 transition-colors">
+            <tr className="border-b border-slate-800/80 hover:bg-slate-900/20 transition-colors">
               <td className="p-3 align-top border-r border-slate-800/80 bg-slate-900/50">
                 <div className="flex flex-col items-center text-center space-y-1">
                   <span className="text-base">🌅</span>
@@ -420,24 +380,23 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                 return (
                   <td
                     key={`morning-${d.ymd}`}
-                    className={`p-2 align-top border-r border-slate-800/80 last:border-r-0 h-36 ${
-                      d.isToday ? 'bg-orange-500/[0.04]' : ''
+                    className={`p-2 align-top border-r border-slate-800/80 last:border-r-0 h-32 ${
+                      d.isSelected
+                        ? 'bg-sky-500/[0.06]'
+                        : d.isToday
+                        ? 'bg-orange-500/[0.04]'
+                        : ''
                     }`}
                   >
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5 custom-scrollbar">
                       {morningItems.map(renderItemCard)}
                       {morningItems.length === 0 && (
-                        <div className="h-28 flex flex-col items-center justify-center text-[11px] text-slate-600/70 border border-dashed border-slate-800/60 rounded-xl">
-                          <span>Trống</span>
-                          {onOpenQuickAdd && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenQuickAdd(d.ymd)}
-                              className="mt-1 text-[10px] text-slate-500 hover:text-amber-300 cursor-pointer"
-                            >
-                              + Thêm
-                            </button>
-                          )}
+                        <div
+                          onClick={() => onOpenQuickAdd && onOpenQuickAdd(d.ymd)}
+                          className="h-24 flex flex-col items-center justify-center text-[11px] text-slate-600/70 border border-dashed border-slate-800/60 rounded-xl hover:border-slate-700 hover:text-slate-400 hover:bg-slate-900/40 transition-colors cursor-pointer"
+                        >
+                          <span className="text-xs text-slate-600">+</span>
+                          <span className="text-[10px] text-slate-500 mt-0.5">Trống</span>
                         </div>
                       )}
                     </div>
@@ -447,7 +406,7 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
             </tr>
 
             {/* ── ROW 2: BUỔI CHIỀU (12:45 - 18:15) ── */}
-            <tr className="border-b border-slate-800/80 hover:bg-slate-900/30 transition-colors">
+            <tr className="border-b border-slate-800/80 hover:bg-slate-900/20 transition-colors">
               <td className="p-3 align-top border-r border-slate-800/80 bg-slate-900/50">
                 <div className="flex flex-col items-center text-center space-y-1">
                   <span className="text-base">☀️</span>
@@ -466,24 +425,23 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                 return (
                   <td
                     key={`afternoon-${d.ymd}`}
-                    className={`p-2 align-top border-r border-slate-800/80 last:border-r-0 h-36 ${
-                      d.isToday ? 'bg-orange-500/[0.04]' : ''
+                    className={`p-2 align-top border-r border-slate-800/80 last:border-r-0 h-32 ${
+                      d.isSelected
+                        ? 'bg-sky-500/[0.06]'
+                        : d.isToday
+                        ? 'bg-orange-500/[0.04]'
+                        : ''
                     }`}
                   >
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5 custom-scrollbar">
                       {afternoonItems.map(renderItemCard)}
                       {afternoonItems.length === 0 && (
-                        <div className="h-28 flex flex-col items-center justify-center text-[11px] text-slate-600/70 border border-dashed border-slate-800/60 rounded-xl">
-                          <span>Trống</span>
-                          {onOpenQuickAdd && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenQuickAdd(d.ymd)}
-                              className="mt-1 text-[10px] text-slate-500 hover:text-amber-300 cursor-pointer"
-                            >
-                              + Thêm
-                            </button>
-                          )}
+                        <div
+                          onClick={() => onOpenQuickAdd && onOpenQuickAdd(d.ymd)}
+                          className="h-24 flex flex-col items-center justify-center text-[11px] text-slate-600/70 border border-dashed border-slate-800/60 rounded-xl hover:border-slate-700 hover:text-slate-400 hover:bg-slate-900/40 transition-colors cursor-pointer"
+                        >
+                          <span className="text-xs text-slate-600">+</span>
+                          <span className="text-[10px] text-slate-500 mt-0.5">Trống</span>
                         </div>
                       )}
                     </div>
@@ -493,7 +451,7 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
             </tr>
 
             {/* ── ROW 3: BUỔI TỐI (18:15 - 21:00) ── */}
-            <tr className="border-b border-slate-800/80 hover:bg-slate-900/30 transition-colors">
+            <tr className="border-b border-slate-800/80 hover:bg-slate-900/20 transition-colors">
               <td className="p-3 align-top border-r border-slate-800/80 bg-slate-900/50">
                 <div className="flex flex-col items-center text-center space-y-1">
                   <span className="text-base">🌙</span>
@@ -512,24 +470,23 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                 return (
                   <td
                     key={`evening-${d.ymd}`}
-                    className={`p-2 align-top border-r border-slate-800/80 last:border-r-0 h-28 ${
-                      d.isToday ? 'bg-orange-500/[0.04]' : ''
+                    className={`p-2 align-top border-r border-slate-800/80 last:border-r-0 h-24 ${
+                      d.isSelected
+                        ? 'bg-sky-500/[0.06]'
+                        : d.isToday
+                        ? 'bg-orange-500/[0.04]'
+                        : ''
                     }`}
                   >
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 max-h-28 overflow-y-auto pr-0.5 custom-scrollbar">
                       {eveningItems.map(renderItemCard)}
                       {eveningItems.length === 0 && (
-                        <div className="h-20 flex flex-col items-center justify-center text-[11px] text-slate-600/70 border border-dashed border-slate-800/60 rounded-xl">
-                          <span>Trống</span>
-                          {onOpenQuickAdd && (
-                            <button
-                              type="button"
-                              onClick={() => onOpenQuickAdd(d.ymd)}
-                              className="mt-1 text-[10px] text-slate-500 hover:text-amber-300 cursor-pointer"
-                            >
-                              + Thêm
-                            </button>
-                          )}
+                        <div
+                          onClick={() => onOpenQuickAdd && onOpenQuickAdd(d.ymd)}
+                          className="h-16 flex flex-col items-center justify-center text-[11px] text-slate-600/70 border border-dashed border-slate-800/60 rounded-xl hover:border-slate-700 hover:text-slate-400 hover:bg-slate-900/40 transition-colors cursor-pointer"
+                        >
+                          <span className="text-xs text-slate-600">+</span>
+                          <span className="text-[10px] text-slate-500 mt-0.5">Trống</span>
                         </div>
                       )}
                     </div>
@@ -538,13 +495,13 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
               })}
             </tr>
 
-            {/* ── ROW 4: VIỆC Ô 1 & HẠN CHÓT TRONG NGÀY (NẾU CÓ) ── */}
+            {/* ── ROW 4: DÒNG TÓM TẮT VIỆC Ô 1 & DEADLINE (CỐ ĐỊNH CHIỀU CAO - KHÔNG LÀM VỠ BẢNG) ── */}
             <tr className="hover:bg-slate-900/30 transition-colors bg-slate-950/40">
-              <td className="p-3 align-top border-r border-slate-800/80 bg-slate-900/60">
-                <div className="flex flex-col items-center text-center space-y-1">
+              <td className="p-2.5 align-middle border-r border-slate-800/80 bg-slate-900/60">
+                <div className="flex flex-col items-center text-center space-y-0.5">
                   <span className="text-base">🎯</span>
-                  <span className="text-xs font-extrabold text-rose-300">Việc Cần Làm</span>
-                  <span className="text-[9px] text-slate-400">Ma trận Ô 1 / Deadline</span>
+                  <span className="text-[11px] font-extrabold text-rose-300">Việc Cần Làm</span>
+                  <span className="text-[9px] text-slate-400">Ma trận Ô 1</span>
                 </div>
               </td>
               {weekDays.map((d) => {
@@ -552,21 +509,43 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
                 const allDayItems = dayItems.filter(
                   (it) => classifyItemSession(it) === 'allday'
                 )
+                const count = allDayItems.length
                 return (
                   <td
                     key={`allday-${d.ymd}`}
-                    className={`p-2 align-top border-r border-slate-800/80 last:border-r-0 min-h-20 ${
-                      d.isToday ? 'bg-orange-500/[0.04]' : ''
+                    className={`p-1.5 align-middle border-r border-slate-800/80 last:border-r-0 ${
+                      d.isSelected
+                        ? 'bg-sky-500/[0.06]'
+                        : d.isToday
+                        ? 'bg-orange-500/[0.04]'
+                        : ''
                     }`}
                   >
-                    <div className="space-y-1.5">
-                      {allDayItems.map(renderItemCard)}
-                      {allDayItems.length === 0 && (
-                        <div className="h-14 flex items-center justify-center text-[10px] text-slate-600">
-                          Không có việc Ô 1
+                    {count > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => onSelectDate && onSelectDate(d.ymd)}
+                        className={`w-full group flex items-center justify-between p-1.5 rounded-xl border transition-all cursor-pointer text-left ${
+                          d.isSelected
+                            ? 'bg-gradient-to-r from-rose-900/60 to-amber-950/50 border-rose-400 shadow-sm shadow-rose-500/20'
+                            : 'bg-gradient-to-r from-rose-950/40 to-slate-900 border-rose-500/35 hover:border-rose-400 hover:from-rose-900/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1 min-w-0">
+                          <Flame className="w-3 h-3 text-rose-400 shrink-0 animate-pulse" />
+                          <span className="text-[10px] sm:text-[11px] font-bold text-rose-200 truncate">
+                            {count} Việc Ô 1
+                          </span>
                         </div>
-                      )}
-                    </div>
+                        <span className="text-[9px] text-rose-400/90 group-hover:text-rose-200 shrink-0 ml-1 font-semibold">
+                          Xem →
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="h-7 flex items-center justify-center text-[10px] text-slate-600">
+                        -
+                      </div>
+                    )}
                   </td>
                 )
               })}
