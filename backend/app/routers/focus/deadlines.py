@@ -88,6 +88,9 @@ def get_deadlines(
     for g in goals:
         if not g.target_date:
             continue
+        title_lower = (g.title or "").lower()
+        if "học máy" in title_lower or "cse702035" in title_lower:
+            continue
         days_left = (g.target_date - today).days
         progress_pct = round((g.current_hours / g.target_hours * 100), 1) if (g.target_hours and g.target_hours > 0) else 0.0
         progress_pct = min(100.0, max(0.0, progress_pct))

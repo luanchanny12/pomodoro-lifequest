@@ -178,7 +178,8 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
     if (parts.length === 3) {
       const d = new Date(parts[0], parts[1] - 1, parts[2])
       const dow = d.getDay() === 0 ? 8 : d.getDay() + 1
-      return schoolSchedules.filter((s) => s.day_of_week === dow && s.is_active)
+      const activeList = schoolSchedules.length > 0 ? schoolSchedules : OFFICIAL_PHENIKAA_K17_SCHEDULE
+      return activeList.filter((s) => s.day_of_week === dow && s.is_active)
     }
     return []
   }, [selectedDate, schoolSchedules])

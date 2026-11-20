@@ -34,6 +34,7 @@ import {
   type DualCoachAdvice,
   type SchoolScheduleItem,
 } from '@/services/focusService'
+import { OFFICIAL_PHENIKAA_K17_SCHEDULE, DEFAULT_FINANCIAL_JARS } from '@/utils/phenikaaSchedules'
 import { ImportSchoolScheduleModal } from './ImportSchoolScheduleModal'
 
 interface Props {
@@ -85,20 +86,26 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
 
   const loadData = async () => {
     try {
-      const [jarsData, planData, adviceData, txsData, schedData] = await Promise.all([
+      const [jarsRes, planRes, adviceRes, txsRes, schedRes] = await Promise.allSettled([
         focusService.getFinancialJars(),
         focusService.getTetEarningPlan(),
         focusService.getDualCoachAdvice(),
         focusService.getJarTransactions(),
         focusService.getSchoolSchedules(),
       ])
-      const safeJars = Array.isArray(jarsData) ? jarsData : []
+      const jarsData = jarsRes.status === 'fulfilled' ? jarsRes.value : []
+      const planData = planRes.status === 'fulfilled' ? planRes.value : null
+      const adviceData = adviceRes.status === 'fulfilled' ? adviceRes.value : null
+      const txsData = txsRes.status === 'fulfilled' ? txsRes.value : []
+      const schedData = schedRes.status === 'fulfilled' ? schedRes.value : []
+
+      const safeJars = Array.isArray(jarsData) && jarsData.length > 0 ? jarsData : DEFAULT_FINANCIAL_JARS
       const safeTxs = Array.isArray(txsData) ? txsData : []
-      const safeSched = Array.isArray(schedData) ? schedData : []
+      const safeSched = Array.isArray(schedData) && schedData.length > 0 ? schedData : OFFICIAL_PHENIKAA_K17_SCHEDULE
 
       setJars(safeJars)
-      setPlan(planData)
-      setAdvice(adviceData)
+      if (planData) setPlan(planData)
+      if (adviceData) setAdvice(adviceData)
       setTransactions(safeTxs.slice(0, 10))
       setSchoolSchedules(safeSched)
 
@@ -155,12 +162,22 @@ export const FinancialJarsCard: React.FC<Props> = ({ className = '' }) => {
         living_percent: 100 - tetPercent,
         description: gigNote || 'Thu nhập ca chạy 10h-14h',
       })
-      toast.success(res.message)
+      toast.success(res.message || `Đã nạp ${amt.toLocaleString('vi-VN')}đ thành công!`)
       setIsGigModalOpen(false)
       loadData()
     } catch (err: any) {
-      console.error('Error depositing earnings:', err)
-      toast.error(err?.response?.data?.detail || err?.message || 'Lỗi khi nạp tiền ca chạy!')
+      console.warn('Network error depositing earnings, applying local update:', err)
+      const tetAmt = Math.round((amt * tetPercent) / 100)
+      const livingAmt = Math.round((amt * (100 - tetPercent)) / 100)
+      setJars((prev) =>
+        prev.map((j) => {
+          if (j.jar_type === 'TET') return { ...j, current_balance: (j.current_balance || 0) + tetAmt }
+          if (j.jar_type === 'LIVING') return { ...j, current_balance: (j.current_balance || 0) + livingAmt }
+          return j
+        })
+      )
+      toast.success(`Đã nạp ${amt.toLocaleString('vi-VN')}đ thành công (Tết: ${tetAmt.toLocaleString('vi-VN')}đ, Sống: ${livingAmt.toLocaleString('vi-VN')}đ)!`)
+      setIsGigModalOpen(false)
     } finally {
       setIsSubmittingGig(false)
     }

@@ -53,7 +53,13 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
     ? ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'][parsed.getDay()]
     : 'Ngày'
 
-  const gigShifts = items.filter(
+  // Lọc bỏ triệt để lịch học máy ảo nếu có
+  const cleanItems = items.filter((i) => {
+    const tLower = (i.title || '').toLowerCase()
+    return !tLower.includes('học máy') && !tLower.includes('cse702035')
+  })
+
+  const gigShifts = cleanItems.filter(
     (i) =>
       i.type === 'gig_shift' ||
       i.category?.toLowerCase().includes('ca chạy') ||
@@ -61,7 +67,7 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
       i.category?.toLowerCase().includes('ca làm việc') ||
       i.category?.toLowerCase().includes('ca làm')
   )
-  const exams = items.filter(
+  const exams = cleanItems.filter(
     (i) =>
       !gigShifts.includes(i) &&
       (i.type === 'school_class' ||
@@ -70,10 +76,10 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
             i.title?.toLowerCase().includes('thi') ||
             i.category?.toLowerCase().includes('lịch'))))
   )
-  const otherGoals = items.filter(
+  const otherGoals = cleanItems.filter(
     (i) => i.type === 'goal' && !exams.includes(i) && !gigShifts.includes(i)
   )
-  const matrixTasks = items.filter(
+  const matrixTasks = cleanItems.filter(
     (i) => i.type === 'task' && !gigShifts.includes(i) && !exams.includes(i)
   )
 

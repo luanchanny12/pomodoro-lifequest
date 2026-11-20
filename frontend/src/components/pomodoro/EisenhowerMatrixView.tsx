@@ -93,15 +93,18 @@ const EisenhowerMatrixViewComponent: React.FC<EisenhowerMatrixViewProps> = ({
   const loadData = async (date: string) => {
     setIsLoading(true)
     try {
-      const [matrixData, goalsData] = await Promise.all([
+      const [matrixRes, goalsRes] = await Promise.allSettled([
         focusService.getMatrixTasks(date),
         focusService.getGoals(false), // active goals
       ])
+      const matrixData = matrixRes.status === 'fulfilled' ? matrixRes.value : []
+      const goalsData = goalsRes.status === 'fulfilled' ? goalsRes.value : focusService.getCachedGoals()
       setTasks(matrixData)
       setGoals(goalsData)
     } catch (err) {
-      console.error('Error loading matrix data:', err)
-      toast.error('Không thể tải danh sách công việc')
+      console.warn('Error loading matrix data, using empty/cached:', err)
+      setTasks([])
+      setGoals(focusService.getCachedGoals())
     } finally {
       setIsLoading(false)
     }

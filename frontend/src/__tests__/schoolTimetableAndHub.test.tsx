@@ -188,7 +188,7 @@ describe('SchoolWeeklyTimetable Component', () => {
     expect(screen.getByText(/Buổi Tối/i)).toBeInTheDocument()
 
     // Check course details rendered
-    expect(screen.getByText(/Quản trị dự án CNTT/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/Quản trị dự án CNTT/i).length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText(/A4-502 \(TH\)/i)).toBeInTheDocument()
     expect(screen.getByText(/Thầy Nguyễn Văn Hùng/i)).toBeInTheDocument()
 

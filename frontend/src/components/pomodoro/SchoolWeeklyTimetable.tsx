@@ -167,16 +167,13 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
     })
   }
 
-  // Fallback to official Phenikaa schedule if both schedules and items are empty
+  // Fallback chuẩn thời khóa biểu Phenikaa K17 khi schedules chưa load hoặc trống
   const activeSchedules = useMemo(() => {
     if (schedules && schedules.length > 0) {
       return schedules
     }
-    if (items && items.length > 0) {
-      return []
-    }
     return OFFICIAL_PHENIKAA_K17_SCHEDULE
-  }, [schedules, items])
+  }, [schedules])
 
   // Lấy các lớp học cho từng ngày theo thứ trong tuần (dayOfWeek: 2..8)
   const getClassesForDay = (dow: number, ymd: string) => {

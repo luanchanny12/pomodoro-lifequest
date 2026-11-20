@@ -71,8 +71,20 @@ export function buildDeadlinesPayload(
 ): DeadlinesResponse {
   const items: DeadlineItem[] = []
 
+  let handledKeys = new Set<string>()
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem('lifequest_handled_deadline_items')
+      if (stored) handledKeys = new Set(JSON.parse(stored))
+    }
+  } catch (_) {}
+
   for (const g of goals) {
     if (g.is_completed || !g.target_date) continue
+    const titleLower = (g.title || '').toLowerCase()
+    if (titleLower.includes('học máy') || titleLower.includes('cse702035')) continue
+    if (handledKeys.has(`goal-${g.id}`)) continue
+
     const daysLeft = computeDaysLeft(g.target_date, now)
     if (daysLeft === null) continue
     const targetHours = g.target_hours > 0 ? g.target_hours : 1
@@ -99,6 +111,10 @@ export function buildDeadlinesPayload(
 
   for (const t of matrixTasks) {
     if (t.is_completed || !t.date) continue
+    const titleLower = (t.title || '').toLowerCase()
+    if (titleLower.includes('học máy') || titleLower.includes('cse702035')) continue
+    if (handledKeys.has(`task-${t.id}`)) continue
+
     // CHỈ HIỂN THỊ Ô 1 (Làm ngay: Quan trọng & Khẩn cấp) theo yêu cầu người dùng
     if (t.quadrant !== 1) continue
     const daysLeft = computeDaysLeft(t.date, now)
