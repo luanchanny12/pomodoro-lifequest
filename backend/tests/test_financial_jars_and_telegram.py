@@ -94,6 +94,12 @@ def test_create_and_update_custom_jar(auth_headers):
 
 
 def test_fast_expense_deduction(auth_headers):
+    # Nạp tiền trước vào hũ để có số dư chi tiêu hợp lệ
+    client.post(
+        "/api/finance/gig-deposit",
+        headers=auth_headers,
+        json={"amount": 200000.0, "tet_percent": 0.0, "living_percent": 100.0, "description": "Nạp tiền ban đầu"},
+    )
     # Ghi nhận chi tiêu
     res = client.post(
         "/api/finance/expense",
@@ -119,6 +125,13 @@ def test_expense_with_custom_description_and_selected_jar(auth_headers):
     jars = jars_res.json()
     assert len(jars) > 0
     chosen_jar = jars[0]
+
+    # Nạp số dư cho hũ trước khi chi tiêu
+    client.put(
+        f"/api/finance/jars/{chosen_jar['id']}",
+        headers=auth_headers,
+        json={"current_balance": 500000.0},
+    )
 
     # Ghi nhận chi tiêu cụ thể cho hũ đã chọn (VD: 110.000đ cho lợn vay)
     res = client.post(

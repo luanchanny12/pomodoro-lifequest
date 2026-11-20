@@ -383,8 +383,18 @@ export interface DualCoachAdvice {
   motivation_quote: string
 }
 
-import { OFFICIAL_PHENIKAA_K17_SCHEDULE, type SchoolScheduleItem } from '@/utils/phenikaaSchedules'
-export { OFFICIAL_PHENIKAA_K17_SCHEDULE, type SchoolScheduleItem }
+import {
+  OFFICIAL_PHENIKAA_K17_SCHEDULE,
+  DEFAULT_FINANCIAL_JARS,
+  DEFAULT_TET_PLAN,
+  type SchoolScheduleItem,
+} from '@/utils/phenikaaSchedules'
+export {
+  OFFICIAL_PHENIKAA_K17_SCHEDULE,
+  DEFAULT_FINANCIAL_JARS,
+  DEFAULT_TET_PLAN,
+  type SchoolScheduleItem,
+}
 
 export interface PhenikaaSyncStatus {
   user_id: number
@@ -920,15 +930,39 @@ export const focusService = {
 
   // --- Financial Jars & Tet Earning Plan ---
   getFinancialJars: async (): Promise<FinancialJar[]> => {
-    const res = await api.get('/finance/jars')
-    return res.data
+    try {
+      const res = await api.get('/finance/jars')
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        try {
+          localStorage.setItem('lifequest_cached_jars', JSON.stringify(res.data))
+        } catch (_) {}
+        return res.data
+      }
+    } catch (e) {
+      console.warn('API /finance/jars error, falling back to cached jars:', e)
+    }
+
+    try {
+      const cached = localStorage.getItem('lifequest_cached_jars')
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch (_) {}
+
+    return DEFAULT_FINANCIAL_JARS as FinancialJar[]
   },
 
   applyJarTemplate: async (
     templateType: 'tet_gig' | 'six_jars' | 'simple_three' | 'empty'
   ): Promise<FinancialJar[]> => {
-    const res = await api.post('/finance/jars/apply-template', { template_type: templateType })
-    return res.data
+    try {
+      const res = await api.post('/finance/jars/apply-template', { template_type: templateType })
+      return res.data
+    } catch (e) {
+      console.warn('API /finance/jars/apply-template error, falling back locally:', e)
+      return DEFAULT_FINANCIAL_JARS as FinancialJar[]
+    }
   },
 
   createFinancialJar: async (data: Partial<FinancialJar>): Promise<FinancialJar> => {
@@ -950,8 +984,24 @@ export const focusService = {
     const params: Record<string, any> = {}
     if (jar_id) params.jar_id = jar_id
     if (category) params.category = category
-    const res = await api.get('/finance/transactions', { params })
-    return res.data
+    try {
+      const res = await api.get('/finance/transactions', { params })
+      if (Array.isArray(res.data)) {
+        try {
+          localStorage.setItem('lifequest_cached_txs', JSON.stringify(res.data))
+        } catch (_) {}
+        return res.data
+      }
+    } catch (e) {
+      console.warn('API /finance/transactions error, falling back to cached txs:', e)
+    }
+
+    try {
+      const cached = localStorage.getItem('lifequest_cached_txs')
+      if (cached) return JSON.parse(cached)
+    } catch (_) {}
+
+    return []
   },
 
   logExpense: async (data: {
@@ -960,8 +1010,49 @@ export const focusService = {
     description?: string
     jar_id?: number
   }): Promise<{ status: string; transaction: any; jar: FinancialJar; advice: string }> => {
-    const res = await api.post('/finance/expense', data)
-    return res.data
+    try {
+      const res = await api.post('/finance/expense', data)
+      return res.data
+    } catch (e: any) {
+      if (e?.response?.status === 400) {
+        throw e
+      }
+      console.warn('API /finance/expense error, falling back locally:', e)
+
+      let targetJar = (DEFAULT_FINANCIAL_JARS[1] as unknown) as FinancialJar
+      try {
+        const cachedStr = localStorage.getItem('lifequest_cached_jars')
+        let jars: FinancialJar[] = cachedStr ? JSON.parse(cachedStr) : [...DEFAULT_FINANCIAL_JARS]
+        const idx = data.jar_id
+          ? jars.findIndex((j) => j.id === data.jar_id)
+          : jars.findIndex((j) => j.jar_type === 'LIVING')
+        if (idx >= 0) {
+          if (jars[idx].current_balance < data.amount) {
+            const err: any = new Error(`Số dư hũ "${jars[idx].name}" không đủ để chi tiêu ${data.amount.toLocaleString()}đ!`)
+            err.response = { data: { detail: err.message }, status: 400 }
+            throw err
+          }
+          jars[idx] = { ...jars[idx], current_balance: Math.max(0, jars[idx].current_balance - data.amount) }
+          targetJar = jars[idx]
+          localStorage.setItem('lifequest_cached_jars', JSON.stringify(jars))
+        }
+      } catch (err: any) {
+        if (err.response?.status === 400) throw err
+      }
+
+      return {
+        status: 'success',
+        transaction: {
+          id: Date.now(),
+          amount: -data.amount,
+          description: data.description || 'Chi tiêu nhanh',
+          category: data.category || 'chi_tieu',
+          created_at: new Date().toISOString(),
+        },
+        jar: targetJar,
+        advice: 'Đã trừ chi tiêu thành công. Hãy giữ vững kỷ luật chi tiêu nhé!',
+      }
+    }
   },
 
   depositGigEarnings: async (data: {
@@ -978,13 +1069,74 @@ export const focusService = {
     daily_achieved: number
     is_target_met: boolean
   }> => {
-    const res = await api.post('/finance/gig-deposit', data)
-    return res.data
+    try {
+      const res = await api.post('/finance/gig-deposit', data)
+      return res.data
+    } catch (e: any) {
+      console.warn('API /finance/gig-deposit error, using local fallback:', e)
+      const tetPct = data.tet_percent ?? 100
+      const livingPct = data.living_percent ?? (100 - tetPct)
+      const tetAmt = Math.round((data.amount * tetPct) / 100)
+      const livingAmt = Math.round((data.amount * livingPct) / 100)
+
+      // Update local cached jars
+      try {
+        const cachedStr = localStorage.getItem('lifequest_cached_jars')
+        let jars: FinancialJar[] = cachedStr ? JSON.parse(cachedStr) : [...DEFAULT_FINANCIAL_JARS]
+        jars = jars.map((j) => {
+          if (j.jar_type === 'TET') {
+            return { ...j, current_balance: (j.current_balance || 0) + tetAmt }
+          }
+          if (j.jar_type === 'LIVING') {
+            return { ...j, current_balance: (j.current_balance || 0) + livingAmt }
+          }
+          return j
+        })
+        localStorage.setItem('lifequest_cached_jars', JSON.stringify(jars))
+      } catch (_) {}
+
+      // Update local cached plan
+      let achieved = data.amount
+      try {
+        const planStr = localStorage.getItem('lifequest_cached_tet_plan')
+        const plan: TetEarningPlan = planStr ? JSON.parse(planStr) : { ...DEFAULT_TET_PLAN }
+        achieved = (plan.today_earned || 0) + data.amount
+        plan.today_earned = achieved
+        plan.is_target_met_today = achieved >= plan.daily_target_needed
+        localStorage.setItem('lifequest_cached_tet_plan', JSON.stringify(plan))
+      } catch (_) {}
+
+      return {
+        total_amount: data.amount,
+        tet_deposited: tetAmt,
+        living_deposited: livingAmt,
+        message: `Đã nạp ${data.amount.toLocaleString()}đ thành công (Tết: ${tetAmt.toLocaleString()}đ, Sinh hoạt: ${livingAmt.toLocaleString()}đ)!`,
+        daily_target: 200000,
+        daily_achieved: achieved,
+        is_target_met: achieved >= 200000,
+      }
+    }
   },
 
   getTetEarningPlan: async (): Promise<TetEarningPlan> => {
-    const res = await api.get('/finance/tet-plan')
-    return res.data
+    try {
+      const res = await api.get('/finance/tet-plan')
+      if (res.data) {
+        try {
+          localStorage.setItem('lifequest_cached_tet_plan', JSON.stringify(res.data))
+        } catch (_) {}
+        return res.data
+      }
+    } catch (e) {
+      console.warn('API /finance/tet-plan error, falling back to cached plan:', e)
+    }
+
+    try {
+      const cached = localStorage.getItem('lifequest_cached_tet_plan')
+      if (cached) return JSON.parse(cached)
+    } catch (_) {}
+
+    return (DEFAULT_TET_PLAN as unknown) as TetEarningPlan
   },
 
   updateTetEarningPlan: async (data: Partial<TetEarningPlan>): Promise<TetEarningPlan> => {

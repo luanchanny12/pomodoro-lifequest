@@ -10,6 +10,9 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 import pytest
+import app.models
+import app.models_auth
+import app.models_squad
 from app.database import Base, engine
 
 @pytest.fixture(scope="session", autouse=True)
