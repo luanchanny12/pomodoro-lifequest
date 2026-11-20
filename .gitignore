@@ -46,6 +46,8 @@ frontend/dist-ssr/
 .env.*
 !.env.example
 !frontend/.env.production
+*CREDENTIALS*
+*.secret
 
 # Vercel / build caches
 .vercel/
