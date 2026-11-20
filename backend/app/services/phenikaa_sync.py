@@ -26,7 +26,7 @@ DEFAULT_PHENIKAA_COURSES = [
     },
     {
         "course_name": "Lập trình phân tích dữ liệu với python (Thực hành)",
-        "course_code": "CSE702031",
+        "course_code": "CSE702031-TH",
         "day_of_week": 4,
         "start_time": "09:50",
         "end_time": "12:30",
@@ -45,7 +45,7 @@ DEFAULT_PHENIKAA_COURSES = [
         "semester": "Học kỳ 2 (2026-2027)",
     },
     {
-        "course_name": "Quản trị dự án công nghệ thông tin (Lý thuyết)",
+        "course_name": "Quản trị dự án CNTT (Lý thuyết)",
         "course_code": "CSE702049",
         "day_of_week": 5,
         "start_time": "07:00",
@@ -56,7 +56,7 @@ DEFAULT_PHENIKAA_COURSES = [
     },
     {
         "course_name": "Quản trị dự án CNTT (E-learning)",
-        "course_code": "CSE702049",
+        "course_code": "CSE702049-EL",
         "day_of_week": 5,
         "start_time": "18:00",
         "end_time": "20:30",
@@ -76,7 +76,7 @@ DEFAULT_PHENIKAA_COURSES = [
     },
     {
         "course_name": "Trực quan hoá dữ liệu (Thực hành)",
-        "course_code": "CSE702060",
+        "course_code": "CSE702060-TH",
         "day_of_week": 6,
         "start_time": "15:35",
         "end_time": "18:15",
@@ -152,7 +152,12 @@ def diff_and_update_schedule(
     else:
         query = query.filter(SchoolClassSchedule.user_id.is_(None))
     existing_courses = query.all()
-    existing_map = {c.course_code: c for c in existing_courses if c.course_code}
+    existing_map = {}
+    for c in existing_courses:
+        if c.course_name and c.day_of_week:
+            existing_map[(c.course_name, c.day_of_week)] = c
+        if c.course_code:
+            existing_map[c.course_code] = c
 
     changes = []
     for nc in new_courses:
@@ -163,7 +168,7 @@ def diff_and_update_schedule(
         new_end = nc.get("end_time")
         dow = nc.get("day_of_week")
 
-        matched = existing_map.get(code)
+        matched = existing_map.get((name, dow)) or (existing_map.get(code) if code else None)
         if matched:
             # Kiểm tra đổi phòng học
             if new_room and matched.room != new_room:

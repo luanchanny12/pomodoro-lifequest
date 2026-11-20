@@ -18,7 +18,7 @@ import {
   User,
 } from 'lucide-react'
 import type { DeadlineItem } from '@/utils/deadlineUtils'
-import type { SchoolScheduleItem } from '@/services/focusService'
+import { OFFICIAL_PHENIKAA_K17_SCHEDULE, type SchoolScheduleItem } from '@/utils/phenikaaSchedules'
 
 export type TimetableSession = 'morning' | 'afternoon' | 'evening' | 'allday'
 
@@ -134,6 +134,10 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
       setCurrentWeekMonday((prev) => {
         const d = new Date(prev)
         d.setDate(d.getDate() - 7)
+        if (onSelectDate) {
+          const pad = (n: number) => String(n).padStart(2, '0')
+          onSelectDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+        }
         return d
       })
     })
@@ -144,6 +148,10 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
       setCurrentWeekMonday((prev) => {
         const d = new Date(prev)
         d.setDate(d.getDate() + 7)
+        if (onSelectDate) {
+          const pad = (n: number) => String(n).padStart(2, '0')
+          onSelectDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+        }
         return d
       })
     })
@@ -151,15 +159,30 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
 
   const handleCurrentWeek = () => {
     startTransition(() => {
-      setCurrentWeekMonday(getMondayOfWeek(new Date()))
+      const nowMonday = getMondayOfWeek(new Date())
+      setCurrentWeekMonday(nowMonday)
+      if (onSelectDate) {
+        onSelectDate(todayYmd)
+      }
     })
   }
 
+  // Fallback to official Phenikaa schedule if both schedules and items are empty
+  const activeSchedules = useMemo(() => {
+    if (schedules && schedules.length > 0) {
+      return schedules
+    }
+    if (items && items.length > 0) {
+      return []
+    }
+    return OFFICIAL_PHENIKAA_K17_SCHEDULE
+  }, [schedules, items])
+
   // Lấy các lớp học cho từng ngày theo thứ trong tuần (dayOfWeek: 2..8)
   const getClassesForDay = (dow: number, ymd: string) => {
-    // 1. Nếu có schedules truyền vào trực tiếp: map theo day_of_week
-    if (schedules && schedules.length > 0) {
-      return schedules.filter((s) => s.day_of_week === dow && s.is_active)
+    // 1. Nếu có schedules hoặc dùng fallback chuẩn Phenikaa K17: map theo day_of_week
+    if (activeSchedules && activeSchedules.length > 0) {
+      return activeSchedules.filter((s) => s.day_of_week === dow && s.is_active)
     }
 
     // 2. Nếu lấy từ academicItems (DeadlineItem format):
@@ -171,11 +194,11 @@ const SchoolWeeklyTimetableComponent: React.FC<SchoolWeeklyTimetableProps> = ({
 
   // Count classes in week
   const weekItemCount = useMemo(() => {
-    if (schedules && schedules.length > 0) {
-      return schedules.filter((s) => s.is_active).length
+    if (activeSchedules && activeSchedules.length > 0) {
+      return activeSchedules.filter((s) => s.is_active).length
     }
     return academicItems.length
-  }, [schedules, academicItems])
+  }, [activeSchedules, academicItems])
 
   // Render thẻ môn học chuẩn Phenikaa
   const renderCourseCard = (course: SchoolScheduleItem | DeadlineItem, key: string) => {

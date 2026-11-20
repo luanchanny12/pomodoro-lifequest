@@ -383,20 +383,8 @@ export interface DualCoachAdvice {
   motivation_quote: string
 }
 
-export interface SchoolScheduleItem {
-  id: number
-  school_name?: string
-  course_code?: string
-  course_name: string
-  day_of_week: number
-  day_name: string
-  start_time: string
-  end_time: string
-  room?: string
-  lecturer?: string
-  semester?: string
-  is_active: boolean
-}
+import { OFFICIAL_PHENIKAA_K17_SCHEDULE, type SchoolScheduleItem } from '@/utils/phenikaaSchedules'
+export { OFFICIAL_PHENIKAA_K17_SCHEDULE, type SchoolScheduleItem }
 
 export interface PhenikaaSyncStatus {
   user_id: number
@@ -1010,8 +998,31 @@ export const focusService = {
   },
 
   getSchoolSchedules: async (): Promise<SchoolScheduleItem[]> => {
-    const res = await api.get('/finance/school-schedule')
-    return res.data
+    try {
+      const res = await api.get('/finance/school-schedule')
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        try {
+          localStorage.setItem('lifequest_cached_school_schedules', JSON.stringify(res.data))
+        } catch (_) {}
+        return res.data
+      }
+    } catch (e) {
+      console.warn('API /finance/school-schedule error, falling back to cache/defaults:', e)
+    }
+
+    // Fallback 1: LocalStorage cache
+    try {
+      const cached = localStorage.getItem('lifequest_cached_school_schedules')
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed
+        }
+      }
+    } catch (_) {}
+
+    // Fallback 2: Official Phenikaa K17 Schedule
+    return OFFICIAL_PHENIKAA_K17_SCHEDULE
   },
 
   addSchoolScheduleItem: async (data: Partial<SchoolScheduleItem>): Promise<SchoolScheduleItem> => {

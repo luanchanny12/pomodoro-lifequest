@@ -21,7 +21,8 @@ import {
 } from 'lucide-react'
 import type { DeadlineItem, DeadlinesResponse } from '@/utils/deadlineUtils'
 import { getLocalTodayYmd } from '@/utils/deadlineUtils'
-import { focusService, type SchoolScheduleItem } from '@/services/focusService'
+import { focusService } from '@/services/focusService'
+import { OFFICIAL_PHENIKAA_K17_SCHEDULE, type SchoolScheduleItem } from '@/utils/phenikaaSchedules'
 import { FinancialJarsCard } from './FinancialJarsCard'
 import { SchoolWeeklyTimetable } from './SchoolWeeklyTimetable'
 import { ScheduleDayDetailCard } from './ScheduleDayDetailCard'
@@ -77,7 +78,16 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
   const [sendingSchoolTelegram, setSendingSchoolTelegram] = useState(false)
 
   // Pure School Schedules (Lịch học trường Phenikaa)
-  const [schoolSchedules, setSchoolSchedules] = useState<SchoolScheduleItem[]>([])
+  const [schoolSchedules, setSchoolSchedules] = useState<SchoolScheduleItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('lifequest_cached_school_schedules')
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch (_) {}
+    return OFFICIAL_PHENIKAA_K17_SCHEDULE
+  })
   const [loadingSchedules, setLoadingSchedules] = useState(false)
 
   useEffect(() => {
@@ -92,9 +102,14 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
     try {
       setLoadingSchedules(true)
       const data = await focusService.getSchoolSchedules()
-      setSchoolSchedules(Array.isArray(data) ? data : [])
+      if (Array.isArray(data) && data.length > 0) {
+        setSchoolSchedules(data)
+      } else {
+        setSchoolSchedules(OFFICIAL_PHENIKAA_K17_SCHEDULE)
+      }
     } catch (e) {
       console.warn('Could not load school schedules:', e)
+      setSchoolSchedules(OFFICIAL_PHENIKAA_K17_SCHEDULE)
     } finally {
       setLoadingSchedules(false)
     }
@@ -453,12 +468,32 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
 
                   <div className="space-y-2 max-h-[460px] overflow-y-auto pr-0.5 custom-scrollbar">
                     {selectedDayClasses.length === 0 ? (
-                      <div className="py-8 text-center text-slate-500 text-xs flex flex-col items-center justify-center space-y-1.5">
-                        <BookOpen className="w-6 h-6 text-slate-600" />
-                        <p className="text-slate-400">Không có tiết học Phenikaa trong ngày này.</p>
-                        <span className="text-[10px] text-slate-500">
-                          Bấm vào các ngày Thứ 2, 4, 5, 6 trên bảng để xem môn học!
-                        </span>
+                      <div className="py-8 text-center text-slate-500 text-xs flex flex-col items-center justify-center space-y-2 p-3">
+                        <BookOpen className="w-7 h-7 text-sky-500/70" />
+                        {selectedDate < '2026-11-30' ? (
+                          <>
+                            <p className="text-sky-300 font-semibold">
+                              🏛️ Kỳ học chính thức bắt đầu từ Thứ 2, 30/11/2026
+                            </p>
+                            <p className="text-slate-400 text-[11px] max-w-xs">
+                              Hôm nay ({selectedDate}) bạn chưa có lịch học tại trường. Lịch học sẽ tự động bắt đầu từ tuần ngày 30/11!
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDate('2026-11-30')}
+                              className="mt-2 px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <span>👉 Xem ngày 30/11 (Thứ 2)</span>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-slate-300 font-medium">Không có tiết học Phenikaa trong ngày này.</p>
+                            <span className="text-[11px] text-slate-500">
+                              Bấm vào các ngày Thứ 2, 4, 5, 6 trên bảng để xem chi tiết môn học!
+                            </span>
+                          </>
+                        )}
                       </div>
                     ) : (
                       selectedDayClasses.map((c) => (

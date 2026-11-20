@@ -1,5 +1,8 @@
+import logging
 import datetime
 from typing import List, Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
@@ -1008,35 +1011,74 @@ def get_school_schedules(
     user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Lấy danh sách thời khóa biểu các môn học tại trường của người dùng."""
+    from app.services.phenikaa_sync import DEFAULT_PHENIKAA_COURSES, trigger_phenikaa_sync
+
     real_user = _get_real_user(user)
     user_id = real_user.id if real_user else None
-    if not user_id:
-        return []
 
-    classes = db.query(SchoolClassSchedule).filter(
-        SchoolClassSchedule.user_id == user_id,
-        SchoolClassSchedule.is_active == True,
-    ).order_by(
-        SchoolClassSchedule.day_of_week.asc(),
-        SchoolClassSchedule.start_time.asc()
-    ).all()
+    try:
+        query = db.query(SchoolClassSchedule).filter(SchoolClassSchedule.is_active == True)
+        if user_id:
+            query = query.filter(SchoolClassSchedule.user_id == user_id)
+        else:
+            query = query.filter(SchoolClassSchedule.user_id.is_(None))
 
+        classes = query.order_by(
+            SchoolClassSchedule.day_of_week.asc(),
+            SchoolClassSchedule.start_time.asc()
+        ).all()
+
+        # Tự động khởi tạo thời khóa biểu chuẩn Phenikaa nếu người dùng chưa có
+        if not classes:
+            trigger_phenikaa_sync(db, user_id=user_id, force=True)
+            query = db.query(SchoolClassSchedule).filter(SchoolClassSchedule.is_active == True)
+            if user_id:
+                query = query.filter(SchoolClassSchedule.user_id == user_id)
+            else:
+                query = query.filter(SchoolClassSchedule.user_id.is_(None))
+            classes = query.order_by(
+                SchoolClassSchedule.day_of_week.asc(),
+                SchoolClassSchedule.start_time.asc()
+            ).all()
+
+        if classes:
+            return [
+                SchoolScheduleItemResponse(
+                    id=c.id,
+                    school_name=getattr(c, "school_name", None) or "Đại học Phenikaa",
+                    course_code=c.course_code,
+                    course_name=c.course_name,
+                    day_of_week=c.day_of_week,
+                    day_name=DAY_NAME_MAP.get(c.day_of_week, f"Thứ {c.day_of_week}"),
+                    start_time=c.start_time,
+                    end_time=c.end_time,
+                    room=c.room,
+                    lecturer=c.lecturer,
+                    semester=c.semester,
+                    is_active=bool(c.is_active),
+                )
+                for c in classes
+            ]
+    except Exception as e:
+        logger.warning(f"Error querying school schedule: {e}, falling back to default Phenikaa courses")
+
+    # Fallback to official Phenikaa K17 schedule if DB has error or is empty
     return [
         SchoolScheduleItemResponse(
-            id=c.id,
-            school_name=getattr(c, "school_name", None) or "Trường Đại Học",
-            course_code=c.course_code,
-            course_name=c.course_name,
-            day_of_week=c.day_of_week,
-            day_name=DAY_NAME_MAP.get(c.day_of_week, f"Thứ {c.day_of_week}"),
-            start_time=c.start_time,
-            end_time=c.end_time,
-            room=c.room,
-            lecturer=c.lecturer,
-            semester=c.semester,
-            is_active=bool(c.is_active),
+            id=100 + idx,
+            school_name="Đại học Phenikaa",
+            course_code=c.get("course_code"),
+            course_name=c.get("course_name"),
+            day_of_week=c.get("day_of_week"),
+            day_name=DAY_NAME_MAP.get(c.get("day_of_week"), f"Thứ {c.get('day_of_week')}"),
+            start_time=c.get("start_time"),
+            end_time=c.get("end_time"),
+            room=c.get("room"),
+            lecturer=c.get("lecturer"),
+            semester=c.get("semester", "Học kỳ 2 (2026-2027)"),
+            is_active=True,
         )
-        for c in classes
+        for idx, c in enumerate(DEFAULT_PHENIKAA_COURSES, start=1)
     ]
 
 
