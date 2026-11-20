@@ -116,7 +116,36 @@ export function getUrgencyMeta(urgency: DeadlineUrgency, daysLeft: number) {
   }
 }
 
+export function markScheduleItemHandledLocally(key: string): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    const stored = localStorage.getItem('lifequest_handled_deadline_items')
+    const list: string[] = stored ? JSON.parse(stored) : []
+    if (!list.includes(key)) {
+      list.push(key)
+      localStorage.setItem('lifequest_handled_deadline_items', JSON.stringify(list))
+    }
+  } catch (_) {}
+}
+
+export function isScheduleItemHandledLocally(key: string): boolean {
+  try {
+    if (typeof localStorage === 'undefined') return false
+    const stored = localStorage.getItem('lifequest_handled_deadline_items')
+    if (!stored) return false
+    const list: string[] = JSON.parse(stored)
+    return Array.isArray(list) && list.includes(key)
+  } catch (_) {
+    return false
+  }
+}
+
 export async function completeDeadlineItem(item: DeadlineItem): Promise<void> {
+  const itemKey = `${item.type}-${item.id}`
+  markScheduleItemHandledLocally(itemKey)
+
+  const numId = typeof item.id === 'number' ? item.id : Number(String(item.id).replace(/\D+/g, ''))
+
   if (item.type === 'school_class') {
     toast.success(`📚 Đã điểm danh / hoàn tất môn học "${item.title}"!`)
     return
@@ -130,21 +159,68 @@ export async function completeDeadlineItem(item: DeadlineItem): Promise<void> {
   }
 
   if (item.type === 'goal') {
-    if (typeof item.id === 'number') {
-      await focusService.updateGoal(item.id, { is_completed: true })
+    if (!isNaN(numId) && numId > 0) {
+      try {
+        await focusService.updateGoal(numId, { is_completed: true })
+      } catch (err) {
+        console.warn('API error completing goal, marked completed locally:', err)
+      }
     }
     toast.success(`🎉 Đã hoàn thành deadline "${item.title}"!`)
     return
   }
 
-  if (typeof item.id === 'number') {
-    if (item.days_left < 0) {
-      // Backend disallows toggling unrolled past matrix tasks directly; move to today first
-      await focusService.updateMatrixTask(item.id, { date: getLocalTodayYmd() })
+  if (!isNaN(numId) && numId > 0) {
+    try {
+      if (item.days_left < 0) {
+        // Backend disallows toggling unrolled past matrix tasks directly; move to today first
+        await focusService.updateMatrixTask(numId, { date: getLocalTodayYmd() })
+      }
+      await focusService.toggleMatrixTask(numId)
+    } catch (err) {
+      console.warn('API error toggling matrix task, marked completed locally:', err)
     }
-    await focusService.toggleMatrixTask(item.id)
   }
   toast.success(`✔ Đã đánh dấu xong "${item.title}"!`)
+}
+
+export async function deleteDeadlineItem(item: DeadlineItem): Promise<void> {
+  const itemKey = `${item.type}-${item.id}`
+  markScheduleItemHandledLocally(itemKey)
+
+  const numId = typeof item.id === 'number' ? item.id : Number(String(item.id).replace(/\D+/g, ''))
+
+  if (item.type === 'goal' && !isNaN(numId) && numId > 0) {
+    try {
+      await focusService.deleteGoal(numId)
+    } catch (err) {
+      console.warn('API error deleting goal, marked deleted locally:', err)
+    }
+    toast.success(`🗑️ Đã xóa deadline "${item.title}"!`)
+    return
+  }
+
+  if (item.type === 'task' && !isNaN(numId) && numId > 0) {
+    try {
+      await focusService.deleteMatrixTask(numId)
+    } catch (err) {
+      console.warn('API error deleting matrix task, marked deleted locally:', err)
+    }
+    toast.success(`🗑️ Đã xóa công việc "${item.title}"!`)
+    return
+  }
+
+  if (item.type === 'school_class' && !isNaN(numId) && numId > 0) {
+    try {
+      await focusService.deleteSchoolScheduleItem(numId)
+    } catch (err) {
+      console.warn('API error deleting school schedule, marked deleted locally:', err)
+    }
+    toast.success(`🗑️ Đã xóa môn học "${item.title}"!`)
+    return
+  }
+
+  toast.success(`🗑️ Đã xóa "${item.title}" khỏi lịch!`)
 }
 
 export async function rescheduleDeadlineItem(

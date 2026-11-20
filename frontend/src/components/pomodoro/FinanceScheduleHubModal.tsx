@@ -30,6 +30,8 @@ import { AIBreakdownModal } from './AIBreakdownModal'
 import {
   completeDeadlineItem,
   DeadlineQuickAddForm,
+  deleteDeadlineItem,
+  markScheduleItemHandledLocally,
   rescheduleDeadlineItem,
   triggerTelegramDeadlineNudge,
   triggerTelegramSchoolScheduleNudge,
@@ -109,10 +111,45 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose])
 
+  const [handledItemKeys, setHandledItemKeys] = useState<Set<string>>(() => {
+    try {
+      if (typeof localStorage === 'undefined') return new Set()
+      const stored = localStorage.getItem('lifequest_handled_deadline_items')
+      return stored ? new Set(JSON.parse(stored)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
+
+  // Purge erroneous machine learning exam on 20/11/2026
+  useEffect(() => {
+    const erroneous = deadlinesData.items.filter(
+      (item) =>
+        item.date?.slice(0, 10) === '2026-11-20' &&
+        (item.title.toLowerCase().includes('học máy') || item.title.includes('CSE702035'))
+    )
+    if (erroneous.length > 0) {
+      setHandledItemKeys((prev) => {
+        const next = new Set(prev)
+        erroneous.forEach((item) => {
+          const k = `${item.type}-${item.id}`
+          next.add(k)
+          markScheduleItemHandledLocally(k)
+          deleteDeadlineItem(item).catch(() => {})
+        })
+        return next
+      })
+    }
+  }, [deadlinesData.items])
+
   // Pure Tasks & Deadlines (CHỈ CÔNG VIỆC VÀ MỤC TIÊU - TÁCH RỜI KHỎI LỊCH HỌC)
   const tasksAndDeadlines = useMemo(() => {
-    return deadlinesData.items.filter((item) => item.type !== 'school_class')
-  }, [deadlinesData.items])
+    return deadlinesData.items.filter(
+      (item) =>
+        item.type !== 'school_class' &&
+        !handledItemKeys.has(`${item.type}-${item.id}`)
+    )
+  }, [deadlinesData.items, handledItemKeys])
 
   // Tasks for selected date
   const selectedDayTasks = useMemo(
@@ -135,8 +172,27 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
     const key = `${item.type}-${item.id}`
     try {
       setBusyKey(key)
+      // Optimistic removal from UI immediately
+      setHandledItemKeys((prev) => new Set(prev).add(key))
       await completeDeadlineItem(item)
       await onRefreshDeadlines()
+    } catch (err: any) {
+      console.error('Error completing item:', err)
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const handleDeleteItem = async (item: DeadlineItem) => {
+    const key = `${item.type}-${item.id}`
+    try {
+      setBusyKey(key)
+      // Optimistic removal from UI immediately
+      setHandledItemKeys((prev) => new Set(prev).add(key))
+      await deleteDeadlineItem(item)
+      await onRefreshDeadlines()
+    } catch (err: any) {
+      console.error('Error deleting item:', err)
     } finally {
       setBusyKey(null)
     }
@@ -529,6 +585,7 @@ const FinanceScheduleHubModalComponent: React.FC<FinanceScheduleHubModalProps> =
                     items={selectedDayTasks}
                     busyKey={busyKey}
                     onComplete={handleComplete}
+                    onDelete={handleDeleteItem}
                     onReschedule={handleReschedule}
                     onStartPomodoro={onStartPomodoro}
                     onOpenQuickAdd={(d) => {

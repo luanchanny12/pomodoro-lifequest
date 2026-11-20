@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", ".env")
 load_dotenv(env_path)
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,12 +45,21 @@ elif DATABASE_URL and DATABASE_URL.strip().lower() != "auto":
             DATABASE_URL += f"{sep}options=endpoint%3D{endpoint_id}"
 
     is_postgres = DATABASE_URL.startswith("postgresql")
-    engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,   # tự kết nối lại khi Supabase/Neon đóng connection idle
-        pool_recycle=300,
-        connect_args={"connect_timeout": 10} if is_postgres else {},
-    )
+    try:
+        temp_engine = create_engine(
+            DATABASE_URL,
+            pool_pre_ping=True,   # tự kết nối lại khi Supabase/Neon đóng connection idle
+            pool_recycle=300,
+            connect_args={"connect_timeout": 5} if is_postgres else {},
+        )
+        with temp_engine.connect() as test_conn:
+            test_conn.execute(text("SELECT 1"))
+        engine = temp_engine
+    except Exception as db_err:
+        print(f"[Database Warning] Could not connect to primary DATABASE_URL ({db_err}). Falling back to local SQLite lifequest.db!")
+        DB_PATH = os.path.join(BACKEND_DIR, "lifequest.db")
+        SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
+        engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 else:
     DB_PATH = os.path.join(BACKEND_DIR, "lifequest.db")
     SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"

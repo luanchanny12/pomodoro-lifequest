@@ -22,6 +22,7 @@ import {
   completeDeadlineItem,
   DeadlineItemRow,
   DeadlineQuickAddForm,
+  deleteDeadlineItem,
   EmptyDeadlineGuidance,
   filterDeadlinesByTab,
   rescheduleDeadlineItem,
@@ -142,6 +143,20 @@ export const DeadlineCalendarModal: React.FC<DeadlineCalendarModalProps> = ({
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : 'Không thể cập nhật ngày deadline'
+      toast.error(msg)
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const handleDelete = async (item: DeadlineItem) => {
+    const key = `${item.type}-${item.id}`
+    try {
+      setBusyKey(key)
+      await deleteDeadlineItem(item)
+      await handleAfterMutation()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Không thể xóa mục này'
       toast.error(msg)
     } finally {
       setBusyKey(null)
@@ -407,6 +422,7 @@ export const DeadlineCalendarModal: React.FC<DeadlineCalendarModalProps> = ({
                   items={selectedDayItems}
                   busyKey={busyKey}
                   onComplete={handleComplete}
+                  onDelete={handleDelete}
                   onReschedule={handleReschedule}
                   onStartPomodoro={onStartPomodoro ? handleStartFromModal : undefined}
                   onOpenQuickAdd={(d) => {

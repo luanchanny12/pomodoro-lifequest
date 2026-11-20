@@ -10,6 +10,7 @@ import {
   Plus,
   Send,
   Sparkles,
+  Trash2,
 } from 'lucide-react'
 import type { DeadlineItem } from '@/utils/deadlineUtils'
 import { parseScheduleDetails } from '@/utils/deadlineUtils'
@@ -21,6 +22,7 @@ interface ScheduleDayDetailCardProps {
   items: DeadlineItem[]
   busyKey: string | null
   onComplete: (item: DeadlineItem) => Promise<void> | void
+  onDelete?: (item: DeadlineItem) => Promise<void> | void
   onReschedule?: (item: DeadlineItem, newDate: string) => Promise<void> | void
   onStartPomodoro?: (goalId: number) => void
   onOpenQuickAdd: (dateStr: string) => void
@@ -35,6 +37,7 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
   items,
   busyKey,
   onComplete,
+  onDelete,
   onStartPomodoro,
   onOpenQuickAdd,
   onTriggerTelegram,
@@ -62,14 +65,17 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
     (i) =>
       !gigShifts.includes(i) &&
       (i.type === 'school_class' ||
-        i.category?.toLowerCase().includes('thi') ||
-        i.title?.toLowerCase().includes('thi') ||
-        i.category?.toLowerCase().includes('lịch'))
+        (i.type === 'goal' &&
+          (i.category?.toLowerCase().includes('thi') ||
+            i.title?.toLowerCase().includes('thi') ||
+            i.category?.toLowerCase().includes('lịch'))))
   )
   const otherGoals = items.filter(
     (i) => i.type === 'goal' && !exams.includes(i) && !gigShifts.includes(i)
   )
-  const matrixTasks = items.filter((i) => i.type === 'task' && !gigShifts.includes(i))
+  const matrixTasks = items.filter(
+    (i) => i.type === 'task' && !gigShifts.includes(i) && !exams.includes(i)
+  )
 
   return (
     <div className="w-full rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-md p-3.5 sm:p-4 flex flex-col justify-between">
@@ -236,10 +242,23 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
                         type="button"
                         disabled={isBusy}
                         onClick={() => onComplete(item)}
-                        className="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-medium transition-colors cursor-pointer"
+                        className="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                        title="Đánh dấu hoàn thành"
                       >
                         {isBusy ? '...' : 'Xong'}
                       </button>
+
+                      {onDelete && (
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => onDelete(item)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                          title="Xóa mục này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -294,10 +313,22 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
                       type="button"
                       disabled={isBusy}
                       onClick={() => onComplete(item)}
-                      className="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold cursor-pointer"
+                      title="Đánh dấu hoàn thành"
                     >
                       {isBusy ? '...' : 'Xong'}
                     </button>
+                    {onDelete && (
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => onDelete(item)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        title="Xóa deadline này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               )
@@ -323,9 +354,31 @@ export const ScheduleDayDetailCard: React.FC<ScheduleDayDetailCardProps> = ({
                     </span>
                   </button>
 
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">
-                    🔥 Ô 1 Làm ngay
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0 hidden sm:inline">
+                      🔥 Ô 1 Làm ngay
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => onComplete(item)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold border border-emerald-500/40 transition-colors cursor-pointer"
+                      title="Đánh dấu hoàn thành"
+                    >
+                      {isBusy ? '...' : 'Xong'}
+                    </button>
+                    {onDelete && (
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => onDelete(item)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        title="Xóa việc này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               )
             })}
